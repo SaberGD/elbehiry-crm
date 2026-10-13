@@ -1,0 +1,253 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --app-font-size: 14.5px;
+  --app-font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', system-ui, sans-serif;
+  --app-font-weight: 500;
+  --color-accent-soft: #7295b3;
+  --color-accent-hover: #5d7e9b;
+}
+
+@layer base {
+  html {
+    font-size: var(--app-font-size, 14.5px);
+    -webkit-tap-highlight-color: transparent;
+    background-color: #06080e;
+    color: #e2e8f0;
+    font-weight: 500;
+  }
+
+  html:not(.dark) {
+    background-color: #f4f6f9;
+    color: #0f172a;
+  }
+  
+  body {
+    font-family: var(--app-font-family, 'IBM Plex Sans Arabic', 'IBM Plex Sans', system-ui, sans-serif);
+    font-weight: var(--app-font-weight, 500);
+    line-height: 1.55;
+    letter-spacing: -0.01em;
+    background-color: #06080e;
+    color: #e2e8f0;
+    transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  html:not(.dark) body {
+    background-color: #f4f6f9;
+    color: #0f172a;
+  }
+
+  input, select, textarea, button {
+    font-family: inherit;
+    font-weight: inherit;
+  }
+}
+
+/* Snappy, lag-free compositor-only page entrance animation */
+@keyframes pageEnterFast {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-page-enter {
+  animation: pageEnterFast 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity, transform;
+}
+
+/* Bold Mode overrides */
+html.bold-mode body,
+html.bold-mode p,
+html.bold-mode span,
+html.bold-mode td,
+html.bold-mode th,
+html.bold-mode button,
+html.bold-mode label,
+html.bold-mode input,
+html.bold-mode select,
+html.bold-mode textarea {
+  font-weight: 600 !important;
+}
+
+.font-mono-numbers, .font-data-tabular {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Global scrollbar & body defaults for Dark Navy Charcoal Space */
+html.dark body {
+  background-color: #06080e;
+  color: #e2e8f0;
+}
+
+html:not(.dark) body {
+  background-color: #f4f6f9;
+  color: #0f172a;
+}
+
+/* High contrast inputs and selects */
+input, select, textarea {
+  color-scheme: dark;
+}
+
+html:not(.dark) input,
+html:not(.dark) select,
+html:not(.dark) textarea {
+  color-scheme: light;
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+/* Smooth transition for specific interactive surfaces */
+.theme-transition {
+  transition-property: background-color, border-color, color, box-shadow, opacity, width, padding, margin;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-duration: 200ms;
+}
+
+/* Executive Dock & Header Utilities */
+.liquid-glass-dock {
+  background: rgba(10, 13, 21, 0.94);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 30px -8px rgba(0, 0, 0, 0.7);
+}
+
+html:not(.dark) .liquid-glass-dock {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 4px 20px -6px rgba(15, 23, 42, 0.06);
+}
+
+/* Executive Sidebar Utility */
+.liquid-glass-sidebar {
+  background: #0a0d15;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+}
+
+html:not(.dark) .liquid-glass-sidebar {
+  background: #ffffff;
+  border-left: 1px solid #e2e8f0;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.liquid-glass-popover {
+  background: #131722;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85);
+}
+
+html:not(.dark) .liquid-glass-popover {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
+/* Glass Card Container Utility - Harmonized Proportions & Dark Navy Charcoal Tone */
+.glass-card {
+  background: #0d1017;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0.875rem;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html:not(.dark) .glass-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.04);
+}
+
+html:not(.dark) .glass-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 6px 20px -4px rgba(15, 23, 42, 0.08);
+}
+
+.glass-pill {
+  background: rgba(19, 23, 34, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html:not(.dark) .glass-pill {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #1e293b;
+}
+
+.glass-item {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-item-active {
+  background: #141824;
+  color: #7295b3;
+  border-right: 3px solid #7295b3;
+}
+
+html:not(.dark) .glass-item-active {
+  background: #e2e8f0;
+  color: #1e293b;
+  border-right: 3px solid #475569;
+}
+
+/* Split-screen and Mobile Auto-Fit Utilities */
+.fit-container {
+  min-width: 0;
+  width: 100%;
+}
+
+.fit-title {
+  font-size: clamp(0.7rem, 2.2vw, 0.875rem);
+  line-height: 1.25;
+}
+
+.fit-value {
+  font-size: clamp(0.95rem, 3.2vw, 1.4rem);
+  line-height: 1.2;
+}
+
+@keyframes liquid-pop {
+  0% { opacity: 0; transform: scale(0.96) translateY(-6px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-liquid-pop {
+  animation: liquid-pop 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1a2030;
+  border-radius: 9999px;
+}
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #252e45;
+}

@@ -1,0 +1,544 @@
+import React, { useState, useEffect } from 'react';
+import { useCRM } from '../context/CRMContext';
+import { useLanguage } from '../context/LanguageContext';
+import { useTheme } from '../context/ThemeContext';
+import {
+  Settings,
+  RefreshCw,
+  Save,
+  ShieldAlert,
+  BookOpen,
+  CheckCircle2,
+  Type,
+  Sliders,
+  Bold,
+  Eye,
+  RotateCcw,
+  Check,
+  Sparkles,
+  Sun,
+  Moon,
+  Globe,
+  Palette,
+  Languages,
+} from 'lucide-react';
+
+export interface FontPreference {
+  fontSize: number;
+  fontFamily: string;
+  isBold: boolean;
+  fontWeight: '400' | '500' | '600' | '700' | '800';
+}
+
+export const FONT_OPTIONS = [
+  { id: 'Readex Pro', name: 'Readex Pro', desc: 'افتراضي - عصري، متوازن وواضح جداً', family: "'Readex Pro', sans-serif" },
+  { id: 'Tajawal', name: 'تجامع (Tajawal)', desc: 'أنيق وخفيف، ممتاز للواجهات العربية', family: "'Tajawal', sans-serif" },
+  { id: 'Cairo', name: 'كايرو (Cairo)', desc: 'خط هندسي عربي عريض ومقروء لمختلف الأعمار', family: "'Cairo', sans-serif" },
+  { id: 'Almarai', name: 'المرعي (Almarai)', desc: 'خط شاشة رقمي دقيق ومتزن', family: "'Almarai', sans-serif" },
+  { id: 'Alexandria', name: 'الإسكندرية (Alexandria)', desc: 'خط عصري فاخر ذو حضور قوي', family: "'Alexandria', sans-serif" },
+  { id: 'Plus Jakarta Sans', name: 'Plus Jakarta Sans', desc: 'خط حديث باللغة اللاتينية والأرقام', family: "'Plus Jakarta Sans', sans-serif" },
+];
+
+export const DEFAULT_FONT_PREFERENCE: FontPreference = {
+  fontSize: 16.5,
+  fontFamily: "'Readex Pro', sans-serif",
+  isBold: false,
+  fontWeight: '400',
+};
+
+export const SettingsPage: React.FC = () => {
+  const { distributionRule, updateDistributionRule, courses, resetAllData, effectiveUser } = useCRM();
+  const { language, setLanguage, t } = useLanguage();
+  const { theme, setTheme } = useTheme();
+
+  const [autoDistribute, setAutoDistribute] = useState(distributionRule.autoDistribute);
+  const [method, setMethod] = useState(distributionRule.method);
+  const [maxLeadsPerAgentDay, setMaxLeadsPerAgentDay] = useState(distributionRule.maxLeadsPerAgentDay);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [fontSavedSuccess, setFontSavedSuccess] = useState(false);
+
+  // Font settings state
+  const storageKey = `elbehery_font_prefs_${effectiveUser.id || 'default'}`;
+  const [fontPrefs, setFontPrefs] = useState<FontPreference>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return DEFAULT_FONT_PREFERENCE;
+  });
+
+  const applyFontPreferences = (p: FontPreference) => {
+    const root = document.documentElement;
+    root.style.setProperty('--app-font-size', `${p.fontSize}px`);
+    root.style.setProperty('--app-font-family', p.fontFamily);
+    root.style.setProperty('--app-font-weight', p.fontWeight);
+
+    if (p.isBold || parseInt(p.fontWeight) >= 600) {
+      root.classList.add('bold-mode');
+    } else {
+      root.classList.remove('bold-mode');
+    }
+  };
+
+  useEffect(() => {
+    applyFontPreferences(fontPrefs);
+  }, [fontPrefs]);
+
+  const handleSaveFontPrefs = (updated: FontPreference) => {
+    setFontPrefs(updated);
+    applyFontPreferences(updated);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+    setFontSavedSuccess(true);
+    setTimeout(() => setFontSavedSuccess(false), 2500);
+  };
+
+  const handleResetFontPrefs = () => {
+    handleSaveFontPrefs(DEFAULT_FONT_PREFERENCE);
+  };
+
+  const handleSaveDistribution = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateDistributionRule({
+      autoDistribute,
+      method,
+      maxLeadsPerAgentDay,
+    });
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 2000);
+  };
+
+  const handleReset = () => {
+    if (window.confirm('هل أنت تأكد من إرجاع كافة بيانات النظام للوضع الافتراضي؟')) {
+      resetAllData();
+      alert('تم إعادة ضبط النظام بنجاح!');
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-150">
+      {/* Header */}
+      <div>
+        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
+          <Settings className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+          <span>إعدادات النظام، الثيم، اللغة والخطوط</span>
+        </h1>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          إدارة تفضيلات المظهر والوضع الداكن، لغة العرض، نوع وحجم الخط، وقواعد توزيع العملاء
+        </p>
+      </div>
+
+      {/* 1. Theme & Language Settings Section */}
+      <div className="glass-card p-6 rounded-2xl shadow-xs space-y-5">
+        <div className="pb-3 border-b border-slate-100 dark:border-slate-800">
+          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center gap-2">
+            <Palette className="w-5 h-5 text-[#abcae9]" />
+            <span>مظهر النظام والوضع الداكن واللغة (Theme & Language)</span>
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            تخصيص ثيم النظام والوضع الليلي/الفاتح وتغيير لغة الواجهة
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Theme Selector */}
+          <div className="space-y-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/60">
+            <label className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Sun className="w-4 h-4 text-amber-500" />
+              <span>وضع الألوان والمظهر (Theme Mode):</span>
+            </label>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setTheme('light')}
+                className={`p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                  theme === 'light'
+                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 text-amber-900 dark:text-amber-200 ring-2 ring-amber-500/20 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-amber-400'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Sun className="w-4 h-4 text-amber-500" />
+                  <span>الوضع الفاتح</span>
+                </div>
+                {theme === 'light' && <Check className="w-4 h-4 text-amber-600" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTheme('dark')}
+                className={`p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                  theme === 'dark'
+                    ? 'bg-slate-800 border-slate-600 text-slate-100 ring-2 ring-slate-500/20 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Moon className="w-4 h-4 text-[#abcae9]" />
+                  <span>الوضع الداكن / الليلي</span>
+                </div>
+                {theme === 'dark' && <Check className="w-4 h-4 text-[#abcae9]" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Language Selector */}
+          <div className="space-y-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/60">
+            <label className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Languages className="w-4 h-4 text-[#abcae9]" />
+              <span>لغة الواجهة (Interface Language):</span>
+            </label>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setLanguage('ar')}
+                className={`p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                  language === 'ar'
+                    ? 'bg-slate-100 dark:bg-slate-800 border-slate-600 dark:border-slate-500 text-slate-900 dark:text-slate-100 ring-2 ring-slate-500/20 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-[#abcae9]" />
+                  <span>العربية (Arabic)</span>
+                </div>
+                {language === 'ar' && <Check className="w-4 h-4 text-[#abcae9]" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLanguage('en')}
+                className={`p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                  language === 'en'
+                    ? 'bg-slate-100 dark:bg-slate-800 border-slate-600 dark:border-slate-500 text-slate-900 dark:text-slate-100 ring-2 ring-slate-500/20 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-[#abcae9]" />
+                  <span>English (الإنجليزية)</span>
+                </div>
+                {language === 'en' && <Check className="w-4 h-4 text-[#abcae9]" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Font & Typography Settings Section */}
+      <div className="glass-card p-6 rounded-2xl shadow-xs space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center gap-2">
+            <Type className="w-5 h-5 text-[#abcae9]" />
+            <span>تخصيص الخطوط وحجم النصوص للمستخدم ({effectiveUser.name})</span>
+          </h3>
+          {fontSavedSuccess && (
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4" /> تم تطبيق الإعدادات وحفظها!
+            </span>
+          )}
+        </div>
+
+        {/* 1. Font Size Slider */}
+        <div className="space-y-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/60">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-[#abcae9]" />
+              حجم الخط والنصوص ( Font Size ):
+            </label>
+            <span className="text-xs font-mono font-bold px-2.5 py-1 bg-slate-800 dark:bg-slate-700 text-white rounded-lg shadow-xs">
+              {fontPrefs.fontSize}px
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <span className="text-xs text-slate-400 font-bold">14px</span>
+            <input
+              type="range"
+              min="14"
+              max="22"
+              step="0.5"
+              value={fontPrefs.fontSize}
+              onChange={(e) => handleSaveFontPrefs({ ...fontPrefs, fontSize: parseFloat(e.target.value) })}
+              className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-slate-700"
+            />
+            <span className="text-xs text-slate-400 font-bold">22px</span>
+          </div>
+
+          {/* Quick Preset Buttons */}
+          <div className="grid grid-cols-5 gap-1.5 pt-1">
+            {[
+              { label: 'صغير', size: 14.5 },
+              { label: 'متناسق', size: 16.5 },
+              { label: 'كبير', size: 18 },
+              { label: 'كبير جداً', size: 19.5 },
+              { label: 'ضخم', size: 21 },
+            ].map((preset) => (
+              <button
+                key={preset.size}
+                type="button"
+                onClick={() => handleSaveFontPrefs({ ...fontPrefs, fontSize: preset.size })}
+                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                  fontPrefs.fontSize === preset.size
+                    ? 'bg-slate-800 text-white border-slate-700 dark:bg-slate-700 dark:border-slate-600 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 2. Bold Mode & Font Weight */}
+        <div className="space-y-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/60">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Bold className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                تفعيل الخط العريض ( Bold Mode ):
+              </label>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                تسميك كافة النصوص والجداول لتسهيل القراءة وتوضيح بيانات العملاء
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleSaveFontPrefs({
+                  ...fontPrefs,
+                  isBold: !fontPrefs.isBold,
+                  fontWeight: !fontPrefs.isBold ? '700' : '400',
+                })
+              }
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                fontPrefs.isBold || parseInt(fontPrefs.fontWeight) >= 600
+                  ? 'bg-indigo-600'
+                  : 'bg-slate-300 dark:bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  fontPrefs.isBold || parseInt(fontPrefs.fontWeight) >= 600 ? 'translate-x-1' : 'translate-x-6'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+            {[
+              { label: 'عادي (Normal)', weight: '400' as const },
+              { label: 'متوسط (Medium)', weight: '500' as const },
+              { label: 'عريض (Bold)', weight: '700' as const },
+              { label: 'عريض جداً (Heavy)', weight: '800' as const },
+            ].map((w) => (
+              <button
+                key={w.weight}
+                type="button"
+                onClick={() =>
+                  handleSaveFontPrefs({
+                    ...fontPrefs,
+                    fontWeight: w.weight,
+                    isBold: parseInt(w.weight) >= 600,
+                  })
+                }
+                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                  fontPrefs.fontWeight === w.weight
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                }`}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Font Family Selection */}
+        <div className="space-y-3">
+          <label className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Type className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            نوع الخط المفضل ( Font Family ):
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {FONT_OPTIONS.map((f) => {
+              const isSelected = fontPrefs.fontFamily === f.family;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => handleSaveFontPrefs({ ...fontPrefs, fontFamily: f.family })}
+                  className={`p-3 rounded-2xl text-right dir-rtl border transition-all cursor-pointer flex items-start justify-between ${
+                    isSelected
+                      ? 'bg-indigo-50/90 dark:bg-indigo-950/70 border-indigo-600 dark:border-indigo-500 ring-2 ring-indigo-500/30'
+                      : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                >
+                  <div>
+                    <div
+                      className="font-bold text-xs text-slate-900 dark:text-slate-100"
+                      style={{ fontFamily: f.family }}
+                    >
+                      {f.name}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">{f.desc}</div>
+                  </div>
+                  {isSelected && (
+                    <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                      <Check className="w-3.5 h-3.5" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Live Preview Box */}
+        <div className="space-y-2 pt-1">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <Eye className="w-3.5 h-3.5 text-indigo-500" />
+            معاينة فورية لشكل الخط والنصوص المحددة ({fontPrefs.fontSize}px):
+          </label>
+          <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/50 space-y-2">
+            <div
+              className="text-slate-900 dark:text-slate-100 leading-relaxed transition-all"
+              style={{
+                fontSize: `${fontPrefs.fontSize}px`,
+                fontFamily: fontPrefs.fontFamily,
+                fontWeight: fontPrefs.fontWeight,
+              }}
+            >
+              نظام EL.BEHERY المتكامل لإدارة العملاء والمبيعات والفروع والموظفين
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-indigo-100 dark:border-indigo-900/40 pt-2 font-mono">
+              <div className="flex items-center gap-3">
+                <span>الحجم: {fontPrefs.fontSize}px</span>
+                <span>•</span>
+                <span>السمك: {fontPrefs.fontWeight}</span>
+                <span>•</span>
+                <span>عريض: {fontPrefs.isBold ? 'نعم (Bold)' : 'عادي'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetFontPrefs}
+                className="flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                إعادة للوضع الافتراضي
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Distribution Settings */}
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+        <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <span>قواعد توزيع العملاء الجدد تلقائياً</span>
+          {savedSuccess && (
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+              <CheckCircle2 className="w-4 h-4" /> تم الحفظ بنجاح
+            </span>
+          )}
+        </h3>
+
+        <form onSubmit={handleSaveDistribution} className="space-y-4 text-xs">
+          <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={autoDistribute}
+              onChange={(e) => setAutoDistribute(e.target.checked)}
+              className="w-4 h-4 text-indigo-600 rounded"
+            />
+            <span>تفعيل التوزيع الآلي التلقائي للعملاء الجدد الواردين من الحملات</span>
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <div>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">طريقة التوزيع *</label>
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value as any)}
+                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-medium"
+              >
+                <option value="round_robin">التوزيع بالتناوب المباشر (Round Robin)</option>
+                <option value="load_balanced">التوزيع حسب الأقل استلاماً (Load Balanced)</option>
+                <option value="manual">توزيع يدوي فقط (عبر مشرف الفريق)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الحد الأقصى للعملاء لكل موظف يومياً</label>
+              <input
+                type="number"
+                value={maxLeadsPerAgentDay}
+                onChange={(e) => setMaxLeadsPerAgentDay(Number(e.target.value))}
+                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono-numbers"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="submit"
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>حفظ الإعدادات</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Courses & Services List */}
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+        <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          <span>الدبلومات والبرامج التدريبية المعتمدة ({courses.length})</span>
+        </h3>
+
+        <div className="space-y-2">
+          {courses.map((c) => (
+            <div key={c.id} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+              <div>
+                <div className="font-bold text-slate-900 dark:text-slate-100">{c.name}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{c.category} · مدة التدريب: {c.duration}</div>
+              </div>
+              <div className="font-bold text-emerald-700 dark:text-emerald-400 font-mono-numbers text-sm">
+                {c.price.toLocaleString('ar-EG')} ج.م
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Data Reset Danger Zone */}
+      <div className="bg-red-50/50 dark:bg-red-950/20 p-6 rounded-2xl border border-red-200 dark:border-red-900 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 text-red-900 dark:text-red-300 font-bold text-sm">
+          <ShieldAlert className="w-5 h-5 text-red-600 dark:text-red-400" />
+          <span>منطقة النظام الحساسة (إعادة تعيين البيانات)</span>
+        </div>
+        <p className="text-xs text-red-700 dark:text-red-300">
+          يمكنك إعادة ضبط كافة بيانات العملاء، المتابعات، الزيارات والحجوزات وإعادة تعيين البيانات التجريبية الشاملة في أي وقت.
+        </p>
+        <button
+          onClick={handleReset}
+          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>إعادة ضبط وتصفير البيانات</span>
+        </button>
+      </div>
+    </div>
+  );
+};
