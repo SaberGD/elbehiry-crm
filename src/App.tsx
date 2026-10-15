@@ -6,7 +6,7 @@ import { ViewAsBar } from './components/layout/ViewAsBar';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileBottomNav } from './components/layout/MobileBottomNav';
-import { LeadDetailsModal } from './components/common/LeadDetailsModal';
+import { LeadDetailsModal, LeadQuickAction } from './components/common/LeadDetailsModal';
 
 import { DepartmentDashboardPage } from './pages/DepartmentDashboardPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -35,14 +35,17 @@ const AppContent: React.FC = () => {
   // Selected lead modal state
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
+  const [leadModalAction, setLeadModalAction] = useState<LeadQuickAction | null>(null);
 
   const handleOpenLead = (leadId: string) => {
     setSelectedLeadId(leadId);
+    setLeadModalAction(null);
     setIsLeadModalOpen(true);
   };
 
-  const handleOpenExistingLead = (lead: Lead) => {
+  const handleOpenExistingLead = (lead: Lead, action?: LeadQuickAction) => {
     setSelectedLeadId(lead.id);
+    setLeadModalAction(action ?? null);
     setIsLeadModalOpen(true);
   };
 
@@ -152,7 +155,11 @@ const AppContent: React.FC = () => {
       <LeadDetailsModal
         lead={selectedLead}
         isOpen={isLeadModalOpen}
-        onClose={() => setIsLeadModalOpen(false)}
+        initialAction={leadModalAction}
+        onClose={() => {
+          setIsLeadModalOpen(false);
+          setLeadModalAction(null);
+        }}
       />
     </div>
   );

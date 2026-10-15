@@ -3,6 +3,7 @@ import { useCRM } from '../context/CRMContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Lead, LeadClassification, LeadSource, Department, CustomerCategory, BrokerEntity, InvoiceLineItem } from '../types/crm';
 import { DuplicateModal } from '../components/common/DuplicateModal';
+import type { LeadQuickAction } from '../components/common/LeadDetailsModal';
 import { PurchaseCategorySelector } from '../components/common/PurchaseCategorySelector';
 import {
   UserPlus,
@@ -29,7 +30,7 @@ import {
 
 interface AddLeadPageProps {
   onSuccessNavigate: (leadId?: string) => void;
-  onOpenExistingLead: (lead: Lead) => void;
+  onOpenExistingLead: (lead: Lead, action?: LeadQuickAction) => void;
 }
 
 export type RecordType = 'customer' | 'broker' | 'customer_and_broker';
@@ -1098,9 +1099,9 @@ ${telegramLink}
         isOpen={showDuplicateModal}
         onClose={() => setShowDuplicateModal(false)}
         duplicates={duplicates}
-        onOpenExisting={(l) => {
+        onOpenExisting={(l, action) => {
           setShowDuplicateModal(false);
-          onOpenExistingLead(l);
+          onOpenExistingLead(l, action);
         }}
       />
     </div>
