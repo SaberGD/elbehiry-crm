@@ -1,3 +1,4 @@
+import { canManageCatalog } from '../lib/access';
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -137,13 +138,13 @@ export const BrokersPage: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
       {/* Header Banner */}
-      <div className="bg-[#0c1017] dark:bg-[#0c0f17] text-[#e2e8f0] p-5 sm:p-6 rounded-2xl shadow-md border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-[#1d1d1c] dark:bg-[#0c0f17] text-[#f0efea] p-5 sm:p-6 rounded-2xl shadow-md border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 text-slate-300 border border-white/10">
             شراكات ومصادر الترشيح والعمولات
           </span>
           <h1 className="text-xl sm:text-2xl font-bold mt-1 text-white tracking-tight flex items-center gap-2">
-            <Users className="w-6 h-6 text-[#abcae9]" />
+            <Users className="w-6 h-6 text-[#dc424b]" />
             <span>إدارة الوسطاء والمكاتب الهندسية والتحليلات</span>
           </h1>
           <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
@@ -151,13 +152,13 @@ export const BrokersPage: React.FC = () => {
           </p>
         </div>
 
-        <button
+        {canManageCatalog(effectiveUser) && (<button
           onClick={handleOpenAddModal}
-          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#1a212e] dark:hover:bg-[#252f42] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 cursor-pointer flex items-center gap-1.5 min-h-[44px] shadow-sm"
+          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#292928] dark:hover:bg-[#343431] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 cursor-pointer flex items-center gap-1.5 min-h-[44px] shadow-sm"
         >
-          <Plus className="w-4 h-4 text-[#abcae9]" />
+          <Plus className="w-4 h-4 text-[#dc424b]" />
           <span>+ إضافة وسيط / جهة ترشيح جديدة</span>
-        </button>
+        </button>)}
       </div>
 
       {/* Analytics Summary Cards */}
@@ -165,7 +166,7 @@ export const BrokersPage: React.FC = () => {
         <div className="glass-card p-4 rounded-2xl shadow-xs">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
             <span>إجمالي الوسطاء المسجلين</span>
-            <Users className="w-4 h-4 text-[#7295b3]" />
+            <Users className="w-4 h-4 text-[#c8232b]" />
           </div>
           <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1 font-mono-numbers">
             {brokers.length} <span className="text-xs font-normal text-slate-400">جهة</span>
@@ -195,9 +196,9 @@ export const BrokersPage: React.FC = () => {
         <div className="glass-card p-4 rounded-2xl shadow-xs">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
             <span>تقدير مستحقات العمولات</span>
-            <Percent className="w-4 h-4 text-[#d9b438]" />
+            <Percent className="w-4 h-4 text-[#c8232b]" />
           </div>
-          <div className="text-xl font-bold text-[#d9b438] dark:text-[#d9b438] mt-1 font-mono-numbers">
+          <div className="text-xl font-bold text-[#c8232b] dark:text-[#c8232b] mt-1 font-mono-numbers">
             {totalCommissionEstAllBrokers.toLocaleString()} ج.م
           </div>
         </div>
@@ -281,12 +282,12 @@ export const BrokersPage: React.FC = () => {
             </div>
 
             <div className="pt-2 flex justify-end">
-              <button
+              {canManageCatalog(effectiveUser) && (<button
                 onClick={() => handleOpenEditModal(b)}
                 className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
               >
                 تعديل البيانات
-              </button>
+              </button>)}
             </div>
           </div>
         ))}

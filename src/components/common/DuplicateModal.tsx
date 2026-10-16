@@ -91,7 +91,7 @@ export const DuplicateModal: React.FC<DuplicateModalProps> = ({
                     زيارات: <span className="font-mono-numbers">{visitCount}</span>
                   </span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-                    فولو أب: <span className="font-mono-numbers">{followUpCount}</span>
+                    متابعة: <span className="font-mono-numbers">{followUpCount}</span>
                   </span>
                 </div>
               </div>
@@ -134,7 +134,7 @@ export const DuplicateModal: React.FC<DuplicateModalProps> = ({
                 className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <PhoneCall className="w-3.5 h-3.5" />
-                <span>فولو أب</span>
+                <span>متابعة</span>
               </button>
             </>
           )}

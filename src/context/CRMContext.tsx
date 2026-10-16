@@ -1,5 +1,23 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { saveDocumentToFirestore, updateDocumentInFirestore, deleteDocumentFromFirestore, subscribeToCollection } from '../lib/firebaseSync';
+import {
+  normalizeUser,
+  sanitizeMatrix,
+  type PermissionMatrix,
+} from "../lib/permissions";
+import { createWorkspace } from "../lib/workspace";
+import { today, followUpStatus } from "../lib/presentation";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+} from "react";
+import {
+  saveDocumentToFirestore,
+  updateDocumentInFirestore,
+  deleteDocumentFromFirestore,
+  subscribeToCollection,
+} from "../lib/firebaseSync";
 import {
   User,
   Branch,
@@ -23,7 +41,7 @@ import {
   BrokerEntity,
   PurchaseInvoice,
   NotificationItem,
-} from '../types/crm';
+} from "../types/crm";
 import {
   initialUsers,
   initialBranches,
@@ -44,15 +62,17 @@ import {
   initialBrokers,
   initialPurchaseInvoices,
   initialNotifications,
-} from '../data/initialData';
+} from "../data/initialData";
 
-interface CRMContextType {
+export interface CRMContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
   viewAsUser: User | null;
   setViewAsUser: (user: User | null) => void;
   effectiveUser: User;
-  
+  permissionMatrix: PermissionMatrix;
+  updatePermissionMatrix: (matrix: PermissionMatrix) => void;
+
   users: User[];
   companies: Company[];
   governorates: Governorate[];
@@ -75,66 +95,94 @@ interface CRMContextType {
   notifications: NotificationItem[];
 
   // Purchase Categories & Invoices
-  addPurchaseCategory: (cat: Omit<PurchaseCategory, 'id'>) => PurchaseCategory;
-  updatePurchaseCategory: (id: string, updates: Partial<PurchaseCategory>) => void;
-  addBroker: (broker: Omit<BrokerEntity, 'id' | 'totalReferrals' | 'totalVolume'>) => BrokerEntity;
+  addPurchaseCategory: (cat: Omit<PurchaseCategory, "id">) => PurchaseCategory;
+  updatePurchaseCategory: (
+    id: string,
+    updates: Partial<PurchaseCategory>,
+  ) => void;
+  addBroker: (
+    broker: Omit<BrokerEntity, "id" | "totalReferrals" | "totalVolume">,
+  ) => BrokerEntity;
   updateBroker: (id: string, updates: Partial<BrokerEntity>) => void;
-  addPurchaseInvoice: (inv: Omit<PurchaseInvoice, 'id' | 'createdAt' | 'invoiceNumber'>) => PurchaseInvoice;
-  updatePurchaseInvoiceStatus: (id: string, status: PurchaseInvoice['status']) => void;
+  addPurchaseInvoice: (
+    inv: Omit<PurchaseInvoice, "id" | "createdAt" | "invoiceNumber">,
+  ) => PurchaseInvoice;
+  updatePurchaseInvoiceStatus: (
+    id: string,
+    status: PurchaseInvoice["status"],
+  ) => void;
 
   // Notifications
-  addNotification: (notif: Omit<NotificationItem, 'id' | 'createdAt' | 'read'>) => NotificationItem;
+  addNotification: (
+    notif: Omit<NotificationItem, "id" | "createdAt" | "read">,
+  ) => NotificationItem;
   markNotificationRead: (id: string) => void;
   clearAllNotifications: () => void;
 
   // Organizational CRUD
-  addCompany: (cmp: Omit<Company, 'id'>) => Company;
-  addGovernorate: (gov: Omit<Governorate, 'id'>) => Governorate;
-  addWarehouse: (wh: Omit<Warehouse, 'id'>) => Warehouse;
-  addDepartmentEntity: (dept: Omit<DepartmentEntity, 'id'>) => DepartmentEntity;
-  updateDepartmentEntity: (id: string, updates: Partial<DepartmentEntity>) => void;
-  addJobPosition: (pos: Omit<JobPosition, 'id'>) => JobPosition;
+  addCompany: (cmp: Omit<Company, "id">) => Company;
+  addGovernorate: (gov: Omit<Governorate, "id">) => Governorate;
+  addWarehouse: (wh: Omit<Warehouse, "id">) => Warehouse;
+  addDepartmentEntity: (dept: Omit<DepartmentEntity, "id">) => DepartmentEntity;
+  updateDepartmentEntity: (
+    id: string,
+    updates: Partial<DepartmentEntity>,
+  ) => void;
+  addJobPosition: (pos: Omit<JobPosition, "id">) => JobPosition;
   updateJobPosition: (id: string, updates: Partial<JobPosition>) => void;
 
   // Duplicate Check
   findDuplicateLeadsByPhone: (phone: string, excludeId?: string) => Lead[];
 
   // Lead CRUD & Operations
-  addLead: (lead: Omit<Lead, 'id' | 'createdAt'>) => Lead;
+  addLead: (lead: Omit<Lead, "id" | "createdAt">) => Lead;
   updateLead: (id: string, updates: Partial<Lead>) => void;
-  reassignLead: (leadId: string, newAgentId: string, newBranchId?: string, newTeamId?: string) => void;
+  reassignLead: (
+    leadId: string,
+    newAgentId: string,
+    newBranchId?: string,
+    newTeamId?: string,
+  ) => void;
   deleteLead: (id: string) => void;
 
   // Visit Operations
-  addVisit: (visit: Omit<Visit, 'id'>) => Visit;
+  addVisit: (visit: Omit<Visit, "id">) => Visit;
 
   // FollowUp Operations
-  addFollowUp: (followUp: Omit<FollowUp, 'id' | 'status'>) => FollowUp;
+  addFollowUp: (followUp: Omit<FollowUp, "id" | "status">) => FollowUp;
   updateFollowUpResult: (
     id: string,
-    status: 'completed' | 'cancelled',
+    status: "completed" | "cancelled",
     result: string,
-    nextFollowUpDate?: string
+    nextFollowUpDate?: string,
   ) => void;
 
   // Booking Operations
-  addBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Booking;
+  addBooking: (booking: Omit<Booking, "id" | "createdAt">) => Booking;
 
   // User & Structure CRUD
-  addUser: (user: Omit<User, 'id' | 'createdAt'>) => User;
+  addUser: (user: Omit<User, "id" | "createdAt">) => User;
   updateUser: (id: string, updates: Partial<User>) => void;
   toggleUserActive: (id: string) => void;
-  updateUserSalaryInfo: (userId: string, salaryData: Omit<FinancialRecord, 'history'> & { notes?: string }) => void;
+  updateUserSalaryInfo: (
+    userId: string,
+    salaryData: Omit<FinancialRecord, "history"> & { notes?: string },
+  ) => void;
   updateUserPermissions: (userId: string, permissions: string[]) => void;
-  addBranch: (branch: Omit<Branch, 'id'>) => Branch;
+  addBranch: (branch: Omit<Branch, "id">) => Branch;
   updateBranch: (id: string, updates: Partial<Branch>) => void;
-  addTeam: (team: Omit<Team, 'id'>) => Team;
+  addTeam: (team: Omit<Team, "id">) => Team;
   updateTeam: (id: string, updates: Partial<Team>) => void;
 
   // Timeline & Audit
-  addTimelineEvent: (event: Omit<TimelineEvent, 'id' | 'timestamp'>) => void;
-  logAudit: (action: string, entity: string, entityId: string, details: string) => void;
-  
+  addTimelineEvent: (event: Omit<TimelineEvent, "id" | "timestamp">) => void;
+  logAudit: (
+    action: string,
+    entity: string,
+    entityId: string,
+    details: string,
+  ) => void;
+
   // Settings & Reset
   updateDistributionRule: (rules: Partial<DistributionRule>) => void;
   resetAllData: () => void;
@@ -142,7 +190,7 @@ interface CRMContextType {
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
-const STORAGE_PREFIX = 'almasar_crm_v1_';
+const STORAGE_PREFIX = "almasar_crm_v1_";
 
 function loadStorage<T>(key: string, fallback: T): T {
   try {
@@ -157,81 +205,161 @@ function saveStorage<T>(key: string, value: T) {
   try {
     localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
   } catch (e) {
-    console.error('Failed to save to localStorage', e);
+    console.error("Failed to save to localStorage", e);
   }
 }
 
-export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [users, setUsers] = useState<User[]>(() => loadStorage('users', initialUsers));
-  const [companies, setCompanies] = useState<Company[]>(() => loadStorage('companies', initialCompanies));
-  const [governorates, setGovernorates] = useState<Governorate[]>(() => loadStorage('governorates', initialGovernorates));
-  const [warehouses, setWarehouses] = useState<Warehouse[]>(() => loadStorage('warehouses', initialWarehouses));
-  const [branches, setBranches] = useState<Branch[]>(() => loadStorage('branches', initialBranches));
-  const [teams, setTeams] = useState<Team[]>(() => loadStorage('teams', initialTeams));
-  const [departmentEntities, setDepartmentEntities] = useState<DepartmentEntity[]>(() => loadStorage('departments', initialDepartments));
-  const [jobPositions, setJobPositions] = useState<JobPosition[]>(() => loadStorage('job_positions', initialJobPositions));
-  const [purchaseCategories, setPurchaseCategories] = useState<PurchaseCategory[]>(() => loadStorage('purchase_categories', initialPurchaseCategories));
-  const [brokers, setBrokers] = useState<BrokerEntity[]>(() => loadStorage('brokers', initialBrokers));
-  const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(() => loadStorage('purchase_invoices', initialPurchaseInvoices));
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadStorage('notifications', initialNotifications));
-  const [courses, setCourses] = useState<Course[]>(() => loadStorage('courses', initialCourses));
-  const [leads, setLeads] = useState<Lead[]>(() => loadStorage('leads', initialLeads));
-  const [visits, setVisits] = useState<Visit[]>(() => loadStorage('visits', initialVisits));
-  const [followUps, setFollowUps] = useState<FollowUp[]>(() => loadStorage('followups', initialFollowUps));
-  const [bookings, setBookings] = useState<Booking[]>(() => loadStorage('bookings', initialBookings));
-  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>(() => loadStorage('timeline', initialTimelineEvents));
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => loadStorage('audit', initialAuditLogs));
-  const [distributionRule, setDistributionRule] = useState<DistributionRule>(() =>
-    loadStorage('dist_rule', { autoDistribute: true, method: 'round_robin', maxLeadsPerAgentDay: 20 })
+export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [users, setUsers] = useState<User[]>(() =>
+    loadStorage<User[]>("users", initialUsers).map(normalizeUser),
   );
+  const [companies, setCompanies] = useState<Company[]>(() =>
+    loadStorage("companies", initialCompanies),
+  );
+  const [governorates, setGovernorates] = useState<Governorate[]>(() =>
+    loadStorage("governorates", initialGovernorates),
+  );
+  const [warehouses, setWarehouses] = useState<Warehouse[]>(() =>
+    loadStorage("warehouses", initialWarehouses),
+  );
+  const [branches, setBranches] = useState<Branch[]>(() =>
+    loadStorage("branches", initialBranches),
+  );
+  const [teams, setTeams] = useState<Team[]>(() =>
+    loadStorage("teams", initialTeams),
+  );
+  const [departmentEntities, setDepartmentEntities] = useState<
+    DepartmentEntity[]
+  >(() => loadStorage("departments", initialDepartments));
+  const [jobPositions, setJobPositions] = useState<JobPosition[]>(() =>
+    loadStorage("job_positions", initialJobPositions),
+  );
+  const [purchaseCategories, setPurchaseCategories] = useState<
+    PurchaseCategory[]
+  >(() => loadStorage("purchase_categories", initialPurchaseCategories));
+  const [brokers, setBrokers] = useState<BrokerEntity[]>(() =>
+    loadStorage("brokers", initialBrokers),
+  );
+  const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(
+    () => loadStorage("purchase_invoices", initialPurchaseInvoices),
+  );
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
+    loadStorage("notifications", initialNotifications),
+  );
+  const [courses, setCourses] = useState<Course[]>(() =>
+    loadStorage("courses", initialCourses),
+  );
+  const [leads, setLeads] = useState<Lead[]>(() =>
+    loadStorage("leads", initialLeads),
+  );
+  const [visits, setVisits] = useState<Visit[]>(() =>
+    loadStorage("visits", initialVisits),
+  );
+  const [followUps, setFollowUps] = useState<FollowUp[]>(() =>
+    loadStorage("followups", initialFollowUps),
+  );
+  const [bookings, setBookings] = useState<Booking[]>(() =>
+    loadStorage("bookings", initialBookings),
+  );
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>(() =>
+    loadStorage("timeline", initialTimelineEvents),
+  );
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() =>
+    loadStorage("audit", initialAuditLogs),
+  );
+  const [distributionRule, setDistributionRule] = useState<DistributionRule>(
+    () =>
+      loadStorage("dist_rule", {
+        autoDistribute: true,
+        method: "round_robin",
+        maxLeadsPerAgentDay: 20,
+      }),
+  );
+
+  const [permissionMatrix, setPermissionMatrix] = useState<PermissionMatrix>(
+    () => sanitizeMatrix(loadStorage("permission_matrix", null)),
+  );
+  useEffect(
+    () => saveStorage("permission_matrix", permissionMatrix),
+    [permissionMatrix],
+  );
+  const updatePermissionMatrix = (matrix: PermissionMatrix) => {
+    setPermissionMatrix(sanitizeMatrix(matrix));
+    logAudit(
+      "تحديث مصفوفة الصلاحيات",
+      "permissions",
+      "roles",
+      "تم تحديث صلاحيات الوظائف بواسطة مدير عام المؤسسة",
+    );
+  };
 
   // Default logged in user: Admin
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const saved = loadStorage<User | null>('current_user', null);
+    const saved = loadStorage<User | null>("current_user", null);
     if (saved) {
       const match = users.find((u) => u.id === saved.id);
       if (match) return match;
     }
-    return users.find((u) => u.role === 'admin') || users[0];
+    return users.find((u) => u.role === "admin") || users[0];
   });
 
   const [viewAsUser, setViewAsUser] = useState<User | null>(null);
 
   const effectiveUser = useMemo(() => {
-    return viewAsUser || currentUser;
-  }, [viewAsUser, currentUser]);
+    const selected = viewAsUser || currentUser;
+    return users.find((u) => u.id === selected.id) || selected;
+  }, [viewAsUser, currentUser, users]);
 
   // Sync to local storage
-  useEffect(() => saveStorage('users', users), [users]);
-  useEffect(() => saveStorage('companies', companies), [companies]);
-  useEffect(() => saveStorage('governorates', governorates), [governorates]);
-  useEffect(() => saveStorage('warehouses', warehouses), [warehouses]);
-  useEffect(() => saveStorage('branches', branches), [branches]);
-  useEffect(() => saveStorage('teams', teams), [teams]);
-  useEffect(() => saveStorage('departments', departmentEntities), [departmentEntities]);
-  useEffect(() => saveStorage('job_positions', jobPositions), [jobPositions]);
-  useEffect(() => saveStorage('purchase_categories', purchaseCategories), [purchaseCategories]);
-  useEffect(() => saveStorage('brokers', brokers), [brokers]);
-  useEffect(() => saveStorage('purchase_invoices', purchaseInvoices), [purchaseInvoices]);
-  useEffect(() => saveStorage('notifications', notifications), [notifications]);
-  useEffect(() => saveStorage('courses', courses), [courses]);
-  useEffect(() => saveStorage('leads', leads), [leads]);
-  useEffect(() => saveStorage('visits', visits), [visits]);
-  useEffect(() => saveStorage('followups', followUps), [followUps]);
-  useEffect(() => saveStorage('bookings', bookings), [bookings]);
-  useEffect(() => saveStorage('timeline', timelineEvents), [timelineEvents]);
-  useEffect(() => saveStorage('audit', auditLogs), [auditLogs]);
-  useEffect(() => saveStorage('dist_rule', distributionRule), [distributionRule]);
-  useEffect(() => saveStorage('current_user', currentUser), [currentUser]);
+  useEffect(() => saveStorage("users", users), [users]);
+  useEffect(() => saveStorage("companies", companies), [companies]);
+  useEffect(() => saveStorage("governorates", governorates), [governorates]);
+  useEffect(() => saveStorage("warehouses", warehouses), [warehouses]);
+  useEffect(() => saveStorage("branches", branches), [branches]);
+  useEffect(() => saveStorage("teams", teams), [teams]);
+  useEffect(
+    () => saveStorage("departments", departmentEntities),
+    [departmentEntities],
+  );
+  useEffect(() => saveStorage("job_positions", jobPositions), [jobPositions]);
+  useEffect(
+    () => saveStorage("purchase_categories", purchaseCategories),
+    [purchaseCategories],
+  );
+  useEffect(() => saveStorage("brokers", brokers), [brokers]);
+  useEffect(
+    () => saveStorage("purchase_invoices", purchaseInvoices),
+    [purchaseInvoices],
+  );
+  useEffect(() => saveStorage("notifications", notifications), [notifications]);
+  useEffect(() => saveStorage("courses", courses), [courses]);
+  useEffect(() => saveStorage("leads", leads), [leads]);
+  useEffect(() => saveStorage("visits", visits), [visits]);
+  useEffect(() => saveStorage("followups", followUps), [followUps]);
+  useEffect(() => saveStorage("bookings", bookings), [bookings]);
+  useEffect(() => saveStorage("timeline", timelineEvents), [timelineEvents]);
+  useEffect(() => saveStorage("audit", auditLogs), [auditLogs]);
+  useEffect(
+    () => saveStorage("dist_rule", distributionRule),
+    [distributionRule],
+  );
+  useEffect(() => saveStorage("current_user", currentUser), [currentUser]);
 
   // Helper Audit
-  const logAudit = (action: string, entity: string, entityId: string, details: string) => {
+  const logAudit = (
+    action: string,
+    entity: string,
+    entityId: string,
+    details: string,
+  ) => {
     const newLog: AuditLog = {
       id: `aud-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       timestamp: new Date().toISOString(),
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userRole: currentUser.role,
+      userId: effectiveUser.id,
+      userName: effectiveUser.name,
+      userRole: effectiveUser.role,
       action,
       entity,
       entityId,
@@ -240,7 +368,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
-  const addTimelineEvent = (event: Omit<TimelineEvent, 'id' | 'timestamp'>) => {
+  const addTimelineEvent = (event: Omit<TimelineEvent, "id" | "timestamp">) => {
     const newEv: TimelineEvent = {
       ...event,
       id: `tle-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -250,27 +378,35 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Duplicate Check
-  const findDuplicateLeadsByPhone = (phone: string, excludeId?: string): Lead[] => {
+  const findDuplicateLeadsByPhone = (
+    phone: string,
+    excludeId?: string,
+  ): Lead[] => {
     if (!phone) return [];
-    const cleanPhone = phone.replace(/\D/g, '');
+    const cleanPhone = phone.replace(/\D/g, "");
     if (!cleanPhone || cleanPhone.length < 6) return [];
-    
+
     return leads.filter((l) => {
       if (excludeId && l.id === excludeId) return false;
-      const mainClean = l.phone ? l.phone.replace(/\D/g, '') : '';
-      const waClean = l.whatsappPhone ? l.whatsappPhone.replace(/\D/g, '') : '';
-      return (mainClean && mainClean.includes(cleanPhone)) || (waClean && waClean.includes(cleanPhone));
+      const mainClean = l.phone ? l.phone.replace(/\D/g, "") : "";
+      const waClean = l.whatsappPhone ? l.whatsappPhone.replace(/\D/g, "") : "";
+      return (
+        (mainClean && mainClean.includes(cleanPhone)) ||
+        (waClean && waClean.includes(cleanPhone))
+      );
     });
   };
 
   // Lead CRUD
-  const addLead = (leadData: Omit<Lead, 'id' | 'createdAt'>): Lead => {
-    const id = `ld-${Date.now().toString().slice(-5)}`;
+  const addLead = (leadData: Omit<Lead, "id" | "createdAt">): Lead => {
+    const id = `ld-${crypto.randomUUID()}`;
     const branch = branches.find((b) => b.id === leadData.branchId);
     const agent = users.find((u) => u.id === leadData.assignedAgentId);
 
     const randomCode = Math.floor(100000 + Math.random() * 900000);
-    const generatedEvalUrl = leadData.uniqueEvaluationUrl || `https://eval.beherypaints.com/rate?leadId=${id}&client=${encodeURIComponent(leadData.name)}&code=${randomCode}`;
+    const generatedEvalUrl =
+      leadData.uniqueEvaluationUrl ||
+      `https://eval.beherypaints.com/rate?leadId=${id}&client=${encodeURIComponent(leadData.name)}&code=${randomCode}`;
 
     const newLead: Lead = {
       ...leadData,
@@ -282,18 +418,23 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setLeads((prev) => [newLead, ...prev]);
-    saveDocumentToFirestore('leads', newLead);
+    saveDocumentToFirestore("leads", newLead);
 
     addTimelineEvent({
       leadId: id,
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
-      type: 'created',
-      title: 'إضافة العميل للنظام',
+      type: "created",
+      title: "إضافة العميل للنظام",
       details: `تم إضافة العميل بواسطة ${effectiveUser.name} (${effectiveUser.role})، المصدر: ${newLead.source}`,
     });
 
-    logAudit('إضافة عميل', 'عميل', id, `تم إضافة العميل ${newLead.name} - هاتف: ${newLead.phone}`);
+    logAudit(
+      "إضافة عميل",
+      "عميل",
+      id,
+      `تم إضافة العميل ${newLead.name} - هاتف: ${newLead.phone}`,
+    );
     return newLead;
   };
 
@@ -302,28 +443,35 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((l) => {
         if (l.id !== id) return l;
         const updated = { ...l, ...updates };
-        saveDocumentToFirestore('leads', updated);
+        saveDocumentToFirestore("leads", updated);
 
         if (updates.status && updates.status !== l.status) {
           addTimelineEvent({
             leadId: id,
             authorId: effectiveUser.id,
             authorName: effectiveUser.name,
-            type: 'status_change',
+            type: "status_change",
             title: `تحديث حالة العميل إلى (${updates.status})`,
             details: `تغيرت الحالة من ${l.status} إلى ${updates.status}`,
           });
         }
 
         return updated;
-      })
+      }),
     );
-    logAudit('تعديل عميل', 'عميل', id, `تم تعديل بيانات العميل رقم ${id}`);
+    logAudit("تعديل عميل", "عميل", id, `تم تعديل بيانات العميل رقم ${id}`);
   };
 
-  const reassignLead = (leadId: string, newAgentId: string, newBranchId?: string, newTeamId?: string) => {
+  const reassignLead = (
+    leadId: string,
+    newAgentId: string,
+    newBranchId?: string,
+    newTeamId?: string,
+  ) => {
     const targetAgent = users.find((u) => u.id === newAgentId);
-    const targetBranch = newBranchId ? branches.find((b) => b.id === newBranchId) : undefined;
+    const targetBranch = newBranchId
+      ? branches.find((b) => b.id === newBranchId)
+      : undefined;
 
     setLeads((prev) =>
       prev.map((l) => {
@@ -334,40 +482,72 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           assignedAgentName: targetAgent?.name || l.assignedAgentName,
           branchId: newBranchId || l.branchId,
           branchName: targetBranch?.name || l.branchName,
-          teamId: newTeamId || l.teamId || targetAgent?.teamId,
+          teamId: newTeamId || targetAgent?.teamId,
         };
-        saveDocumentToFirestore('leads', updated);
+        saveDocumentToFirestore("leads", updated);
         return updated;
-      })
+      }),
+    );
+
+    // Outstanding work follows the new owner; completed history keeps its original author.
+    setFollowUps((prev) =>
+      prev.map((task) => {
+        if (
+          task.leadId !== leadId ||
+          ["completed", "cancelled"].includes(task.status)
+        )
+          return task;
+        const updated = {
+          ...task,
+          assignedAgentId: newAgentId,
+          assignedAgentName: targetAgent?.name,
+          branchId: newBranchId || task.branchId,
+        };
+        return updated;
+      }),
     );
 
     addTimelineEvent({
       leadId,
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
-      type: 'agent_reassigned',
-      title: 'إعادة تعيين مسؤول المبيعات',
+      type: "agent_reassigned",
+      title: "إعادة تعيين مسؤول المبيعات",
       details: `تم نقل العميل إلى المسؤول: ${targetAgent?.name || newAgentId}`,
     });
 
-    logAudit('إعادة توزيع عميل', 'عميل', leadId, `تم نقل العميل إلى الموظف ${targetAgent?.name}`);
+    logAudit(
+      "إعادة توزيع عميل",
+      "عميل",
+      leadId,
+      `تم نقل العميل إلى الموظف ${targetAgent?.name}`,
+    );
   };
 
   const deleteLead = (id: string) => {
     setLeads((prev) => prev.filter((l) => l.id !== id));
-    deleteDocumentFromFirestore('leads', id);
-    logAudit('حذف عميل', 'عميل', id, `تم حذف العميل رقم ${id}`);
+    deleteDocumentFromFirestore("leads", id);
+    logAudit("حذف عميل", "عميل", id, `تم حذف العميل رقم ${id}`);
   };
 
   // Visit Operations
-  const addVisit = (visitData: Omit<Visit, 'id'>): Visit => {
-    const id = `vst-${Date.now().toString().slice(-4)}`;
+  const addVisit = (visitData: Omit<Visit, "id">): Visit => {
+    const id = `vst-${crypto.randomUUID()}`;
     const branch = branches.find((b) => b.id === visitData.branchId);
     const agent = users.find((u) => u.id === visitData.receivedByAgentId);
 
     // Auto check duplicate / existing lead
-    const existing = visitData.phone ? findDuplicateLeadsByPhone(visitData.phone) : [];
-    let linkedLeadId = visitData.linkedLeadId || (existing.length > 0 ? existing[0].id : undefined);
+    const existing = visitData.phone
+      ? findDuplicateLeadsByPhone(visitData.phone).filter(
+          (l) =>
+            l.branchId === visitData.branchId &&
+            (effectiveUser.role !== "sales_agent" ||
+              l.assignedAgentId === effectiveUser.id),
+        )
+      : [];
+    let linkedLeadId =
+      visitData.linkedLeadId ||
+      (existing.length > 0 ? existing[0].id : undefined);
 
     // If no lead exists and phone exists, create lead automatically
     if (!linkedLeadId && visitData.phone && visitData.visitorName) {
@@ -375,18 +555,18 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         name: visitData.visitorName,
         phone: visitData.phone,
         whatsappPhone: visitData.whatsappPhone || visitData.phone,
-        source: visitData.source || 'walk_in',
+        source: visitData.source || "walk_in",
         branchId: visitData.branchId,
         branchName: branch?.name,
         assignedAgentId: visitData.receivedByAgentId,
         assignedAgentName: agent?.name,
-        status: visitData.requiresFollowUp ? 'needs_followup' : 'interested',
-        classification: 'B',
-        department: visitData.department || 'decor',
+        status: visitData.requiresFollowUp ? "needs_followup" : "interested",
+        classification: "B",
+        department: visitData.department || "decor",
         courseOfInterest: visitData.courseOfInterest,
-        locationRating: visitData.locationRating || 5,
-        treatmentRating: visitData.treatmentRating || 5,
-        priceRating: visitData.priceRating || 4,
+        locationRating: visitData.locationRating,
+        treatmentRating: visitData.treatmentRating,
+        priceRating: visitData.priceRating,
         notes: `مسجل تلقائياً من زيارة مقر الفرع: ${visitData.notes}`,
       });
       linkedLeadId = createdLead.id;
@@ -397,12 +577,12 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id,
       branchName: branch?.name || visitData.branchName,
       receivedByAgentName: agent?.name || visitData.receivedByAgentName,
-      hasPreviousRecord: Boolean(linkedLeadId),
+      hasPreviousRecord: !!visitData.linkedLeadId || existing.length > 0,
       linkedLeadId,
     };
 
     setVisits((prev) => [newVisit, ...prev]);
-    saveDocumentToFirestore('visits', newVisit);
+    saveDocumentToFirestore("visits", newVisit);
 
     // If linked to lead, add timeline event & optional follow up
     if (linkedLeadId) {
@@ -410,8 +590,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         leadId: linkedLeadId,
         authorId: effectiveUser.id,
         authorName: effectiveUser.name,
-        type: 'visit',
-        title: `تسجيل زيارة فرع (${branch?.name || 'مقر الفرع'})`,
+        type: "visit",
+        title: `تسجيل زيارة فرع (${branch?.name || "مقر الفرع"})`,
         details: `استقبله الموظف: ${agent?.name}. النتيجة: ${visitData.outcome}. الملاحظات: ${visitData.notes}`,
       });
 
@@ -420,29 +600,42 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           leadId: linkedLeadId,
           leadName: visitData.visitorName,
           leadPhone: visitData.phone,
-          assignedAgentId: visitData.followUpAgentId || visitData.receivedByAgentId,
+          assignedAgentId:
+            visitData.followUpAgentId || visitData.receivedByAgentId,
           assignedAgentName: agent?.name,
           branchId: visitData.branchId,
           scheduledAt: visitData.followUpDate,
           reason: `متابعة نتيجة زيارة المقر بتاريخ ${visitData.date}`,
-          type: 'call',
+          type: "call",
           notes: visitData.notes,
         });
       }
     }
 
-    logAudit('تسجيل زيارة', 'زيارة', id, `تسجيل زيارة للزائر ${visitData.visitorName}`);
+    logAudit(
+      "تسجيل زيارة",
+      "زيارة",
+      id,
+      `تسجيل زيارة للزائر ${visitData.visitorName}`,
+    );
     return newVisit;
   };
 
   // FollowUp Operations
-  const addFollowUp = (followUpData: Omit<FollowUp, 'id' | 'status'>): FollowUp => {
-    const id = `flw-${Date.now().toString().slice(-4)}`;
+  const addFollowUp = (
+    followUpData: Omit<FollowUp, "id" | "status">,
+  ): FollowUp => {
+    const id = `flw-${crypto.randomUUID()}`;
     const agent = users.find((u) => u.id === followUpData.assignedAgentId);
 
-    const nowStr = new Date().toISOString().slice(0, 10);
+    const nowStr = today();
     const schedDate = followUpData.scheduledAt.slice(0, 10);
-    const initialStatus = schedDate < nowStr ? 'overdue' : schedDate === nowStr ? 'due' : 'upcoming';
+    const initialStatus =
+      schedDate < nowStr
+        ? "overdue"
+        : schedDate === nowStr
+          ? "due"
+          : "upcoming";
 
     const newFollowUp: FollowUp = {
       ...followUpData,
@@ -455,88 +648,112 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Update Lead's nextFollowUpDate & status
     updateLead(followUpData.leadId, {
-      nextFollowUpDate: followUpData.scheduledAt,
-      status: 'needs_followup',
+      nextFollowUpDate: [
+        ...followUps
+          .filter(
+            (f) =>
+              f.leadId === followUpData.leadId &&
+              !["completed", "cancelled"].includes(followUpStatus(f)),
+          )
+          .map((f) => f.scheduledAt),
+        followUpData.scheduledAt,
+      ].sort()[0],
+      status:
+        leads.find((l) => l.id === followUpData.leadId)?.status === "booked"
+          ? "booked"
+          : "needs_followup",
     });
 
     addTimelineEvent({
       leadId: followUpData.leadId,
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
-      type: 'followup_created',
+      type: "followup_created",
       title: `جدولة متابعة جديدة (${followUpData.type})`,
       details: `موعد المتابعة: ${followUpData.scheduledAt}. السبب: ${followUpData.reason}`,
     });
 
-    logAudit('إضافة متابعة', 'متابعة', id, `جدولة متابعة للعميل ${followUpData.leadName}`);
+    logAudit(
+      "إضافة متابعة",
+      "متابعة",
+      id,
+      `جدولة متابعة للعميل ${followUpData.leadName}`,
+    );
     return newFollowUp;
   };
 
   const updateFollowUpResult = (
     id: string,
-    status: 'completed' | 'cancelled',
+    status: "completed" | "cancelled",
     result: string,
-    nextFollowUpDate?: string
+    nextFollowUpDate?: string,
   ) => {
-    let leadId = '';
-    let agentId = '';
-
+    const original = followUps.find((f) => f.id === id);
+    if (!original) return;
     setFollowUps((prev) =>
-      prev.map((f) => {
-        if (f.id !== id) return f;
-        leadId = f.leadId;
-        agentId = f.assignedAgentId;
-        return {
-          ...f,
-          status: status,
-          outcomeResult: result,
-          completedAt: new Date().toISOString(),
-          nextFollowUpDate,
-        };
-      })
+      prev.map((f) =>
+        f.id === id
+          ? {
+              ...f,
+              status,
+              outcomeResult: result,
+              completedAt: new Date().toISOString(),
+              nextFollowUpDate,
+            }
+          : f,
+      ),
     );
-
-    if (leadId) {
-      addTimelineEvent({
-        leadId,
-        authorId: effectiveUser.id,
-        authorName: effectiveUser.name,
-        type: 'followup_result',
-        title: `تسجيل نتيجة المتابعة (${status === 'completed' ? 'تمت بنجاح' : 'إلغاء'})`,
-        details: `النتيجة: ${result}${nextFollowUpDate ? ` | المتابعة القادمة: ${nextFollowUpDate}` : ''}`,
+    const lead = leads.find((l) => l.id === original.leadId);
+    addTimelineEvent({
+      leadId: original.leadId,
+      authorId: effectiveUser.id,
+      authorName: effectiveUser.name,
+      type: "followup_result",
+      title: status === "completed" ? "تسجيل نتيجة المتابعة" : "إلغاء متابعة",
+      details: result,
+    });
+    if (lead && status === "completed") {
+      const remainingDates = followUps
+        .filter(
+          (f) =>
+            f.leadId === lead.id &&
+            f.id !== id &&
+            !["completed", "cancelled"].includes(followUpStatus(f)),
+        )
+        .map((f) => f.scheduledAt);
+      if (nextFollowUpDate) remainingDates.push(nextFollowUpDate);
+      remainingDates.sort();
+      updateLead(lead.id, {
+        lastContactDate: today(),
+        nextFollowUpDate: remainingDates[0],
+        status:
+          lead.status === "booked"
+            ? "booked"
+            : remainingDates.length
+              ? "needs_followup"
+              : "contacted",
       });
-
-      updateLead(leadId, {
-        lastContactDate: new Date().toISOString().slice(0, 10),
-        nextFollowUpDate: nextFollowUpDate || undefined,
-        status: nextFollowUpDate ? 'needs_followup' : 'contacted',
-      });
-
-      // If next follow-up date requested, create new follow up
-      if (nextFollowUpDate) {
-        const leadObj = leads.find((l) => l.id === leadId);
-        if (leadObj) {
-          addFollowUp({
-            leadId,
-            leadName: leadObj.name,
-            leadPhone: leadObj.phone,
-            assignedAgentId: agentId || leadObj.assignedAgentId || effectiveUser.id,
-            branchId: leadObj.branchId,
-            scheduledAt: nextFollowUpDate,
-            reason: `متابعة إضافية بناءً على المتابعة السابقة: ${result}`,
-            type: 'call',
-            notes: `نتيجة السابقة: ${result}`,
-          });
-        }
-      }
+      if (nextFollowUpDate)
+        addFollowUp({
+          leadId: lead.id,
+          leadName: lead.name,
+          leadPhone: lead.phone,
+          assignedAgentId: original.assignedAgentId,
+          branchId: original.branchId,
+          scheduledAt: nextFollowUpDate,
+          reason: `متابعة إضافية: ${result}`,
+          type: original.type,
+          notes: result,
+        });
     }
-
-    logAudit('تحديث متابعة', 'متابعة', id, `تحديث نتيجة المتابعة برقم ${id}`);
+    logAudit("تحديث متابعة", "متابعة", id, `تحديث نتيجة المتابعة برقم ${id}`);
   };
 
   // Booking Operations
-  const addBooking = (bookingData: Omit<Booking, 'id' | 'createdAt'>): Booking => {
-    const id = `bkg-${Date.now().toString().slice(-4)}`;
+  const addBooking = (
+    bookingData: Omit<Booking, "id" | "createdAt">,
+  ): Booking => {
+    const id = `bkg-${crypto.randomUUID()}`;
     const branch = branches.find((b) => b.id === bookingData.branchId);
     const agent = users.find((u) => u.id === bookingData.agentId);
 
@@ -552,32 +769,42 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Automatically update Lead status to 'booked'!
     updateLead(bookingData.leadId, {
-      status: 'booked',
+      status: "booked",
     });
 
     addTimelineEvent({
       leadId: bookingData.leadId,
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
-      type: 'booking_created',
+      type: "booking_created",
       title: `تأكيد حجز جديد: ${bookingData.courseName}`,
       details: `المبلغ: ${bookingData.amount} ج.م - حالة الدفع: ${bookingData.paymentStatus} - الملاحظات: ${bookingData.notes}`,
     });
 
-    logAudit('إضافة حجز', 'حجز', id, `إتمام حجز كورس ${bookingData.courseName} للعميل ${bookingData.leadName}`);
+    logAudit(
+      "إضافة حجز",
+      "حجز",
+      id,
+      `إتمام حجز كورس ${bookingData.courseName} للعميل ${bookingData.leadName}`,
+    );
     return newBooking;
   };
 
   // User & Organization CRUD
-  const addUser = (userData: Omit<User, 'id' | 'createdAt'>): User => {
-    const id = `usr-${Date.now().toString().slice(-4)}`;
+  const addUser = (userData: Omit<User, "id" | "createdAt">): User => {
+    const id = `usr-${crypto.randomUUID()}`;
     const newUser: User = {
       ...userData,
       id,
       createdAt: new Date().toISOString(),
     };
     setUsers((prev) => [...prev, newUser]);
-    logAudit('إضافة موظف', 'مستخدم', id, `إنشاء حساب للموظف ${newUser.name} بدور ${newUser.role}`);
+    logAudit(
+      "إضافة موظف",
+      "مستخدم",
+      id,
+      `إنشاء حساب للموظف ${newUser.name} بدور ${newUser.role}`,
+    );
     return newUser;
   };
 
@@ -586,9 +813,9 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((u) => {
         if (u.id !== id) return u;
         return { ...u, ...updates };
-      })
+      }),
     );
-    logAudit('تعديل موظف', 'مستخدم', id, `تعديل بيانات الحساب رقم ${id}`);
+    logAudit("تعديل موظف", "مستخدم", id, `تعديل بيانات الحساب رقم ${id}`);
   };
 
   const toggleUserActive = (id: string) => {
@@ -596,45 +823,59 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((u) => {
         if (u.id !== id) return u;
         const active = !u.active;
-        logAudit('تغيير حالة حساب', 'مستخدم', id, `تغيير تفعيل الحساب إلى ${active ? 'مفعل' : 'معطل'}`);
+        logAudit(
+          "تغيير حالة حساب",
+          "مستخدم",
+          id,
+          `تغيير تفعيل الحساب إلى ${active ? "مفعل" : "معطل"}`,
+        );
         return { ...u, active };
-      })
+      }),
     );
   };
 
-  const addBranch = (branchData: Omit<Branch, 'id'>): Branch => {
-    const id = `br-${Date.now().toString().slice(-4)}`;
+  const addBranch = (branchData: Omit<Branch, "id">): Branch => {
+    const id = `br-${crypto.randomUUID()}`;
     const newBranch: Branch = { ...branchData, id };
     setBranches((prev) => [...prev, newBranch]);
-    logAudit('إضافة فرع', 'فرع', id, `إنشاء الفرع ${newBranch.name}`);
+    logAudit("إضافة فرع", "فرع", id, `إنشاء الفرع ${newBranch.name}`);
     return newBranch;
   };
 
   const updateBranch = (id: string, updates: Partial<Branch>) => {
-    setBranches((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
-    logAudit('تعديل فرع', 'فرع', id, `تعديل بيانات الفرع ${id}`);
+    setBranches((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, ...updates } : b)),
+    );
+    logAudit("تعديل فرع", "فرع", id, `تعديل بيانات الفرع ${id}`);
   };
 
-  const addTeam = (teamData: Omit<Team, 'id'>): Team => {
-    const id = `tm-${Date.now().toString().slice(-4)}`;
+  const addTeam = (teamData: Omit<Team, "id">): Team => {
+    const id = `tm-${crypto.randomUUID()}`;
     const newTeam: Team = { ...teamData, id };
     setTeams((prev) => [...prev, newTeam]);
-    logAudit('إضافة فريق', 'فريق', id, `إنشاء فريق جديد ${newTeam.name}`);
+    logAudit("إضافة فريق", "فريق", id, `إنشاء فريق جديد ${newTeam.name}`);
     return newTeam;
   };
 
   const updateTeam = (id: string, updates: Partial<Team>) => {
-    setTeams((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
-    logAudit('تعديل فريق', 'فريق', id, `تعديل فريق ${id}`);
+    setTeams((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+    );
+    logAudit("تعديل فريق", "فريق", id, `تعديل فريق ${id}`);
   };
 
   const updateDistributionRule = (rules: Partial<DistributionRule>) => {
     setDistributionRule((prev) => ({ ...prev, ...rules }));
-    logAudit('تحديث إعدادات التوزيع', 'إعدادات', 'dist_rule', 'تعديل قواعد توزيع العملاء');
+    logAudit(
+      "تحديث إعدادات التوزيع",
+      "إعدادات",
+      "dist_rule",
+      "تعديل قواعد توزيع العملاء",
+    );
   };
 
   const resetAllData = () => {
-    setUsers(initialUsers);
+    setUsers(initialUsers.map(normalizeUser));
     setBranches(initialBranches);
     setTeams(initialTeams);
     setCourses(initialCourses);
@@ -644,61 +885,90 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBookings(initialBookings);
     setTimelineEvents(initialTimelineEvents);
     setAuditLogs(initialAuditLogs);
-    setDistributionRule({ autoDistribute: true, method: 'round_robin', maxLeadsPerAgentDay: 20 });
+    setDistributionRule({
+      autoDistribute: true,
+      method: "round_robin",
+      maxLeadsPerAgentDay: 20,
+    });
     setCurrentUser(initialUsers[0]);
     setViewAsUser(null);
     localStorage.clear();
   };
 
   // Organizational Methods
-  const addCompany = (cmpData: Omit<Company, 'id'>): Company => {
+  const addCompany = (cmpData: Omit<Company, "id">): Company => {
     const newCmp: Company = {
       ...cmpData,
       id: `cmp-${Date.now().toString().slice(-5)}`,
     };
     setCompanies((prev) => [...prev, newCmp]);
-    logAudit('إضافة شركة', 'شركة', newCmp.id, `تم إضافة شركة جديدة: ${newCmp.name}`);
+    logAudit(
+      "إضافة شركة",
+      "شركة",
+      newCmp.id,
+      `تم إضافة شركة جديدة: ${newCmp.name}`,
+    );
     return newCmp;
   };
 
-  const addGovernorate = (govData: Omit<Governorate, 'id'>): Governorate => {
+  const addGovernorate = (govData: Omit<Governorate, "id">): Governorate => {
     const newGov: Governorate = {
       ...govData,
       id: `gov-${Date.now().toString().slice(-5)}`,
     };
     setGovernorates((prev) => [...prev, newGov]);
-    logAudit('إضافة محافظة', 'محافظة', newGov.id, `تم إضافة محافظة/إقليم جديد: ${newGov.name}`);
+    logAudit(
+      "إضافة محافظة",
+      "محافظة",
+      newGov.id,
+      `تم إضافة محافظة/إقليم جديد: ${newGov.name}`,
+    );
     return newGov;
   };
 
-  const addWarehouse = (whData: Omit<Warehouse, 'id'>): Warehouse => {
+  const addWarehouse = (whData: Omit<Warehouse, "id">): Warehouse => {
     const newWh: Warehouse = {
       ...whData,
       id: `wh-${Date.now().toString().slice(-5)}`,
     };
     setWarehouses((prev) => [...prev, newWh]);
-    logAudit('إضافة مخزن/مستودع', 'مخزن', newWh.id, `تم إضافة مخزن/مستودع جديد: ${newWh.name}`);
+    logAudit(
+      "إضافة مخزن/مستودع",
+      "مخزن",
+      newWh.id,
+      `تم إضافة مخزن/مستودع جديد: ${newWh.name}`,
+    );
     return newWh;
   };
 
-  const addDepartmentEntity = (deptData: Omit<DepartmentEntity, 'id'>): DepartmentEntity => {
+  const addDepartmentEntity = (
+    deptData: Omit<DepartmentEntity, "id">,
+  ): DepartmentEntity => {
     const newDept: DepartmentEntity = {
       ...deptData,
       id: `dept-${Date.now().toString().slice(-5)}`,
     };
     setDepartmentEntities((prev) => [...prev, newDept]);
-    logAudit('إضافة قسم جديد', 'قسم', newDept.id, `تم إضافة قسم جديد: ${newDept.name}`);
+    logAudit(
+      "إضافة قسم جديد",
+      "قسم",
+      newDept.id,
+      `تم إضافة قسم جديد: ${newDept.name}`,
+    );
     return newDept;
   };
 
-  const updateDepartmentEntity = (id: string, updates: Partial<DepartmentEntity>) => {
+  const updateDepartmentEntity = (
+    id: string,
+    updates: Partial<DepartmentEntity>,
+  ) => {
     setDepartmentEntities((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, ...updates } : d))
+      prev.map((d) => (d.id === id ? { ...d, ...updates } : d)),
     );
-    logAudit('تحديث بيانات قسم', 'قسم', id, `تحديث بيانات قسم ${id}`);
+    logAudit("تحديث بيانات قسم", "قسم", id, `تحديث بيانات قسم ${id}`);
   };
 
-  const addJobPosition = (posData: Omit<JobPosition, 'id'>): JobPosition => {
+  const addJobPosition = (posData: Omit<JobPosition, "id">): JobPosition => {
     const dept = departmentEntities.find((d) => d.id === posData.departmentId);
     const newPos: JobPosition = {
       ...posData,
@@ -706,18 +976,26 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       departmentName: dept ? dept.name : posData.departmentName,
     };
     setJobPositions((prev) => [...prev, newPos]);
-    logAudit('إضافة مسمى وظيفي', 'وظيفة', newPos.id, `تم إضافة مسمى وظيفي جديد: ${newPos.title}`);
+    logAudit(
+      "إضافة مسمى وظيفي",
+      "وظيفة",
+      newPos.id,
+      `تم إضافة مسمى وظيفي جديد: ${newPos.title}`,
+    );
     return newPos;
   };
 
   const updateJobPosition = (id: string, updates: Partial<JobPosition>) => {
     setJobPositions((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
+      prev.map((p) => (p.id === id ? { ...p, ...updates } : p)),
     );
-    logAudit('تحديث المسمى الوظيفي', 'وظيفة', id, `تحديث المسمى الوظيفي ${id}`);
+    logAudit("تحديث المسمى الوظيفي", "وظيفة", id, `تحديث المسمى الوظيفي ${id}`);
   };
 
-  const updateUserSalaryInfo = (userId: string, salaryData: Omit<FinancialRecord, 'history'> & { notes?: string }) => {
+  const updateUserSalaryInfo = (
+    userId: string,
+    salaryData: Omit<FinancialRecord, "history"> & { notes?: string },
+  ) => {
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== userId) return u;
@@ -742,9 +1020,14 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           effectiveDate: salaryData.effectiveDate,
           history: [historyEntry, ...(currentRecord?.history || [])],
         };
-        logAudit('تحديث بيانات الراتب/المالية', 'موظف', u.id, `تحديث البيانات المالية للموظف ${u.name}`);
+        logAudit(
+          "تحديث بيانات الراتب/المالية",
+          "موظف",
+          u.id,
+          `تحديث البيانات المالية للموظف ${u.name}`,
+        );
         return { ...u, salaryInfo: updatedSalaryInfo };
-      })
+      }),
     );
   };
 
@@ -752,32 +1035,54 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== userId) return u;
-        logAudit('تحديث صلاحيات الموظف', 'موظف', u.id, `تحديث صلاحيات الموظف ${u.name}`);
+        logAudit(
+          "تحديث صلاحيات الموظف",
+          "موظف",
+          u.id,
+          `تحديث صلاحيات الموظف ${u.name}`,
+        );
         return { ...u, permissions };
-      })
+      }),
     );
   };
 
   // Purchase Categories CRUD
-  const addPurchaseCategory = (catData: Omit<PurchaseCategory, 'id'>): PurchaseCategory => {
+  const addPurchaseCategory = (
+    catData: Omit<PurchaseCategory, "id">,
+  ): PurchaseCategory => {
     const newCat: PurchaseCategory = {
       ...catData,
       id: `cat-${Date.now().toString().slice(-5)}`,
     };
     setPurchaseCategories((prev) => [...prev, newCat]);
-    logAudit('إضافة تصنيف مشتريات', 'تصنيفات', newCat.id, `إضافة تصنيف جديد: ${newCat.name}`);
+    logAudit(
+      "إضافة تصنيف مشتريات",
+      "تصنيفات",
+      newCat.id,
+      `إضافة تصنيف جديد: ${newCat.name}`,
+    );
     return newCat;
   };
 
-  const updatePurchaseCategory = (id: string, updates: Partial<PurchaseCategory>) => {
+  const updatePurchaseCategory = (
+    id: string,
+    updates: Partial<PurchaseCategory>,
+  ) => {
     setPurchaseCategories((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
+      prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
     );
-    logAudit('تحديث تصنيف مشتريات', 'تصنيفات', id, `تحديث تصنيف المشتريات ${id}`);
+    logAudit(
+      "تحديث تصنيف مشتريات",
+      "تصنيفات",
+      id,
+      `تحديث تصنيف المشتريات ${id}`,
+    );
   };
 
   // Brokers CRUD
-  const addBroker = (brokerData: Omit<BrokerEntity, 'id' | 'totalReferrals' | 'totalVolume'>): BrokerEntity => {
+  const addBroker = (
+    brokerData: Omit<BrokerEntity, "id" | "totalReferrals" | "totalVolume">,
+  ): BrokerEntity => {
     const newBroker: BrokerEntity = {
       ...brokerData,
       id: `brk-${Date.now().toString().slice(-5)}`,
@@ -785,8 +1090,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalVolume: 0,
     };
     setBrokers((prev) => [...prev, newBroker]);
-    saveDocumentToFirestore('brokers', newBroker);
-    logAudit('إضافة وسيط / جهة ترشيح', 'وسيط', newBroker.id, `إضافة وسيط جديد: ${newBroker.name}`);
+    saveDocumentToFirestore("brokers", newBroker);
+    logAudit(
+      "إضافة وسيط / جهة ترشيح",
+      "وسيط",
+      newBroker.id,
+      `إضافة وسيط جديد: ${newBroker.name}`,
+    );
     return newBroker;
   };
 
@@ -795,15 +1105,17 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((b) => {
         if (b.id !== id) return b;
         const updated = { ...b, ...updates };
-        saveDocumentToFirestore('brokers', updated);
+        saveDocumentToFirestore("brokers", updated);
         return updated;
-      })
+      }),
     );
-    logAudit('تحديث بيانات الوسيط', 'وسيط', id, `تحديث بيانات الوسيط ${id}`);
+    logAudit("تحديث بيانات الوسيط", "وسيط", id, `تحديث بيانات الوسيط ${id}`);
   };
 
   // Purchase Invoices CRUD
-  const addPurchaseInvoice = (invData: Omit<PurchaseInvoice, 'id' | 'createdAt' | 'invoiceNumber'>): PurchaseInvoice => {
+  const addPurchaseInvoice = (
+    invData: Omit<PurchaseInvoice, "id" | "createdAt" | "invoiceNumber">,
+  ): PurchaseInvoice => {
     const newInv: PurchaseInvoice = {
       ...invData,
       id: `inv-${Date.now()}`,
@@ -822,8 +1134,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 totalReferrals: b.totalReferrals + 1,
                 totalVolume: b.totalVolume + newInv.totalAmount,
               }
-            : b
-        )
+            : b,
+        ),
       );
     }
 
@@ -832,24 +1144,39 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       leadId: newInv.leadId,
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
-      type: 'booking_created',
-      title: 'إصدار فاتورة مشتريات',
+      type: "booking_created",
+      title: "إصدار فاتورة مشتريات",
       details: `تم إصدار فاتورة رقم ${newInv.invoiceNumber} بقيمة ${newInv.totalAmount.toLocaleString()} ج.م`,
     });
 
-    logAudit('إصدار فاتورة مشتريات', 'فاتورة', newInv.id, `إصدار فاتورة برقم ${newInv.invoiceNumber}`);
+    logAudit(
+      "إصدار فاتورة مشتريات",
+      "فاتورة",
+      newInv.id,
+      `إصدار فاتورة برقم ${newInv.invoiceNumber}`,
+    );
     return newInv;
   };
 
-  const updatePurchaseInvoiceStatus = (id: string, status: PurchaseInvoice['status']) => {
+  const updatePurchaseInvoiceStatus = (
+    id: string,
+    status: PurchaseInvoice["status"],
+  ) => {
     setPurchaseInvoices((prev) =>
-      prev.map((inv) => (inv.id === id ? { ...inv, status } : inv))
+      prev.map((inv) => (inv.id === id ? { ...inv, status } : inv)),
     );
-    logAudit('تحديث حالة الفاتورة', 'فاتورة', id, `تحديث حالة الفاتورة إلى ${status}`);
+    logAudit(
+      "تحديث حالة الفاتورة",
+      "فاتورة",
+      id,
+      `تحديث حالة الفاتورة إلى ${status}`,
+    );
   };
 
   // Notifications
-  const addNotification = (notifData: Omit<NotificationItem, 'id' | 'createdAt' | 'read'>): NotificationItem => {
+  const addNotification = (
+    notifData: Omit<NotificationItem, "id" | "createdAt" | "read">,
+  ): NotificationItem => {
     const newNotif: NotificationItem = {
       ...notifData,
       id: `notif-${Date.now()}`,
@@ -862,7 +1189,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markNotificationRead = (id: string) => {
     setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
     );
   };
 
@@ -878,6 +1205,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         viewAsUser,
         setViewAsUser,
         effectiveUser,
+        permissionMatrix,
+        updatePermissionMatrix,
 
         users,
         companies,
@@ -956,7 +1285,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 export const useCRM = () => {
   const context = useContext(CRMContext);
   if (!context) {
-    throw new Error('useCRM must be used within a CRMProvider');
+    throw new Error("useCRM must be used within a CRMProvider");
   }
-  return context;
+  return useMemo(() => createWorkspace(context), [context]);
 };
