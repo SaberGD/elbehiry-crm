@@ -839,6 +839,8 @@ button:disabled {
   animation: studio-overlay-in 180ms ease-out;
 }
 .client-sheet {
+  /* Only the content area scrolls, including when a form control receives focus. */
+  overflow: clip;
   width: min(760px, calc(100vw - 36px));
   max-height: calc(100dvh - 36px);
   height: calc(100dvh - 36px);
