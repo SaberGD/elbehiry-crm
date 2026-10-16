@@ -1,11 +1,19 @@
 import { useState } from "react";
 import {
   ArrowUpLeft,
+  ArrowLeft,
   Plus,
   Users,
   PhoneCall,
   ShoppingBag,
-  TrendingUp,
+  FileText,
+  Building2,
+  SlidersHorizontal,
+  CalendarDays,
+  Check,
+  Clock3,
+  CircleAlert,
+  ChevronDown,
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
 import {
@@ -25,68 +33,149 @@ import {
   followUpStatus,
   formatMoney,
 } from "../lib/presentation";
+import { BranchDetailsModal } from "../components/common/BranchDetailsModal";
+import type { Branch } from "../types/crm";
 interface Props {
   setActiveTab: (tab: string) => void;
   onOpenLead: (id: string) => void;
 }
+const departmentColors: Record<string, string> = {
+  construction: "var(--department-construction)",
+  decor: "var(--department-decor)",
+  garden: "var(--department-garden)",
+  general: "var(--department-general)",
+};
 export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const {
     effectiveUser: u,
-    leads,
-    followUps,
-    bookings,
-    branches,
-    users,
-    purchaseInvoices,
+    leads: scopeLeads,
+    followUps: scopeTasks,
+    bookings: scopeBookings,
+    branches: scopeBranches,
+    purchaseInvoices: scopeInvoices,
   } = useCRM();
+  const [branchFilter, setBranchFilter] = useState("all");
+  const [sort, setSort] = useState("amount");
   const [showAllBranches, setShowAllBranches] = useState(false);
-  const sales = isSales(u);
-  const has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  const sales = isSales(u),
+    has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
+  const validSort =
+    (sort === "amount" && has("bookings.view")) ||
+    (sort === "late" && has("followups.view")) ||
+    (sort === "missing" && has("customers.view"));
+  const activeSort = validSort
+    ? sort
+    : has("bookings.view")
+      ? "amount"
+      : has("followups.view")
+        ? "late"
+        : has("customers.view")
+          ? "missing"
+          : "amount";
+  const inScope = (branch?: string) =>
+    branchFilter === "all" || branch === branchFilter;
+  const branches = scopeBranches.filter((b) => inScope(b.id));
+  const leads = scopeLeads.filter((l) => inScope(l.branchId));
+  const followUps = scopeTasks.filter((f) => inScope(f.branchId));
+  const active = scopeBookings.filter(
+    (b) => inScope(b.branchId) && b.bookingStatus !== "cancelled",
+  );
+  const invoices = scopeInvoices.filter((i) => inScope(i.branchId));
   const due = followUps.filter((f) => followUpStatus(f) === "due");
   const overdue = followUps.filter((f) => followUpStatus(f) === "overdue");
-  const active = bookings.filter((b) => b.bookingStatus !== "cancelled");
   const tasks = followUps
     .filter((f) => !["completed", "cancelled"].includes(followUpStatus(f)))
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-  const total = active.reduce((s, b) => s + b.amount, 0);
+  const taskLeadIds = new Set(tasks.map((f) => f.leadId));
+  const total = active.reduce((sum, b) => sum + b.amount, 0);
+  const pendingInvoices = invoices.filter((i) =>
+    ["draft", "partial"].includes(i.status),
+  );
+  const departments = Object.entries(departmentNames).map(([id, name]) => ({
+    id,
+    name,
+    amount: active
+      .filter((b) => b.department === id)
+      .reduce((s, b) => s + b.amount, 0),
+    count: active.filter((b) => b.department === id).length,
+  }));
   const branchRows = branches
     .filter((b) => b.active)
-    .map((b) => ({
-      ...b,
-      count: leads.filter((l) => l.branchId === b.id).length,
-      late: overdue.filter((f) => f.branchId === b.id).length,
-      missing: leads.filter(
-        (l) =>
-          l.branchId === b.id &&
-          !["booked", "not_interested"].includes(l.status) &&
-          !tasks.some((f) => f.leadId === l.id),
-      ).length,
-      amount: active
-        .filter((c) => c.branchId === b.id)
-        .reduce((s, c) => s + c.amount, 0),
-      invoices: purchaseInvoices.filter((i) => i.branchId === b.id),
-    }))
-    .sort((a, b) => b.amount - a.amount);
+    .map((b) => {
+      const contracts = active.filter((c) => c.branchId === b.id);
+      return {
+        ...b,
+        count: leads.filter((l) => l.branchId === b.id).length,
+        late: overdue.filter((f) => f.branchId === b.id).length,
+        missing: leads.filter(
+          (l) =>
+            l.branchId === b.id &&
+            !["booked", "not_interested"].includes(l.status) &&
+            !taskLeadIds.has(l.id),
+        ).length,
+        amount: contracts.reduce((s, c) => s + c.amount, 0),
+        contracts: contracts.length,
+        pending: pendingInvoices.filter((i) => i.branchId === b.id).length,
+      };
+    })
+    .sort((a, b) =>
+      activeSort === "late"
+        ? b.late - a.late
+        : activeSort === "missing"
+          ? b.missing - a.missing
+          : b.amount - a.amount,
+    );
+  const visibleBranches = branchRows.slice(0, showAllBranches ? undefined : 5);
+  const maxAmount = Math.max(...branchRows.map((b) => b.amount), 1);
+  const hasBranchSummary =
+    !sales && (has("branches.view") || has("staff.view"));
+  const date = new Intl.DateTimeFormat("ar-EG", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "Africa/Cairo",
+  }).format(new Date());
+  const title = sales
+    ? "يومك في الفرع"
+    : isDirector(u)
+      ? "نظرة على المؤسسة"
+      : u.role === "branch_manager"
+        ? "أداء الفرع وفريقك"
+        : "نطاق الإشراف";
   const metric = (
     page: string,
     label: string,
-    value: string | number,
+    value: number,
     note: string,
     Icon: typeof Users,
+    tone = "neutral",
   ) =>
     canAccessPage(u, page) && (
-      <button className="metric" onClick={() => setActiveTab(page)} key={page}>
+      <button
+        className={`metric studio-metric tone-${tone}`}
+        key={page}
+        onClick={() => setActiveTab(page)}
+      >
         <span className="metric-top">
-          {label}
-          <Icon />
+          <span>{label}</span>
+          <span className="metric-icon">
+            <Icon size={19} />
+          </span>
         </span>
-        <strong className="metric-value">{value}</strong>
-        <span className="metric-note">{note}</span>
+        <strong className="metric-value" dir="ltr">
+          {value.toLocaleString("en-GB")}
+        </strong>
+        <span className="metric-bottom">
+          <span className="metric-note">{note}</span>
+          <ArrowUpLeft size={16} />
+        </span>
       </button>
     );
+  const attention = has("followups.view");
   return (
-    <div>
-      <div className="page-heading">
+    <div className="design-dashboard">
+      <div className="studio-heading">
         <div>
           <span className="eyebrow">
             {positionNames[u.role]}
@@ -95,64 +184,164 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
               : ""}
           </span>
           <h1>
-            {sales
-              ? "يومك في الفرع"
-              : isDirector(u)
-                ? "نظرة على المؤسسة"
-                : u.role === "branch_manager"
-                  ? "أداء الفرع وفريقك"
-                  : "نطاق الإشراف"}
+            {title}
+            <span className="heading-stop" aria-hidden="true">
+              .
+            </span>
           </h1>
           <p>
             {sales
-              ? "عملاؤك ومواعيدك والخطوة القادمة."
-              : u.specialty === "accounts"
-                ? "راجع الفواتير وحالات السداد داخل نطاق إشرافك."
-                : "راجع النتائج والتأخير والمسؤول عن كل خطوة."}{" "}
-            · {scopeLabel(u)}
+              ? "كل عميل، وموعده، وخطوتك الجاية."
+              : "أداء الفروع وأولويات المتابعة في مساحة واحدة."}
           </p>
         </div>
-        {canCreateCustomer(u) && (
-          <button
-            className="btn-primary"
-            onClick={() => setActiveTab("add_client")}
-          >
-            <Plus size={17} />
-            عميل جديد
-          </button>
+        <div className="studio-heading-tools">
+          <span className="studio-date">
+            <CalendarDays size={15} />
+            {date}
+          </span>
+          {canCreateCustomer(u) ? (
+            <button
+              className="btn-primary"
+              onClick={() => setActiveTab("add_client")}
+            >
+              <Plus size={18} />
+              عميل جديد
+            </button>
+          ) : isDirector(u) ? (
+            <button
+              className="btn-secondary"
+              onClick={() => setActiveTab("permissions")}
+            >
+              <SlidersHorizontal size={16} />
+              الصلاحيات
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="scope-strip">
+        <span>
+          <Building2 size={16} />
+          {scopeLabel(u)}
+        </span>
+        <span className="scope-period">جميع الفترات</span>
+        {scopeBranches.length > 1 && (
+          <label className="scope-select">
+            <span className="sr-only">تصفية بيانات الرئيسية بالفرع</span>
+            <select
+              aria-label="تصفية بيانات الرئيسية بالفرع"
+              value={branchFilter}
+              onChange={(e) => {
+                setBranchFilter(e.target.value);
+                setShowAllBranches(false);
+              }}
+            >
+              <option value="all">كل الفروع المتاحة</option>
+              {scopeBranches
+                .filter((b) => b.active)
+                .map((b) => (
+                  <option value={b.id} key={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+            </select>
+            <ChevronDown size={15} />
+          </label>
         )}
       </div>
-      {has("followups.view") && (
-        <section className="overview-banner" aria-label="ملخص المتابعات">
-          <div>
-            <span className="banner-label">
-              {sales ? "أولويات اليوم" : "متابعة الالتزام"}
+      <div
+        className={`studio-overview ${!attention ? "without-attention" : ""}`}
+      >
+        <section className="performance-hero" aria-label="ملخص الأداء">
+          <div className="hero-copy">
+            <span className="hero-kicker">
+              <span />{" "}
+              {has("bookings.view")
+                ? "قيمة التعاقدات المسجلة"
+                : has("customers.view")
+                  ? "العملاء في نطاقك"
+                  : "ملخص نطاق العمل"}
             </span>
+            <div className="hero-amount">
+              <strong dir="ltr">
+                {has("bookings.view")
+                  ? formatMoney(total)
+                  : has("customers.view")
+                    ? leads.length
+                    : branches.filter((b) => b.active).length}
+              </strong>
+              <span>
+                {has("bookings.view")
+                  ? "جنيه مصري"
+                  : has("customers.view")
+                    ? "عميل مسجل"
+                    : "فرع متاح"}
+              </span>
+            </div>
+            <p>
+              {has("bookings.view")
+                ? `${active.length} تعاقد غير ملغى · قيمة الاتفاقات قبل فصل التحصيل`
+                : "المؤشرات المتاحة وفق اختصاصك وفروعك."}
+            </p>
+            {canAccessPage(u, "reports") && (
+              <button
+                className="hero-link"
+                onClick={() => setActiveTab("reports")}
+              >
+                قراءة التقارير
+                <ArrowUpLeft size={18} />
+              </button>
+            )}
+          </div>
+          <div className="hero-mark" aria-hidden="true">
+            <div />
+            <div />
+            <span>البحيري</span>
+          </div>
+          <span className="hero-footnote">
+            {branchFilter === "all" ? "داخل نطاق عملك" : branches[0]?.name}
+          </span>
+        </section>
+        {attention && (
+          <section
+            className={`attention-card ${overdue.length ? "needs-attention" : ""}`}
+            aria-label="ملخص المتابعات"
+          >
+            <div className="attention-top">
+              <span className="attention-tag">
+                <CircleAlert size={14} />
+                {overdue.length ? "يحتاج مراجعة" : "أولويات اليوم"}
+              </span>
+              <span className="attention-icon">
+                {overdue.length ? <Clock3 size={21} /> : <Check size={21} />}
+              </span>
+            </div>
             <h2>
               {sales
                 ? overdue.length
-                  ? "عندك متابعات فات ميعادها"
-                  : due.length
-                    ? "متابعاتك المستحقة اليوم"
-                    : "مفيش متابعات مستحقة اليوم"
+                  ? "نبدأ بالمتابعات المتأخرة؟"
+                  : "مواعيدك، خطوة بخطوة."
                 : overdue.length
-                  ? "متابعات متأخرة تحتاج مراجعة المسؤولين"
-                  : "راجع التزام الفروع بمواعيد المتابعة"}
+                  ? "متابعات تحتاج مراجعتك."
+                  : "تابع التزام فريقك اليوم."}
             </h2>
             <p>
               {sales
-                ? "افتح ملف العميل وسجّل نتيجة التواصل."
-                : `${overdue.length} متابعة متأخرة في نطاقك. راجع الموظف المسؤول قبل تحديد الإجراء.`}
+                ? "شوف الموعد وسجّل نتيجة التواصل من ملف العميل."
+                : "راجع الموظف المسؤول والخطوة التالية لكل متابعة."}
             </p>
-          </div>
-          <div className="banner-action">
-            <div className="banner-number">
-              <strong>{overdue.length + due.length}</strong>
-              <small>
-                {sales ? "متابعة مسندة لك" : "متابعة مستحقة في نطاقك"}
-              </small>
+            <div className="attention-numbers">
+              <div>
+                <strong>{overdue.length}</strong>
+                <span>متأخرة</span>
+              </div>
+              <div>
+                <strong>{due.length}</strong>
+                <span>مستحقة اليوم</span>
+              </div>
             </div>
             <button
+              className="attention-link"
               onClick={() =>
                 setActiveTab(
                   overdue.length ? "overdue_followups" : "due_followups",
@@ -160,278 +349,367 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
               }
             >
               {sales ? "عرض متابعاتي" : "مراجعة المتابعات"}
-              <ArrowUpLeft size={20} />
+              <ArrowLeft size={17} />
             </button>
-          </div>
-        </section>
-      )}
-      <div className="metric-grid">
+          </section>
+        )}
+      </div>
+      <div className="metric-grid studio-metrics">
         {metric(
           "clients",
-          sales ? "عملاؤك" : "عملاء نطاقك",
+          sales ? "عملاؤك" : "العملاء المسجلون",
           leads.length,
-          "وفق صلاحياتك ونطاق عملك",
+          "داخل نطاق العمل",
           Users,
+        )}
+        {metric(
+          "bookings",
+          "التعاقدات",
+          active.length,
+          "باستبعاد التعاقدات الملغاة",
+          ShoppingBag,
         )}
         {metric(
           "followups",
           sales ? "متابعات اليوم" : "متابعات متأخرة",
           sales ? due.length : overdue.length,
-          sales ? `${overdue.length} متأخرة` : "راجع المسؤول وتاريخ الاستحقاق",
+          sales ? `${overdue.length} متابعة متأخرة` : "داخل الفروع المتاحة",
           PhoneCall,
-        )}
-        {metric(
-          "bookings",
-          "قيمة التعاقدات",
-          `${formatMoney(total)} ج.م`,
-          "كل الفترات · باستبعاد الملغى · ليست تحصيلًا",
-          ShoppingBag,
+          overdue.length ? "warning" : "neutral",
         )}
         {metric(
           "invoices",
-          "فواتير في انتظار السداد",
-          purchaseInvoices.filter((i) =>
-            ["draft", "partial"].includes(i.status),
-          ).length,
+          "فواتير معلّقة",
+          pendingInvoices.length,
           "مسودات ومدفوعة جزئيًا",
-          TrendingUp,
+          FileText,
         )}
       </div>
-      {!sales && (has("branches.view") || has("staff.view")) && (
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>
-                {isDirector(u) || u.role === "regional_manager"
-                  ? "مقارنة الفروع"
-                  : "ملخص نطاق العمل"}
-              </h2>
-              <p>
-                {has("bookings.view")
-                  ? "مرتبة حسب قيمة التعاقدات المسجلة لجميع الفترات؛ الترتيب ليس تقييمًا شاملًا للفرع."
-                  : "المؤشرات المتاحة حسب اختصاصك."}
-              </p>
-            </div>
-            {isDirector(u) && (
-              <button
-                className="btn-secondary"
-                onClick={() => setActiveTab("permissions")}
+      <div
+        className={`studio-analysis-grid ${!hasBranchSummary ? "single-column" : ""}`}
+      >
+        {hasBranchSummary && (
+          <section className="panel branch-performance">
+            <div className="studio-panel-heading">
+              <div>
+                <span className="eyebrow">من الإجمالي للتفاصيل</span>
+                <h2>
+                  {isDirector(u) || u.role === "regional_manager"
+                    ? "مقارنة الفروع"
+                    : "ملخص نطاق العمل"}
+                </h2>
+                <p>راجع الأرقام، ثم افتح الفرع للتفاصيل.</p>
+              </div>
+              <select
+                className="studio-select"
+                aria-label="ترتيب الفروع"
+                value={activeSort}
+                onChange={(e) => setSort(e.target.value)}
               >
-                مصفوفة الصلاحيات
-              </button>
-            )}
-          </div>
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>الفرع والمسؤول</th>
-                  {has("bookings.view") && <th>قيمة التعاقدات</th>}
-                  {has("followups.view") && <th>متابعات متأخرة</th>}
-                  {has("customers.view") && <th>عملاء بدون خطوة قادمة</th>}
-                  {has("invoices.view") && <th>فواتير معلّقة</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {branchRows
-                  .slice(0, showAllBranches ? undefined : 6)
-                  .map((b) => (
+                {has("bookings.view") && (
+                  <option value="amount">قيمة التعاقدات</option>
+                )}
+                {has("followups.view") && (
+                  <option value="late">تأخر المتابعة</option>
+                )}
+                {has("customers.view") && (
+                  <option value="missing">بدون خطوة تالية</option>
+                )}
+                {!has("bookings.view") &&
+                  !has("followups.view") &&
+                  !has("customers.view") && (
+                    <option value="amount">الترتيب الحالي</option>
+                  )}
+              </select>
+            </div>
+            <div className="table-scroll branch-desktop">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>الفرع / المسؤول</th>
+                    {has("bookings.view") && <th>قيمة التعاقدات</th>}
+                    {has("followups.view") && <th>متأخرة</th>}
+                    {has("customers.view") && <th>بدون خطوة تالية</th>}
+                    {has("invoices.view") && <th>فواتير معلّقة</th>}
+                    <th>
+                      <span className="sr-only">تفاصيل الفرع</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleBranches.map((b) => (
                     <tr key={b.id}>
                       <td>
-                        <strong>{b.name}</strong>
+                        <button
+                          className="branch-name"
+                          onClick={() => setSelectedBranch(b)}
+                        >
+                          {b.name}
+                        </button>
                         <span className="table-secondary">
-                          {b.managerName || "لم يحدد مدير للفرع"}
+                          {b.managerName || "مدير الفرع غير محدد"}
                         </span>
                       </td>
                       {has("bookings.view") && (
-                        <td>{formatMoney(b.amount)} ج.م</td>
+                        <td className="branch-value">
+                          <strong>
+                            <bdi>{formatMoney(b.amount)}</bdi>{" "}
+                            <small>ج.م</small>
+                          </strong>
+                          <div className="branch-volume" aria-hidden="true">
+                            <span
+                              style={{
+                                width: `${(b.amount / maxAmount) * 100}%`,
+                              }}
+                            />
+                          </div>
+                          {!b.contracts && (
+                            <span className="no-records">
+                              لا توجد تعاقدات مسجلة
+                            </span>
+                          )}
+                        </td>
                       )}
                       {has("followups.view") && (
                         <td>
-                          <button
-                            className="btn-text"
-                            onClick={() => setActiveTab("overdue_followups")}
+                          <span
+                            className={`count-badge ${b.late ? "is-alert" : ""}`}
                           >
                             {b.late}
-                          </button>
+                          </span>
                         </td>
                       )}
-                      {has("customers.view") && <td>{b.missing}</td>}
-                      {has("invoices.view") && (
+                      {has("customers.view") && (
                         <td>
-                          {
-                            b.invoices.filter((i) =>
-                              ["draft", "partial"].includes(i.status),
-                            ).length
-                          }
+                          <span
+                            className={`count-badge ${b.missing ? "is-pending" : ""}`}
+                          >
+                            {b.missing}
+                          </span>
                         </td>
                       )}
+                      {has("invoices.view") && <td>{b.pending}</td>}
+                      <td>
+                        <button
+                          className="branch-open"
+                          onClick={() => setSelectedBranch(b)}
+                          aria-label={`عرض فرع ${b.name}`}
+                        >
+                          <ArrowUpLeft size={17} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
-              </tbody>
-            </table>
-          </div>
-          {branchRows.length > 6 && (
-            <div className="filter-count">
-              <span>
-                نعرض {showAllBranches ? branchRows.length : 6} من{" "}
-                {branchRows.length} فرع. غياب السجلات لا يكفي للحكم على أداء
-                الفرع.
-              </span>
-              <button onClick={() => setShowAllBranches((v) => !v)}>
-                {showAllBranches ? "عرض مختصر" : "عرض كل الفروع"}
-              </button>
+                </tbody>
+              </table>
             </div>
-          )}
-          {!branchRows.length && (
-            <p className="empty-state">
-              لم يُحدد نطاق العمل. حدده من ملف الموظف.
-            </p>
-          )}
-        </section>
-      )}
-      <div className="home-grid" style={{ marginTop: 20 }}>
-        {has("followups.view") && (
-          <section className="panel">
-            <div className="panel-header">
-              <div>
-                <h2>
-                  {sales ? "المتابعات الأقرب" : "المتابعات التي تحتاج مراجعة"}
-                </h2>
-                <p>
-                  {sales
-                    ? "المتأخر أولًا، وبعده أقرب موعد"
-                    : "الموظف المسؤول وموعد كل متابعة"}
-                </p>
-              </div>
+            <div className="branch-mobile-list">
+              {visibleBranches.map((b) => (
+                <article className="branch-mobile-card" key={b.id}>
+                  <div>
+                    <button
+                      className="branch-name"
+                      onClick={() => setSelectedBranch(b)}
+                    >
+                      {b.name}
+                    </button>
+                    <button
+                      className="branch-open"
+                      aria-label={`عرض فرع ${b.name}`}
+                      onClick={() => setSelectedBranch(b)}
+                    >
+                      <ArrowUpLeft size={17} />
+                    </button>
+                  </div>
+                  <p>{b.managerName || "مدير الفرع غير محدد"}</p>
+                  {has("bookings.view") && (
+                    <strong className="branch-mobile-amount">
+                      <bdi>{formatMoney(b.amount)}</bdi> <small>ج.م</small>
+                    </strong>
+                  )}
+                  <div className="branch-mobile-meta">
+                    {has("followups.view") && (
+                      <span>
+                        <i className={b.late ? "dot-alert" : "dot-neutral"} />
+                        {b.late} متأخرة
+                      </span>
+                    )}
+                    {has("customers.view") && (
+                      <span>{b.missing} بدون خطوة تالية</span>
+                    )}
+                    {has("invoices.view") && (
+                      <span>{b.pending} فاتورة معلّقة</span>
+                    )}
+                  </div>
+                </article>
+              ))}
             </div>
-            {tasks.slice(0, 5).map((f) => (
-              <div className="task-row" key={f.id}>
-                <div className="task-copy">
-                  <h3>{f.leadName}</h3>
-                  <p>{f.reason}</p>
-                  <p>
-                    {f.scheduledAt.replace("T", " ")} ·{" "}
-                    {f.assignedAgentName || "مسؤول غير محدد"}
-                  </p>
-                </div>
-                <span
-                  className={`status-pill ${followUpStatus(f) === "overdue" ? "is-new" : ""}`}
-                >
-                  {followUpStatus(f) === "overdue"
-                    ? "متأخرة"
-                    : followUpStatus(f) === "due"
-                      ? "اليوم"
-                      : "قادمة"}
-                </span>
-                {has("customers.view") && (
-                  <button
-                    className="table-link"
-                    onClick={() => onOpenLead(f.leadId)}
-                  >
-                    عرض الملف
-                    <ArrowUpLeft size={16} />
-                  </button>
-                )}
+            {!branchRows.length && (
+              <div className="empty-state">
+                <Building2 size={25} />
+                <h3>نطاق العمل لم يُحدد بعد</h3>
+                <p>حدد فروع الموظف من ملفه لعرض مؤشرات أدائه.</p>
               </div>
-            ))}
-            {!tasks.length && (
-              <p className="empty-state">لا توجد متابعات معلّقة في نطاقك.</p>
             )}
+            <div className="studio-panel-footer">
+              <p>
+                قيمة التعاقدات لكل الفترات. غياب السجلات لا يكفي لتقييم أداء
+                الفرع.
+              </p>
+              {branchRows.length > 5 && (
+                <button
+                  className="btn-text"
+                  onClick={() => setShowAllBranches((v) => !v)}
+                >
+                  {showAllBranches
+                    ? "عرض مختصر"
+                    : `كل الفروع (${branchRows.length})`}
+                  <ChevronDown
+                    size={15}
+                    className={showAllBranches ? "is-rotated" : ""}
+                  />
+                </button>
+              )}
+            </div>
           </section>
         )}
         {has("bookings.view") && (
-          <section className="panel">
-            <div className="panel-header">
+          <section className="panel department-composition">
+            <div className="studio-panel-heading">
               <div>
-                <h2>قيمة التعاقدات حسب القسم</h2>
-                <p>كل الفترات · بدون التعاقدات الملغاة</p>
+                <span className="eyebrow">توزيع النشاط</span>
+                <h2>كل قسم، ونصيبه</h2>
+                <p>من إجمالي قيمة التعاقدات</p>
               </div>
+              <ShoppingBag size={20} />
             </div>
-            <div className="department-list">
-              {Object.entries(departmentNames).map(([id, label]) => {
-                const amount = active
-                  .filter((b) => b.department === id)
-                  .reduce((s, b) => s + b.amount, 0);
-                return (
-                  <div className="department-row" key={id}>
-                    <div>
-                      <span>{label}</span>
-                      <strong>{formatMoney(amount)} ج.م</strong>
-                    </div>
-                    <div className="department-bar">
-                      <i
-                        style={{
-                          width: `${total ? (amount / total) * 100 : 0}%`,
-                        }}
-                      />
-                    </div>
+            <div className="composition-track" aria-hidden="true">
+              {departments.map((d) => (
+                <span
+                  key={d.id}
+                  style={{
+                    width: `${total ? (d.amount / total) * 100 : 0}%`,
+                    background: departmentColors[d.id],
+                  }}
+                />
+              ))}
+            </div>
+            <div className="studio-departments">
+              {departments.map((d) => (
+                <div className="studio-department" key={d.id}>
+                  <div
+                    className="department-dot"
+                    style={{ background: departmentColors[d.id] }}
+                  />
+                  <div>
+                    <h3>{d.name}</h3>
+                    <p>{d.count} تعاقد</p>
                   </div>
-                );
-              })}
+                  <div className="department-figure">
+                    <strong>
+                      <bdi>{formatMoney(d.amount)}</bdi>
+                    </strong>
+                    <small>
+                      {total ? `${Math.round((d.amount / total) * 100)}٪` : "—"}
+                    </small>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="department-note">
+              <span>ج.م</span>
+              <p>
+                القيم تشمل التعاقدات غير الملغاة؛ التحصيل يُراجع بشكل مستقل.
+              </p>
             </div>
           </section>
         )}
       </div>
-      {!sales && has("staff.view") && (
-        <section className="panel" style={{ marginTop: 20 }}>
-          <div className="panel-header">
+      {has("followups.view") && (
+        <section className="panel studio-followups">
+          <div className="studio-panel-heading">
             <div>
-              <h2>الالتزام بالمتابعة حسب الموظف</h2>
-              <p>الأعداد المسجلة داخل نطاقك، مع استبعاد المتابعات الملغاة.</p>
+              <span className="eyebrow">الخطوة القادمة</span>
+              <h2>
+                {sales ? "المتابعات الأقرب" : "المتابعات التي تحتاج مراجعة"}
+              </h2>
+              <p>
+                {sales
+                  ? "المتأخر أولًا، وبعده أقرب موعد."
+                  : "الموعد والمسؤول وآخر سبب مسجل للمتابعة."}
+              </p>
             </div>
-            <button className="btn-text" onClick={() => setActiveTab("users")}>
-              دليل الموظفين
+            <button
+              className="btn-text"
+              onClick={() => setActiveTab("followups")}
+            >
+              كل المتابعات
+              <ArrowLeft size={16} />
             </button>
           </div>
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>الموظف</th>
-                  <th>الفرع</th>
-                  <th>مكتملة</th>
-                  <th>متأخرة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users
-                  .filter(
-                    (s) =>
-                      s.active &&
-                      followUps.some((f) => f.assignedAgentId === s.id),
-                  )
-                  .map((s) => (
-                    <tr key={s.id}>
-                      <td>{s.name}</td>
-                      <td>{s.branchName}</td>
-                      <td>
-                        {
-                          followUps.filter(
-                            (f) =>
-                              f.assignedAgentId === s.id &&
-                              f.status === "completed",
-                          ).length
-                        }
-                      </td>
-                      <td>
-                        {
-                          overdue.filter((f) => f.assignedAgentId === s.id)
-                            .length
-                        }
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+          <div className="studio-task-list">
+            {tasks.slice(0, 4).map((f) => {
+              const status = followUpStatus(f);
+              return (
+                <article className="studio-task" key={f.id}>
+                  <span className="task-symbol">
+                    <PhoneCall size={19} />
+                  </span>
+                  <div className="studio-task-copy">
+                    <h3>{f.leadName}</h3>
+                    <p>{f.reason}</p>
+                    <span>
+                      {f.assignedAgentName || "الموظف المسؤول"} ·{" "}
+                      <bdi>{f.scheduledAt.replace("T", " ").slice(0, 16)}</bdi>
+                    </span>
+                  </div>
+                  <span
+                    className={`status-pill ${status === "overdue" ? "is-new" : status === "due" ? "is-warning" : ""}`}
+                  >
+                    <i />
+                    {status === "overdue"
+                      ? "متأخرة"
+                      : status === "due"
+                        ? "اليوم"
+                        : "قادمة"}
+                  </span>
+                  {has("customers.view") &&
+                    scopeLeads.some((l) => l.id === f.leadId) && (
+                      <button
+                        className="btn-secondary"
+                        onClick={() => onOpenLead(f.leadId)}
+                      >
+                        ملف العميل
+                        <ArrowUpLeft size={16} />
+                      </button>
+                    )}
+                </article>
+              );
+            })}
+            {!tasks.length && (
+              <div className="empty-state">
+                <Check size={27} />
+                <h3>لا توجد متابعات معلّقة</h3>
+                <p>أي مواعيد جديدة داخل نطاقك هتظهر هنا.</p>
+              </div>
+            )}
           </div>
-          {!has("followups.view") && (
-            <p className="quiet-note">
-              بيانات المتابعات غير متاحة لهذا الاختصاص.
-            </p>
-          )}
         </section>
       )}
+      <footer className="studio-page-footer">
+        <span>
+          <span className="brand-dot" />
+          البحيري للدهانات والديكور
+        </span>
+        <span>تفاصيل وجودة تليق بذوقك</span>
+      </footer>
+      <BranchDetailsModal
+        key={selectedBranch?.id}
+        branch={selectedBranch}
+        isOpen={!!selectedBranch}
+        onClose={() => setSelectedBranch(null)}
+        onOpenLead={onOpenLead}
+      />
     </div>
   );
 }

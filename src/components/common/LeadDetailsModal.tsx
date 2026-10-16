@@ -7,7 +7,7 @@ import {
   isSales,
 } from "../../lib/access";
 import { hasPermission } from "../../lib/permissions";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   X,
   Phone,
@@ -23,6 +23,9 @@ import {
   Star,
   CalendarDays,
   Clock3,
+  Building2,
+  UserRound,
+  CheckCircle2,
 } from "lucide-react";
 import type { Lead, Department, LeadStatus, Booking } from "../../types/crm";
 import { useCRM } from "../../context/CRMContext";
@@ -102,6 +105,23 @@ export function LeadDetailsModal({
                   lead.assignedAgentId === effectiveUser.id)
               : false);
   const ref = useDialog(isOpen, onClose);
+  const actionForm = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!isOpen || !action) return;
+    const form = actionForm.current;
+    const scroll = form?.closest<HTMLElement>(".client-scroll");
+    if (!form || !scroll) return;
+    scroll.scrollTo({
+      top:
+        scroll.scrollTop +
+        form.getBoundingClientRect().top -
+        scroll.getBoundingClientRect().top -
+        16,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+    });
+  }, [action, isOpen]);
   useEffect(() => {
     if (isOpen && lead) {
       setTab("timeline");
@@ -288,38 +308,44 @@ export function LeadDetailsModal({
   };
   return (
     <div
-      className="dialog-backdrop"
+      className="dialog-backdrop client-sheet-backdrop"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="client-dialog"
+        className="client-dialog client-sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="client-profile-title"
         ref={ref}
       >
         <div className="client-dialog-header">
-          <div>
-            <span className="eyebrow">ملف العميل</span>
-            <span
-              className={`status-pill ${lead.status === "booked" ? "is-success" : lead.status === "new" ? "is-new" : ""}`}
-            >
-              {statusNames[lead.status]}
+          <div className="client-identity">
+            <span className="client-avatar" aria-hidden="true">
+              {lead.name.trim().charAt(0)}
             </span>
-            <h2 id="client-profile-title">{lead.name}</h2>
-            <p>
-              <span dir="ltr">{lead.phone}</span> · {sourceNames[lead.source]} ·{" "}
-              {departmentNames[lead.department]}
-            </p>
-            <p>
-              {lead.branchName} · المسؤول:{" "}
-              {lead.assignedAgentName || "لم يُحدد"}
-            </p>
+            <div>
+              <span className="client-profile-kicker">
+                ملف العميل <span>·</span>{" "}
+                {canEditCustomer(effectiveUser, lead)
+                  ? "مساحة المتابعة"
+                  : "للمراجعة"}
+              </span>
+              <h2 id="client-profile-title">{lead.name}</h2>
+              <div className="client-identity-meta">
+                <span dir="ltr">{lead.phone}</span>
+                <span
+                  className={`status-pill ${lead.status === "booked" ? "is-success" : lead.status === "new" ? "is-new" : lead.status === "needs_followup" ? "is-warning" : ""}`}
+                >
+                  <i />
+                  {statusNames[lead.status]}
+                </span>
+              </div>
+            </div>
           </div>
           <button
-            className="icon-button"
+            className="icon-button client-close"
             onClick={onClose}
             aria-label="إغلاق ملف العميل"
           >
@@ -353,21 +379,22 @@ export function LeadDetailsModal({
               واتساب
             </a>
           )}
-          {["edit", "note", "visit", "booking", "reassign"].some((v) =>
+          {(["edit", "note", "visit", "booking", "reassign"].some((v) =>
             allowed(v as Action),
           ) ||
-            (canContactCustomer(effectiveUser, lead, followUps) && (
-              <button
-                className="btn-secondary"
-                aria-expanded={more}
-                onClick={() => setMore(!more)}
-              >
-                <MoreHorizontal size={17} />
-                المزيد
-              </button>
-            ))}
+            canContactCustomer(effectiveUser, lead, followUps)) && (
+            <button
+              className="btn-secondary client-more-toggle"
+              aria-expanded={more}
+              aria-controls="client-more-actions"
+              onClick={() => setMore(!more)}
+            >
+              <MoreHorizontal size={17} />
+              المزيد
+            </button>
+          )}
           {more && (
-            <div className="client-more">
+            <div className="client-more" id="client-more-actions">
               {[
                 { id: "edit", label: "تعديل البيانات", Icon: Pencil },
                 { id: "visit", label: "تسجيل زيارة", Icon: MapPin },
@@ -406,16 +433,21 @@ export function LeadDetailsModal({
         <div className="client-scroll">
           <div className="profile-summary">
             <div>
-              <small>المتابعة القادمة</small>
+              <small>
+                <CalendarDays size={15} /> المتابعة القادمة
+              </small>
               <span>
-                <CalendarDays size={14} />
-                {next
-                  ? next.scheduledAt.replace("T", " ").slice(0, 16)
-                  : "لم يُحدد موعد"}
+                {next ? (
+                  <bdi>{next.scheduledAt.replace("T", " ").slice(0, 16)}</bdi>
+                ) : (
+                  "لم يُحدد موعد"
+                )}
               </span>
             </div>
             <label>
-              <small>حالة العميل</small>
+              <small>
+                <UserRound size={15} /> حالة العميل
+              </small>
               {canEditCustomer(effectiveUser, lead) ? (
                 <select
                   aria-label="تحديث حالة العميل"
@@ -437,8 +469,46 @@ export function LeadDetailsModal({
               )}
             </label>
           </div>
+          <div className="client-context-strip">
+            <div>
+              <Building2 size={16} />
+              <span>
+                <small>الفرع</small>
+                {lead.branchName || "لم يحدد"}
+              </span>
+            </div>
+            <div>
+              <UserRound size={16} />
+              <span>
+                <small>الموظف المسؤول</small>
+                {lead.assignedAgentName || "لم يحدد"}
+              </span>
+            </div>
+            <div>
+              <ShoppingBag size={16} />
+              <span>
+                <small>القسم / المصدر</small>
+                {departmentNames[lead.department]} · {sourceNames[lead.source]}
+              </span>
+            </div>
+          </div>
+          {lead.notes && (
+            <div className="client-note-preview">
+              <FileText size={16} />
+              <div>
+                <h3>ملاحظات العميل</h3>
+                <p>{lead.notes}</p>
+              </div>
+            </div>
+          )}
           {action && (
-            <form className="profile-form" onSubmit={submit} noValidate>
+            <form
+              className="profile-form"
+              ref={actionForm}
+              key={action}
+              onSubmit={submit}
+              noValidate
+            >
               <div className="section-title">
                 <div>
                   <h3>{actionTitles[action]}</h3>
@@ -669,6 +739,31 @@ export function LeadDetailsModal({
             className="client-tabs"
             role="tablist"
             aria-label="تفاصيل العميل"
+            onKeyDown={(event) => {
+              if (
+                !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+              )
+                return;
+              const tabs = Array.from(
+                event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                  '[role="tab"]',
+                ),
+              );
+              const current = tabs.indexOf(event.target as HTMLButtonElement);
+              if (current < 0) return;
+              event.preventDefault();
+              const rtl = document.documentElement.dir === "rtl";
+              const step =
+                event.key === "ArrowRight" ? (rtl ? -1 : 1) : rtl ? 1 : -1;
+              const target =
+                event.key === "Home"
+                  ? tabs[0]
+                  : event.key === "End"
+                    ? tabs[tabs.length - 1]
+                    : tabs[(current + step + tabs.length) % tabs.length];
+              target.focus();
+              target.click();
+            }}
           >
             {Object.entries(labels)
               .filter(
@@ -692,6 +787,7 @@ export function LeadDetailsModal({
                   id={`client-tab-${id}`}
                   role="tab"
                   aria-selected={tab === id}
+                  tabIndex={tab === id ? 0 : -1}
                   aria-controls="client-tab-panel"
                   onClick={() => setTab(id)}
                 >
@@ -701,6 +797,7 @@ export function LeadDetailsModal({
           </div>
           <div
             className="profile-content"
+            key={tab}
             role="tabpanel"
             id="client-tab-panel"
             aria-labelledby={`client-tab-${tab}`}
@@ -710,7 +807,24 @@ export function LeadDetailsModal({
                 <ol className="timeline">
                   {events.map((e) => (
                     <li key={e.id}>
-                      <span className="timeline-dot" />
+                      <span
+                        className={`timeline-dot event-${e.type}`}
+                        aria-hidden="true"
+                      >
+                        {e.type === "booking_created" ? (
+                          <ShoppingBag size={15} />
+                        ) : e.type === "followup_result" ? (
+                          <CheckCircle2 size={15} />
+                        ) : e.type === "followup_created" ? (
+                          <CalendarDays size={15} />
+                        ) : e.type === "note" ? (
+                          <FileText size={15} />
+                        ) : e.type === "visit" ? (
+                          <MapPin size={15} />
+                        ) : (
+                          <UserRound size={15} />
+                        )}
+                      </span>
                       <div>
                         <small>
                           {new Intl.DateTimeFormat("ar-EG", {
@@ -862,7 +976,10 @@ export function LeadDetailsModal({
           </div>
         </div>
         <div className="profile-footer">
-          <span>بيانات الجهاز الحالي · المزامنة غير مؤكدة</span>
+          <span>
+            <span className="local-data-dot" /> بيانات الجهاز الحالي · المزامنة
+            غير مؤكدة
+          </span>
           <button className="btn-text" onClick={onClose}>
             رجوع للعملاء
             <ArrowRight size={14} />

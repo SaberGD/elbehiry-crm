@@ -40,7 +40,7 @@ export function useDialog(open: boolean, onClose: () => void) {
         ref.current?.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
         ) || [],
-      ).filter((el) => el.getClientRects().length > 0);
+      ).filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
       const first = controls[0],
         last = controls[controls.length - 1];
       if (!first) {
