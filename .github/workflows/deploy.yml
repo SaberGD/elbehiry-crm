@@ -1,0 +1,60 @@
+name: CI & Deploy
+
+# main -> https://elbehiry.engsaber.space      (production)
+# dev  -> https://dev-elbehiry.engsaber.space  (development / staging)
+# Pull requests only run the checks (lint, tests, build); nothing is deployed.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run test
+      - run: bun run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          include-hidden-files: true
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    env:
+      # Folder of each subdomain on Hostinger, relative to the FTP account root.
+      SERVER_DIR_MAIN: domains/engsaber.space/public_html/elbehiry/
+      SERVER_DIR_DEV: domains/engsaber.space/public_html/dev-elbehiry/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Deploy over FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./dist/
+          server-dir: ${{ github.ref_name == 'main' && env.SERVER_DIR_MAIN || env.SERVER_DIR_DEV }}
