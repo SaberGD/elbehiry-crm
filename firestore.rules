@@ -45,5 +45,48 @@ service cloud.firestore {
     match /settings/{settingId} {
       allow read, write: if true;
     }
+    match /companies/{docId} {
+      allow read, write: if true;
+    }
+
+    match /governorates/{docId} {
+      allow read, write: if true;
+    }
+
+    match /warehouses/{docId} {
+      allow read, write: if true;
+    }
+
+    match /departments/{docId} {
+      allow read, write: if true;
+    }
+
+    match /jobPositions/{docId} {
+      allow read, write: if true;
+    }
+
+    match /purchaseCategories/{docId} {
+      allow read, write: if true;
+    }
+
+    match /courses/{docId} {
+      allow read, write: if true;
+    }
+
+    match /purchaseInvoices/{docId} {
+      allow read, write: if true;
+    }
+
+    match /notifications/{docId} {
+      allow read, write: if true;
+    }
+
+    match /followUps/{docId} {
+      allow read, write: if true;
+    }
+
+    match /bookings/{docId} {
+      allow read, write: if true;
+    }
   }
 }

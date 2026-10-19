@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { saveDocumentToFirestore, updateDocumentInFirestore, deleteDocumentFromFirestore, subscribeToCollection } from '../lib/firebaseSync';
+import { useFirestoreCollection, useFirestoreDocument } from '../lib/useFirestoreSync';
 import {
   User,
   Branch,
@@ -171,19 +171,41 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [departmentEntities, setDepartmentEntities] = useState<DepartmentEntity[]>(() => loadStorage('departments', initialDepartments));
   const [jobPositions, setJobPositions] = useState<JobPosition[]>(() => loadStorage('job_positions', initialJobPositions));
   const [purchaseCategories, setPurchaseCategories] = useState<PurchaseCategory[]>(() => loadStorage('purchase_categories', initialPurchaseCategories));
-  const [brokers, setBrokers] = useState<BrokerEntity[]>(() => loadStorage('brokers', initialBrokers));
-  const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(() => loadStorage('purchase_invoices', initialPurchaseInvoices));
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadStorage('notifications', initialNotifications));
+  const [brokers, setBrokers] = useState<BrokerEntity[]>(() => loadStorage('brokers', []));
+  const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(() => loadStorage('purchase_invoices', []));
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadStorage('notifications', []));
   const [courses, setCourses] = useState<Course[]>(() => loadStorage('courses', initialCourses));
-  const [leads, setLeads] = useState<Lead[]>(() => loadStorage('leads', initialLeads));
-  const [visits, setVisits] = useState<Visit[]>(() => loadStorage('visits', initialVisits));
-  const [followUps, setFollowUps] = useState<FollowUp[]>(() => loadStorage('followups', initialFollowUps));
-  const [bookings, setBookings] = useState<Booking[]>(() => loadStorage('bookings', initialBookings));
-  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>(() => loadStorage('timeline', initialTimelineEvents));
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => loadStorage('audit', initialAuditLogs));
+  const [leads, setLeads] = useState<Lead[]>(() => loadStorage('leads', []));
+  const [visits, setVisits] = useState<Visit[]>(() => loadStorage('visits', []));
+  const [followUps, setFollowUps] = useState<FollowUp[]>(() => loadStorage('followups', []));
+  const [bookings, setBookings] = useState<Booking[]>(() => loadStorage('bookings', []));
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>(() => loadStorage('timeline', []));
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => loadStorage('audit', []));
   const [distributionRule, setDistributionRule] = useState<DistributionRule>(() =>
     loadStorage('dist_rule', { autoDistribute: true, method: 'round_robin', maxLeadsPerAgentDay: 20 })
   );
+
+  // Firestore is the single source of truth (localStorage is only a warm cache)
+  useFirestoreCollection('users', users, setUsers, { seedIfEmpty: true });
+  useFirestoreCollection('companies', companies, setCompanies, { seedIfEmpty: true });
+  useFirestoreCollection('governorates', governorates, setGovernorates, { seedIfEmpty: true });
+  useFirestoreCollection('warehouses', warehouses, setWarehouses, { seedIfEmpty: true });
+  useFirestoreCollection('branches', branches, setBranches, { seedIfEmpty: true });
+  useFirestoreCollection('teams', teams, setTeams, { seedIfEmpty: true });
+  useFirestoreCollection('departments', departmentEntities, setDepartmentEntities, { seedIfEmpty: true });
+  useFirestoreCollection('jobPositions', jobPositions, setJobPositions, { seedIfEmpty: true });
+  useFirestoreCollection('purchaseCategories', purchaseCategories, setPurchaseCategories, { seedIfEmpty: true });
+  useFirestoreCollection('courses', courses, setCourses, { seedIfEmpty: true });
+  useFirestoreCollection('brokers', brokers, setBrokers);
+  useFirestoreCollection('purchaseInvoices', purchaseInvoices, setPurchaseInvoices);
+  useFirestoreCollection('notifications', notifications, setNotifications);
+  useFirestoreCollection('leads', leads, setLeads);
+  useFirestoreCollection('visits', visits, setVisits);
+  useFirestoreCollection('followUps', followUps, setFollowUps);
+  useFirestoreCollection('bookings', bookings, setBookings);
+  useFirestoreCollection('timelineEvents', timelineEvents, setTimelineEvents);
+  useFirestoreCollection('activityLogs', auditLogs, setAuditLogs);
+  useFirestoreDocument(['settings', 'distribution'], distributionRule, setDistributionRule);
 
   // Default logged in user: Admin
   const [currentUser, setCurrentUser] = useState<User>(() => {
@@ -282,7 +304,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setLeads((prev) => [newLead, ...prev]);
-    saveDocumentToFirestore('leads', newLead);
 
     addTimelineEvent({
       leadId: id,
@@ -302,7 +323,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((l) => {
         if (l.id !== id) return l;
         const updated = { ...l, ...updates };
-        saveDocumentToFirestore('leads', updated);
 
         if (updates.status && updates.status !== l.status) {
           addTimelineEvent({
@@ -336,7 +356,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           branchName: targetBranch?.name || l.branchName,
           teamId: newTeamId || l.teamId || targetAgent?.teamId,
         };
-        saveDocumentToFirestore('leads', updated);
         return updated;
       })
     );
@@ -355,7 +374,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteLead = (id: string) => {
     setLeads((prev) => prev.filter((l) => l.id !== id));
-    deleteDocumentFromFirestore('leads', id);
     logAudit('حذف عميل', 'عميل', id, `تم حذف العميل رقم ${id}`);
   };
 
@@ -402,7 +420,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setVisits((prev) => [newVisit, ...prev]);
-    saveDocumentToFirestore('visits', newVisit);
 
     // If linked to lead, add timeline event & optional follow up
     if (linkedLeadId) {
@@ -633,19 +650,9 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('تحديث إعدادات التوزيع', 'إعدادات', 'dist_rule', 'تعديل قواعد توزيع العملاء');
   };
 
+  // Data lives in Firestore, so a reset only clears this browser's session/cache.
   const resetAllData = () => {
-    setUsers(initialUsers);
-    setBranches(initialBranches);
-    setTeams(initialTeams);
-    setCourses(initialCourses);
-    setLeads(initialLeads);
-    setVisits(initialVisits);
-    setFollowUps(initialFollowUps);
-    setBookings(initialBookings);
-    setTimelineEvents(initialTimelineEvents);
-    setAuditLogs(initialAuditLogs);
-    setDistributionRule({ autoDistribute: true, method: 'round_robin', maxLeadsPerAgentDay: 20 });
-    setCurrentUser(initialUsers[0]);
+    setCurrentUser(users.find((u) => u.role === 'admin') || users[0]);
     setViewAsUser(null);
     localStorage.clear();
   };
@@ -785,7 +792,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalVolume: 0,
     };
     setBrokers((prev) => [...prev, newBroker]);
-    saveDocumentToFirestore('brokers', newBroker);
     logAudit('إضافة وسيط / جهة ترشيح', 'وسيط', newBroker.id, `إضافة وسيط جديد: ${newBroker.name}`);
     return newBroker;
   };
@@ -795,7 +801,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((b) => {
         if (b.id !== id) return b;
         const updated = { ...b, ...updates };
-        saveDocumentToFirestore('brokers', updated);
         return updated;
       })
     );
