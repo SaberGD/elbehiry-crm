@@ -74,6 +74,7 @@ export interface User {
   createdAt: string;
   salaryInfo?: FinancialRecord;
   permissions?: string[];
+  authUid?: string; // Firebase Auth uid once a login exists
 }
 
 export interface Company {

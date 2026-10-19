@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { LanguageProvider } from './context/LanguageContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { CRMProvider, useCRM } from './context/CRMContext';
+import { LoginPage, LoadingScreen, BlockedScreen } from './pages/LoginPage';
 import { ViewAsBar } from './components/layout/ViewAsBar';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
@@ -165,13 +167,25 @@ const AppContent: React.FC = () => {
   );
 };
 
+const AuthGate: React.FC = () => {
+  const { status } = useAuth();
+  if (status === 'loading') return <LoadingScreen />;
+  if (status === 'signed_out') return <LoginPage />;
+  if (status === 'no_profile' || status === 'inactive') return <BlockedScreen kind={status} />;
+  return (
+    <CRMProvider>
+      <AppContent />
+    </CRMProvider>
+  );
+};
+
 export default function App() {
   return (
     <ThemeProvider>
       <LanguageProvider>
-        <CRMProvider>
-          <AppContent />
-        </CRMProvider>
+        <AuthProvider>
+          <AuthGate />
+        </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
   );
