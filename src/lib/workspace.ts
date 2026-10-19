@@ -286,6 +286,14 @@ export function createWorkspace(raw: CRMContextType) {
         .filter((n) => n.targetUserId === actor.id)
         .forEach((n) => raw.markNotificationRead(n.id));
     }) as CRMContextType["clearAllNotifications"],
+    loadDemoData: (() => {
+      require(raw.currentUser.role === "admin");
+      raw.loadDemoData();
+    }) as CRMContextType["loadDemoData"],
+    removeDemoData: (() => {
+      require(raw.currentUser.role === "admin");
+      raw.removeDemoData();
+    }) as CRMContextType["removeDemoData"],
     createLoginForUser: ((id, email, password, info) => {
       const target = staff.find((u) => u.id === id);
       require(

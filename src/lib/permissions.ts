@@ -196,7 +196,12 @@ export const withPermissions = (
   ...normalizeUser(user),
   permissions: matrix[permissionProfile(user)],
 });
+// TEMPORARY: while the per-role permissions are being reviewed, the director
+// (admin) has every permission. Set to false (or delete) once the matrix is final.
+export const tempOverrides = { directorAllPermissions: true };
+
 export const hasPermission = (user: User, permission: Permission): boolean =>
+  (tempOverrides.directorAllPermissions && user.role === "admin") ||
   (
     user.permissions || defaultPermissionMatrix[permissionProfile(user)]
   ).includes(permission) &&

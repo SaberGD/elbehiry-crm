@@ -218,7 +218,7 @@ export function Navbar({
                     .filter((u) => u.active)
                     .map((u) => (
                       <option value={u.id} key={u.id}>
-                        {u.name}
+                        {u.name} — {roleNames[u.role]}
                       </option>
                     ))}
                 </select>

@@ -4,6 +4,16 @@ import {
   type PermissionMatrix,
 } from "../lib/permissions";
 import { createWorkspace } from "../lib/workspace";
+import {
+  demoUsers,
+  demoLeads,
+  demoVisits,
+  demoFollowUps,
+  demoBookings,
+  demoTimeline,
+  demoInvoices,
+  demoBrokers,
+} from "../data/demoData";
 import { today, followUpStatus } from "../lib/presentation";
 import React, {
   createContext,
@@ -68,6 +78,8 @@ import {
 export interface CRMContextType {
   currentUser: User;
   logout: () => Promise<void>;
+  loadDemoData: () => void;
+  removeDemoData: () => void;
   createLoginForUser: (
     userId: string,
     email: string,
@@ -946,6 +958,39 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
+  // Demo data lets the director explore every role with realistic records.
+  // Everything added here can be removed again by id with removeDemoData().
+  const addMissing = <T extends { id: string }>(prev: T[], extra: T[]) => {
+    const have = new Set(prev.map((i) => i.id));
+    return [...prev, ...extra.filter((i) => !have.has(i.id))];
+  };
+  const dropDemo = <T extends { id: string }>(prev: T[], demo: T[]) => {
+    const ids = new Set(demo.map((i) => i.id));
+    return prev.filter((i) => !ids.has(i.id));
+  };
+  const loadDemoData = () => {
+    setUsers((p) => addMissing(p, demoUsers.map(normalizeUser)));
+    setLeads((p) => addMissing(p, demoLeads));
+    setVisits((p) => addMissing(p, demoVisits));
+    setFollowUps((p) => addMissing(p, demoFollowUps));
+    setBookings((p) => addMissing(p, demoBookings));
+    setTimelineEvents((p) => addMissing(p, demoTimeline));
+    setPurchaseInvoices((p) => addMissing(p, demoInvoices));
+    setBrokers((p) => addMissing(p, demoBrokers));
+    logAudit("تحميل بيانات تجريبية", "إعدادات", "demo", "تحميل موظفين وبيانات تجريبية لكل الأدوار");
+  };
+  const removeDemoData = () => {
+    setUsers((p) => dropDemo(p, demoUsers));
+    setLeads((p) => dropDemo(p, demoLeads));
+    setVisits((p) => dropDemo(p, demoVisits));
+    setFollowUps((p) => dropDemo(p, demoFollowUps));
+    setBookings((p) => dropDemo(p, demoBookings));
+    setTimelineEvents((p) => dropDemo(p, demoTimeline));
+    setPurchaseInvoices((p) => dropDemo(p, demoInvoices));
+    setBrokers((p) => dropDemo(p, demoBrokers));
+    logAudit("حذف البيانات التجريبية", "إعدادات", "demo", "حذف الموظفين والبيانات التجريبية");
+  };
+
   // Data lives in Firestore, so a reset only clears this browser's session/cache.
   const resetAllData = () => {
     setViewAsUser(null);
@@ -1257,6 +1302,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         currentUser,
         logout,
+        loadDemoData,
+        removeDemoData,
         createLoginForUser,
         viewAsUser,
         setViewAsUser,

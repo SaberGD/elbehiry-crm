@@ -4,6 +4,10 @@ import * as seed from "../src/data/initialData";
 import type { User, Lead } from "../src/types/crm";
 import type { CRMContextType } from "../src/context/CRMContext";
 import { createWorkspace } from "../src/lib/workspace";
+import { tempOverrides } from "../src/lib/permissions";
+
+// The tests assert the real permission matrix, not the temporary director override.
+tempOverrides.directorAllPermissions = false;
 import {
   canAccessPage,
   canCompleteFollowUp,

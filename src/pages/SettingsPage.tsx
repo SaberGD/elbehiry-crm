@@ -55,7 +55,7 @@ export const DEFAULT_FONT_PREFERENCE: FontPreference = {
 };
 
 export const SettingsPage: React.FC = () => {
-  const { courses, resetAllData, effectiveUser } = useCRM();
+  const { courses, resetAllData, effectiveUser, currentUser, loadDemoData, removeDemoData } = useCRM();
   const { language, setLanguage, t } = useLanguage();
   const { theme, setTheme } = useTheme();
 
@@ -493,6 +493,40 @@ export const SettingsPage: React.FC = () => {
       {isDirector(effectiveUser) && (
         <>
           {" "}
+          {currentUser.role === "admin" && (
+            <div className="bg-sky-50/60 dark:bg-sky-950/20 p-6 rounded-2xl border border-sky-200 dark:border-sky-900 shadow-xs space-y-3">
+              <div className="font-bold text-sm text-sky-900 dark:text-sky-300">
+                بيانات تجريبية لاستكشاف الأدوار
+              </div>
+              <p className="text-xs text-sky-800 dark:text-sky-300">
+                تحمّل موظفًا لكل دور (مدير فرع، مشرف عام، مشرفين مختصين، موظفي فروع) مع عملاء وزيارات
+                ومتابعات وحجوزات وفواتير. بعدها استخدم «معاينة مساحة عمل موظف» من قائمة الحساب لرؤية النظام
+                بعين أي دور. الحذف يزيل البيانات التجريبية فقط.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    loadDemoData();
+                    alert("تم تحميل البيانات التجريبية");
+                  }}
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  تحميل البيانات التجريبية
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm("حذف كل الموظفين والبيانات التجريبية؟ بياناتك الحقيقية لن تتأثر.")) {
+                      removeDemoData();
+                    }
+                  }}
+                  className="px-4 py-2 border border-sky-600 text-sky-700 dark:text-sky-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  حذف البيانات التجريبية
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Data Reset Danger Zone */}
           <div className="bg-red-50/50 dark:bg-red-950/20 p-6 rounded-2xl border border-red-200 dark:border-red-900 shadow-xs space-y-3">
             <div className="flex items-center gap-2 text-red-900 dark:text-red-300 font-bold text-sm">
