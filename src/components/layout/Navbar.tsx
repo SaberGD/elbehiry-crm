@@ -9,6 +9,7 @@ import {
   Search,
   ChevronDown,
   UserCheck,
+  LogOut,
   Bell,
   CheckCheck,
   Calendar,
@@ -28,7 +29,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ sidebarOpen, setSidebarOpen, activeView }) => {
   const {
     currentUser,
-    setCurrentUser,
+    logout,
     viewAsUser,
     setViewAsUser,
     effectiveUser,
@@ -223,34 +224,16 @@ export const Navbar: React.FC<NavbarProps> = ({ sidebarOpen, setSidebarOpen, act
                   <p className="text-xs text-[#8d9197] truncate">{currentUser.email}</p>
                 </div>
 
-                <div className="px-3 py-2 text-[10px] font-bold text-[#e9c349] uppercase tracking-wider font-mono">
-                  Executive Accounts
-                </div>
-
-                <div className="max-h-60 overflow-y-auto px-1 space-y-1">
-                  {users.map((u) => (
-                    <button
-                      key={u.id}
-                      onClick={() => {
-                        setCurrentUser(u);
-                        setViewAsUser(null);
-                        setShowAccountMenu(false);
-                      }}
-                      className={`w-full text-right dir-ltr:text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition-all cursor-pointer ${
-                        currentUser.id === u.id
-                          ? 'bg-[#262a33] text-[#abcae9] font-bold border-r-2 border-[#abcae9]'
-                          : 'hover:bg-[#262a33]/60 text-[#c3c7cd]'
-                      }`}
-                    >
-                      <div className="truncate">
-                        <div className="font-bold">{u.name}</div>
-                        <div className="text-[10px] text-[#8d9197] font-normal">
-                          {t(`role.${u.role}`)} {u.branchName ? `· ${u.branchName}` : ''}
-                        </div>
-                      </div>
-                      {currentUser.id === u.id && <UserCheck className="w-4 h-4 text-[#abcae9] shrink-0" />}
-                    </button>
-                  ))}
+                <div className="px-1 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowAccountMenu(false);
+                      logout();
+                    }}
+                    className="w-full text-right px-3 py-2 rounded-lg text-xs font-bold text-red-400 hover:bg-red-500/10 flex items-center gap-2 cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4" /> تسجيل الخروج
+                  </button>
                 </div>
               </div>
             )}

@@ -6,87 +6,190 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    function isSignedIn() {
+    // ---------- helpers ----------
+    function signedIn() {
       return request.auth != null;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function profilePath() {
+      return /databases/$(database)/documents/authProfiles/$(request.auth.uid);
     }
 
-    match /users/{userId} {
-      allow read, write: if true;
+    // Active staff member with a server-trusted access record (authProfiles/{uid}).
+    function isStaff() {
+      return signedIn() && exists(profilePath()) && get(profilePath()).data.active == true;
     }
 
-    match /leads/{leadId} {
-      allow read, write: if true;
+    function role() {
+      return get(profilePath()).data.role;
     }
 
-    match /branches/{branchId} {
-      allow read, write: if true;
+    function isTop() {
+      return isStaff() && role() in ['admin', 'general_manager'];
     }
 
-    match /visits/{visitId} {
-      allow read, write: if true;
+    function isRegional() {
+      return isStaff() && role() in ['admin', 'general_manager', 'regional_manager'];
     }
 
-    match /brokers/{brokerId} {
-      allow read, write: if true;
+    function isManager() {
+      return isStaff() && role() in ['admin', 'general_manager', 'regional_manager', 'branch_manager'];
     }
 
-    match /timelineEvents/{eventId} {
-      allow read, write: if true;
+    function isBranchManager() {
+      return isStaff() && role() == 'branch_manager';
     }
 
-    match /activityLogs/{logId} {
-      allow read, write: if true;
+    function myBranch() {
+      return get(profilePath()).data.branchId;
     }
 
-    match /settings/{settingId} {
-      allow read, write: if true;
+    // A branch manager may only manage low-privilege staff inside their own branch.
+    function isLowRole(r) {
+      return r in ['supervisor', 'team_leader', 'sales_agent'];
     }
+
+    function branchManagerMayWrite(data) {
+      return isBranchManager() && isLowRole(data.role) && data.branchId == myBranch();
+    }
+
+    // ---------- access control ----------
+    match /meta/{docId} {
+      // Lets the login screen know whether first-run setup is still needed.
+      allow get: if true;
+      allow create: if docId == 'bootstrap' && isTop()
+                    && !exists(/databases/$(database)/documents/meta/bootstrap);
+      allow update, delete: if false;
+    }
+
+    match /authProfiles/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isTop() || isBranchManager());
+
+      allow create: if isTop()
+        || branchManagerMayWrite(request.resource.data)
+        // First-run only: the very first account may make itself admin.
+        || (signedIn() && request.auth.uid == uid
+            && request.resource.data.role == 'admin'
+            && request.resource.data.uid == uid
+            && !exists(/databases/$(database)/documents/meta/bootstrap));
+
+      allow update: if isTop()
+        || (branchManagerMayWrite(request.resource.data) && isLowRole(resource.data.role)
+            && resource.data.branchId == myBranch());
+
+      allow delete: if isStaff() && role() == 'admin';
+    }
+
+    // ---------- people & structure ----------
+    match /users/{docId} {
+      allow read: if isStaff();
+      allow create, update: if isTop() || branchManagerMayWrite(request.resource.data);
+      allow delete: if isTop();
+    }
+
+    match /branches/{docId} {
+      allow read: if isStaff();
+      allow write: if isRegional();
+    }
+
+    match /teams/{docId} {
+      allow read: if isStaff();
+      allow write: if isManager();
+    }
+
     match /companies/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow write: if isTop();
     }
 
     match /governorates/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow write: if isTop();
     }
 
     match /warehouses/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow write: if isTop();
     }
 
     match /departments/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow write: if isTop();
     }
 
     match /jobPositions/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow write: if isTop();
     }
 
     match /purchaseCategories/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow write: if isTop();
     }
 
     match /courses/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow write: if isTop();
     }
 
-    match /purchaseInvoices/{docId} {
-      allow read, write: if true;
+    match /settings/{docId} {
+      allow read: if isStaff();
+      allow write: if isTop();
     }
 
-    match /notifications/{docId} {
-      allow read, write: if true;
+    // ---------- day-to-day sales data ----------
+    match /leads/{docId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
+    match /visits/{docId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
     }
 
     match /followUps/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
     }
 
     match /bookings/{docId} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
+    match /brokers/{docId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
+    match /purchaseInvoices/{docId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
+    match /notifications/{docId} {
+      allow read, write: if isStaff();
+    }
+
+    // Append-only history
+    match /timelineEvents/{docId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update: if false;
+      allow delete: if isTop();
+    }
+
+    match /activityLogs/{docId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
     }
   }
 }

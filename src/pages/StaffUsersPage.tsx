@@ -1,3 +1,4 @@
+import { authErrorMessage } from '../context/AuthContext';
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -30,6 +31,7 @@ export const StaffUsersPage: React.FC = () => {
     addUser,
     updateUser,
     toggleUserActive,
+    createLoginForUser,
     addDepartmentEntity,
     addJobPosition,
     updateUserSalaryInfo,
@@ -54,6 +56,7 @@ export const StaffUsersPage: React.FC = () => {
   // Form states for Add/Edit Employee
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<UserRole>('sales_agent');
   const [companyId, setCompanyId] = useState(companies[0]?.id || '');
@@ -91,6 +94,7 @@ export const StaffUsersPage: React.FC = () => {
     setEditingUser(null);
     setName('');
     setEmail('');
+    setLoginPassword('');
     setPhone('');
     setRole('sales_agent');
     setCompanyId(companies[0]?.id || '');
@@ -113,6 +117,7 @@ export const StaffUsersPage: React.FC = () => {
     setEditingUser(u);
     setName(u.name);
     setEmail(u.email);
+    setLoginPassword('');
     setPhone(u.phone);
     setRole(u.role);
     setCompanyId(u.companyId || companies[0]?.id || '');
@@ -142,7 +147,7 @@ export const StaffUsersPage: React.FC = () => {
     setShowAddModal(true);
   };
 
-  const handleEmployeeSubmit = (e: React.FormEvent) => {
+  const handleEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const companyObj = companies.find((c) => c.id === companyId);
@@ -153,7 +158,10 @@ export const StaffUsersPage: React.FC = () => {
     const posObj = jobPositions.find((p) => p.id === jobPositionId);
     const managerObj = users.find((u) => u.id === directManagerId);
 
+    let loginTargetId: string | null = null;
+
     if (editingUser) {
+      loginTargetId = editingUser.authUid ? null : editingUser.id;
       updateUser(editingUser.id, {
         name,
         email,
@@ -207,6 +215,7 @@ export const StaffUsersPage: React.FC = () => {
         directManagerName: managerObj?.name,
         active: true,
       });
+      loginTargetId = newUser.id;
 
       if (isAuthorizedForFinancials && newUser && baseSalary >= 0) {
         updateUserSalaryInfo(newUser.id, {
@@ -217,6 +226,18 @@ export const StaffUsersPage: React.FC = () => {
           effectiveDate,
           notes: salaryNotes,
         });
+      }
+    }
+
+    if (loginPassword && loginTargetId) {
+      try {
+        await createLoginForUser(loginTargetId, email, loginPassword, {
+          name,
+          role,
+          branchId: branchId || undefined,
+        });
+      } catch (err) {
+        alert(`تم حفظ الموظف لكن تعذر إنشاء حساب الدخول: ${authErrorMessage(err)}`);
       }
     }
 
@@ -708,6 +729,22 @@ export const StaffUsersPage: React.FC = () => {
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                     />
                   </div>
+
+                  {(!editingUser || !editingUser.authUid) && (
+                    <div>
+                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">كلمة مرور الدخول</label>
+                      <input
+                        type="password"
+                        dir="ltr"
+                        minLength={6}
+                        autoComplete="new-password"
+                        placeholder="6 أحرف على الأقل (اتركها فارغة لعدم إنشاء حساب دخول)"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">رقم الهاتف التواصل *</label>
