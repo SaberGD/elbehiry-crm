@@ -9,11 +9,13 @@ import {
   Check,
   X,
   Clock3,
+  Star,
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
 import { followUpStatus, phoneNumber } from "../lib/presentation";
 import type { FollowUp } from "../types/crm";
 import { useDialog } from "../components/common/useDialog";
+import { milestoneLabel } from "../lib/postSale";
 interface Props {
   onOpenLead: (id: string) => void;
   initialTab?: "due" | "overdue";
@@ -26,7 +28,21 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
   const [result, setResult] = useState("");
   const [nextDate, setNextDate] = useState("");
   const [hasNext, setHasNext] = useState(false);
-  const visible = followUps;
+  const [kind, setKind] = useState<"all" | "sales" | "post_sale">("all");
+  const [rating, setRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [referralNote, setReferralNote] = useState("");
+  const isPostSale = (f: FollowUp) => f.category === "post_sale";
+  const visible = followUps.filter(
+    (f) =>
+      kind === "all" || (kind === "post_sale" ? isPostSale(f) : !isPostSale(f)),
+  );
+  const rated = followUps.filter(
+    (f) => isPostSale(f) && f.status === "completed" && f.satisfactionRating,
+  );
+  const avgRating = rated.length
+    ? rated.reduce((s, f) => s + (f.satisfactionRating || 0), 0) / rated.length
+    : 0;
   const list = visible
     .filter((f) => followUpStatus(f) === tab)
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
@@ -44,7 +60,8 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
       !selected ||
       !canCompleteFollowUp(effectiveUser, selected) ||
       !result.trim() ||
-      (hasNext && !nextDate)
+      (hasNext && !nextDate) ||
+      (isPostSale(selected) && !rating)
     )
       return;
     updateFollowUpResult(
@@ -52,8 +69,18 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
       "completed",
       result.trim(),
       hasNext ? nextDate : undefined,
+      isPostSale(selected)
+        ? {
+            satisfactionRating: rating,
+            satisfactionComment: ratingComment.trim() || undefined,
+            referralNote: referralNote.trim() || undefined,
+          }
+        : undefined,
     );
     setSelected(null);
+    setRating(0);
+    setRatingComment("");
+    setReferralNote("");
     setResult("");
     setNextDate("");
     setHasNext(false);
@@ -72,6 +99,34 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
         </div>
       </div>
       <section className="panel">
+        <div
+          className="tab-filter"
+          role="group"
+          aria-label="نوع المتابعة"
+          style={{ marginBottom: 10 }}
+        >
+          {(
+            [
+              ["all", "كل المتابعات"],
+              ["sales", "متابعات البيع"],
+              ["post_sale", "بعد البيع"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              aria-pressed={kind === id}
+              onClick={() => setKind(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {kind !== "sales" && rated.length > 0 && (
+          <p className="table-secondary" style={{ marginBottom: 10 }}>
+            متوسط رضا العملاء بعد التسليم: <strong>{avgRating.toFixed(1)}</strong>{" "}
+            / 5 من {rated.length} تقييم
+          </p>
+        )}
         <div className="tab-filter" role="group" aria-label="تصفية المتابعات">
           {Object.entries(labels).map(([id, label]) => (
             <button
@@ -101,6 +156,11 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                   {labels[tab]}
                 </span>
               </div>
+              {isPostSale(f) && (
+                <span className="status-pill is-success">
+                  بعد البيع · {milestoneLabel(f.milestone)}
+                </span>
+              )}
               <p>{f.reason}</p>
               <div className="followup-meta">
                 <span>
@@ -111,6 +171,14 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                 <span dir="ltr">{f.leadPhone}</span>
               </div>
               {f.outcomeResult && <p>النتيجة: {f.outcomeResult}</p>}
+              {f.satisfactionRating && (
+                <p>
+                  رضا العميل: {"★".repeat(f.satisfactionRating)}
+                  {"☆".repeat(5 - f.satisfactionRating)}
+                  {f.satisfactionComment ? ` — ${f.satisfactionComment}` : ""}
+                </p>
+              )}
+              {f.referralNote && <p>ترشيحات: {f.referralNote}</p>}
               <div className="followup-actions">
                 {canCompleteFollowUp(effectiveUser, f) &&
                   !["completed", "cancelled"].includes(tab) && (
@@ -118,6 +186,9 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                       className="btn-primary"
                       onClick={() => {
                         setSelected(f);
+                        setRating(0);
+                        setRatingComment("");
+                        setReferralNote("");
                         setResult("");
                         setHasNext(false);
                         setNextDate("");
@@ -216,6 +287,61 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                   placeholder="مثلاً: العميل طلب عرض سعر وهيرد يوم الأحد."
                 />
               </label>
+              {isPostSale(selected) && (
+                <>
+                  <div className="field">
+                    <span>
+                      رضا العميل عن الشغل <em>مطلوب</em>
+                    </span>
+                    <div
+                      role="radiogroup"
+                      aria-label="تقييم الرضا"
+                      style={{ display: "flex", gap: 6 }}
+                    >
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button
+                          type="button"
+                          key={n}
+                          role="radio"
+                          aria-checked={rating === n}
+                          aria-label={`${n} من 5`}
+                          onClick={() => setRating(n)}
+                          className="icon-button"
+                        >
+                          <Star
+                            size={20}
+                            fill={n <= rating ? "#e9a82b" : "none"}
+                            color={n <= rating ? "#e9a82b" : "currentColor"}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="field">
+                    <span>
+                      ملاحظة العميل <em className="optional-tag">اختياري</em>
+                    </span>
+                    <textarea
+                      rows={2}
+                      value={ratingComment}
+                      onChange={(e) => setRatingComment(e.target.value)}
+                      placeholder="إيه اللي عجبه أو ما عجبوش؟"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>
+                      حد من قرايبه أو معارفه محتاج؟{" "}
+                      <em className="optional-tag">اختياري</em>
+                    </span>
+                    <textarea
+                      rows={2}
+                      value={referralNote}
+                      onChange={(e) => setReferralNote(e.target.value)}
+                      placeholder="الاسم ورقم الهاتف والاحتياج، لو ذكرهم العميل."
+                    />
+                  </label>
+                </>
+              )}
               <label className="checkbox-line" style={{ marginBlock: 20 }}>
                 <input
                   type="checkbox"

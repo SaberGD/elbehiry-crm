@@ -293,6 +293,13 @@ export interface FollowUp {
   outcomeResult?: string;
   completedAt?: string;
   nextFollowUpDate?: string;
+  // Post-sale follow-ups are generated when a booking is delivered.
+  category?: "sales" | "post_sale";
+  bookingId?: string;
+  milestone?: "7d" | "30d" | "6m" | "12m";
+  satisfactionRating?: number; // 1-5
+  satisfactionComment?: string;
+  referralNote?: string; // relatives / acquaintances the customer mentioned
 }
 
 export type BookingStatus =
@@ -321,6 +328,7 @@ export interface Booking {
   source: LeadSource;
   notes: string;
   createdAt: string;
+  deliveredAt?: string; // set when the work is finished and handed over
 }
 
 export type TimelineEventType =

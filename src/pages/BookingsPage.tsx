@@ -1,13 +1,21 @@
 import { canAccessPage } from "../lib/access";
+import { hasPermission } from "../lib/permissions";
 import { useState } from "react";
-import { Search, ArrowUpLeft, ShoppingBag } from "lucide-react";
+import { Search, ArrowUpLeft, ShoppingBag, PackageCheck, X } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
-import { formatMoney } from "../lib/presentation";
+import { formatMoney, today } from "../lib/presentation";
+import { useDialog } from "../components/common/useDialog";
+import type { Booking } from "../types/crm";
 interface Props {
   onOpenLead: (id: string) => void;
 }
 export function BookingsPage({ onOpenLead }: Props) {
-  const { effectiveUser, bookings, branches, leads } = useCRM();
+  const { effectiveUser, bookings, branches, leads, followUps, completeBooking } =
+    useCRM();
+  const canDeliver = hasPermission(effectiveUser, "bookings.create");
+  const [delivering, setDelivering] = useState<Booking | null>(null);
+  const [deliveredAt, setDeliveredAt] = useState(today());
+  const dialogRef = useDialog(!!delivering, () => setDelivering(null));
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const visible = bookings;
@@ -79,6 +87,7 @@ export function BookingsPage({ onOpenLead }: Props) {
                   <th>قيمة التعاقد</th>
                   <th>حالة الدفع</th>
                   <th>التاريخ</th>
+                  <th>التسليم وما بعد البيع</th>
                   <th>الملف</th>
                 </tr>
               </thead>
@@ -115,6 +124,44 @@ export function BookingsPage({ onOpenLead }: Props) {
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{b.bookingDate}</td>
                     <td>
+                      {(() => {
+                        if (b.bookingStatus === "cancelled") return "—";
+                        const post = followUps.filter(
+                          (f) =>
+                            f.bookingId === b.id && f.category === "post_sale",
+                        );
+                        if (post.length) {
+                          const done = post.filter(
+                            (f) => f.status === "completed",
+                          ).length;
+                          return (
+                            <>
+                              <span className="status-pill is-success">
+                                تم التسليم {b.deliveredAt ?? ""}
+                              </span>
+                              <span className="table-secondary">
+                                متابعات بعد البيع: {done}/{post.length}
+                              </span>
+                            </>
+                          );
+                        }
+                        return canDeliver ? (
+                          <button
+                            className="btn-secondary"
+                            onClick={() => {
+                              setDelivering(b);
+                              setDeliveredAt(today());
+                            }}
+                          >
+                            <PackageCheck size={14} />
+                            تم التسليم
+                          </button>
+                        ) : (
+                          "—"
+                        );
+                      })()}
+                    </td>
+                    <td>
                       {canAccessPage(effectiveUser, "clients") && (
                         <button
                           className="table-link"
@@ -138,6 +185,68 @@ export function BookingsPage({ onOpenLead }: Props) {
           </div>
         )}
       </section>
+      {delivering && (
+        <div className="dialog-backdrop">
+          <div
+            className="panel"
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deliver-title"
+            style={{ width: "min(470px,100%)", padding: 27 }}
+          >
+            <div className="page-heading">
+              <div>
+                <h2 id="deliver-title" style={{ fontSize: 20, fontWeight: 600 }}>
+                  تسليم الشغل
+                </h2>
+                <p>
+                  {delivering.leadName} · {delivering.courseName}
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setDelivering(null)}
+                aria-label="إغلاق"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                completeBooking(delivering.id, deliveredAt);
+                setDelivering(null);
+              }}
+            >
+              <label className="field">
+                <span>
+                  تاريخ التسليم <em>مطلوب</em>
+                </span>
+                <input
+                  type="date"
+                  required
+                  value={deliveredAt}
+                  max={today()}
+                  onChange={(e) => setDeliveredAt(e.target.value)}
+                />
+              </label>
+              <p className="table-secondary" style={{ marginTop: 14 }}>
+                هتتجدول 4 متابعات للموظف المسؤول: بعد أسبوع، بعد شهر، بعد 6
+                شهور، وبعد سنة من التسليم. كل متابعة فيها تقييم رضا العميل
+                وسؤال عن معارفه.
+              </p>
+              <button
+                className="btn-primary"
+                type="submit"
+                style={{ marginTop: 20 }}
+              >
+                تأكيد التسليم وجدولة المتابعات
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

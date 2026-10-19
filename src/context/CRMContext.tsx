@@ -15,6 +15,7 @@ import {
   demoBrokers,
 } from "../data/demoData";
 import { today, followUpStatus } from "../lib/presentation";
+import { buildPostSaleSchedule, milestoneLabel } from "../lib/postSale";
 import React, {
   createContext,
   useContext,
@@ -74,6 +75,12 @@ import {
   initialPurchaseInvoices,
   initialNotifications,
 } from "../data/initialData";
+
+export interface FollowUpExtra {
+  satisfactionRating?: number;
+  satisfactionComment?: string;
+  referralNote?: string;
+}
 
 export interface CRMContextType {
   currentUser: User;
@@ -174,10 +181,12 @@ export interface CRMContextType {
     status: "completed" | "cancelled",
     result: string,
     nextFollowUpDate?: string,
+    extra?: FollowUpExtra,
   ) => void;
 
   // Booking Operations
   addBooking: (booking: Omit<Booking, "id" | "createdAt">) => Booking;
+  completeBooking: (bookingId: string, deliveredAt?: string) => void;
 
   // User & Structure CRUD
   addUser: (user: Omit<User, "id" | "createdAt">) => User;
@@ -737,6 +746,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     status: "completed" | "cancelled",
     result: string,
     nextFollowUpDate?: string,
+    extra?: FollowUpExtra,
   ) => {
     const original = followUps.find((f) => f.id === id);
     if (!original) return;
@@ -749,10 +759,18 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
               outcomeResult: result,
               completedAt: new Date().toISOString(),
               nextFollowUpDate,
+              ...(status === "completed" && extra ? extra : {}),
             }
           : f,
       ),
     );
+    if (status === "completed" && extra?.satisfactionRating) {
+      updateLead(original.leadId, {
+        customerRatingStars: extra.satisfactionRating,
+        customerRatingComment: extra.satisfactionComment,
+        hasSubmittedRating: true,
+      });
+    }
     const lead = leads.find((l) => l.id === original.leadId);
     addTimelineEvent({
       leadId: original.leadId,
@@ -838,6 +856,79 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       `إتمام حجز كورس ${bookingData.courseName} للعميل ${bookingData.leadName}`,
     );
     return newBooking;
+  };
+
+  /** Marks a booking as delivered and schedules the post-sale follow-ups. */
+  const completeBooking = (bookingId: string, deliveredAt?: string) => {
+    const booking = bookings.find((b) => b.id === bookingId);
+    if (!booking || booking.bookingStatus === "cancelled") return;
+    const delivered = deliveredAt || today();
+    const lead = leads.find((l) => l.id === booking.leadId);
+    const agentId = users.some((u) => u.id === booking.agentId)
+      ? booking.agentId
+      : lead?.assignedAgentId || booking.agentId;
+    const existing = new Set(
+      followUps
+        .filter((f) => f.bookingId === bookingId && f.category === "post_sale")
+        .map((f) => f.milestone),
+    );
+    const nowStr = today();
+    const created: FollowUp[] = buildPostSaleSchedule(delivered)
+      .filter((m) => !existing.has(m.milestone))
+      .map((m) => ({
+        id: `flw-${crypto.randomUUID()}`,
+        leadId: booking.leadId,
+        leadName: booking.leadName,
+        leadPhone: booking.leadPhone,
+        assignedAgentId: agentId,
+        assignedAgentName: users.find((u) => u.id === agentId)?.name,
+        branchId: booking.branchId,
+        scheduledAt: m.date,
+        reason: m.reason,
+        type: "call" as const,
+        notes: "",
+        status:
+          m.date < nowStr ? "overdue" : m.date === nowStr ? "due" : "upcoming",
+        category: "post_sale" as const,
+        bookingId,
+        milestone: m.milestone,
+      }));
+
+    setBookings((prev) =>
+      prev.map((b) =>
+        b.id === bookingId
+          ? { ...b, bookingStatus: "completed", deliveredAt: delivered }
+          : b,
+      ),
+    );
+    if (created.length) {
+      setFollowUps((prev) => [...created, ...prev]);
+      const open = followUps
+        .filter(
+          (f) =>
+            f.leadId === booking.leadId &&
+            !["completed", "cancelled"].includes(followUpStatus(f)),
+        )
+        .map((f) => f.scheduledAt);
+      const earliest = [...open, ...created.map((f) => f.scheduledAt)].sort()[0];
+      updateLead(booking.leadId, { nextFollowUpDate: earliest });
+    }
+    addTimelineEvent({
+      leadId: booking.leadId,
+      authorId: effectiveUser.id,
+      authorName: effectiveUser.name,
+      type: "booking_created",
+      title: `تسليم الشغل: ${booking.courseName}`,
+      details: `تم التسليم بتاريخ ${delivered}. جُدولت ${created.length} متابعات بعد البيع (${created
+        .map((f) => milestoneLabel(f.milestone))
+        .join("، ")}).`,
+    });
+    logAudit(
+      "تسليم شغل",
+      "حجز",
+      bookingId,
+      `تسليم ${booking.courseName} للعميل ${booking.leadName} وجدولة متابعات بعد البيع`,
+    );
   };
 
   // User & Organization CRUD
@@ -1362,6 +1453,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         updateFollowUpResult,
 
         addBooking,
+        completeBooking,
 
         addUser,
         updateUser,
