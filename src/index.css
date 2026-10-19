@@ -2030,3 +2030,22 @@
   @media (max-width:1023px) { .behery-header { height:calc(70px + env(safe-area-inset-top)); } }
   @media (max-width:767px) { .behery-header { height:calc(65px + env(safe-area-inset-top)); } }
 }
+
+.account-panel .logout-button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 0.6rem;
+  background: transparent;
+  color: #ef4444;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.account-panel .logout-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+}

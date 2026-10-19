@@ -286,12 +286,15 @@ export function createWorkspace(raw: CRMContextType) {
         .filter((n) => n.targetUserId === actor.id)
         .forEach((n) => raw.markNotificationRead(n.id));
     }) as CRMContextType["clearAllNotifications"],
-    setCurrentUser: ((user) => {
-      require(raw.currentUser.role === "admin");
-      const actual = raw.users.find((u) => u.id === user.id && u.active);
-      if (!actual) return deny();
-      raw.setCurrentUser(actual);
-    }) as CRMContextType["setCurrentUser"],
+    createLoginForUser: ((id, email, password, info) => {
+      const target = staff.find((u) => u.id === id);
+      require(
+        (!!target && access.canEditStaff(actor, target, raw.branches)) ||
+          pendingStaff.has(id),
+      );
+      require(access.canManageStaff(actor));
+      return raw.createLoginForUser(id, email, password, info);
+    }) as CRMContextType["createLoginForUser"],
     setViewAsUser: ((user) => {
       require(raw.currentUser.role === "admin");
       const actual = user

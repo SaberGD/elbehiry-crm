@@ -10,6 +10,7 @@ import {
   X,
   UserRound,
   ArrowUpLeft,
+  LogOut,
 } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -52,6 +53,7 @@ export function Navbar({
   const {
     effectiveUser,
     currentUser,
+    logout,
     setViewAsUser,
     previewUsers: users,
     leads,
@@ -226,6 +228,14 @@ export function Navbar({
               <UserRound size={14} />
               {scopeLabel(effectiveUser)}
             </p>
+            <button
+              type="button"
+              className="logout-button"
+              onClick={() => logout()}
+            >
+              <LogOut size={14} />
+              تسجيل الخروج
+            </button>
           </div>
         </details>
       </div>

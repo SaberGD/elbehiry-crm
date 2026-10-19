@@ -12,12 +12,13 @@ import React, {
   useEffect,
   useMemo,
 } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
+import { useAuth } from "./AuthContext";
 import {
-  saveDocumentToFirestore,
-  updateDocumentInFirestore,
-  deleteDocumentFromFirestore,
-  subscribeToCollection,
-} from "../lib/firebaseSync";
+  useFirestoreCollection,
+  useFirestoreDocument,
+} from "../lib/useFirestoreSync";
 import {
   User,
   Branch,
@@ -66,7 +67,13 @@ import {
 
 export interface CRMContextType {
   currentUser: User;
-  setCurrentUser: (user: User) => void;
+  logout: () => Promise<void>;
+  createLoginForUser: (
+    userId: string,
+    email: string,
+    password: string,
+    info: { name: string; role: User["role"]; branchId?: string },
+  ) => Promise<void>;
   viewAsUser: User | null;
   setViewAsUser: (user: User | null) => void;
   effectiveUser: User;
@@ -240,34 +247,34 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     PurchaseCategory[]
   >(() => loadStorage("purchase_categories", initialPurchaseCategories));
   const [brokers, setBrokers] = useState<BrokerEntity[]>(() =>
-    loadStorage("brokers", initialBrokers),
+    loadStorage("brokers", []),
   );
   const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(
-    () => loadStorage("purchase_invoices", initialPurchaseInvoices),
+    () => loadStorage("purchase_invoices", []),
   );
   const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
-    loadStorage("notifications", initialNotifications),
+    loadStorage("notifications", []),
   );
   const [courses, setCourses] = useState<Course[]>(() =>
     loadStorage("courses", initialCourses),
   );
   const [leads, setLeads] = useState<Lead[]>(() =>
-    loadStorage("leads", initialLeads),
+    loadStorage("leads", []),
   );
   const [visits, setVisits] = useState<Visit[]>(() =>
-    loadStorage("visits", initialVisits),
+    loadStorage("visits", []),
   );
   const [followUps, setFollowUps] = useState<FollowUp[]>(() =>
-    loadStorage("followups", initialFollowUps),
+    loadStorage("followups", []),
   );
   const [bookings, setBookings] = useState<Booking[]>(() =>
-    loadStorage("bookings", initialBookings),
+    loadStorage("bookings", []),
   );
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>(() =>
-    loadStorage("timeline", initialTimelineEvents),
+    loadStorage("timeline", []),
   );
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() =>
-    loadStorage("audit", initialAuditLogs),
+    loadStorage("audit", []),
   );
   const [distributionRule, setDistributionRule] = useState<DistributionRule>(
     () =>
@@ -295,15 +302,52 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
-  // Default logged in user: Admin
-  const [currentUser, setCurrentUser] = useState<User>(() => {
-    const saved = loadStorage<User | null>("current_user", null);
-    if (saved) {
-      const match = users.find((u) => u.id === saved.id);
-      if (match) return match;
-    }
-    return users.find((u) => u.role === "admin") || users[0];
+  // Firestore is the single source of truth (localStorage is only a warm cache)
+  useFirestoreCollection("users", users, setUsers, {
+    seedIfEmpty: true,
+    transform: normalizeUser,
   });
+  useFirestoreCollection("companies", companies, setCompanies, { seedIfEmpty: true });
+  useFirestoreCollection("governorates", governorates, setGovernorates, { seedIfEmpty: true });
+  useFirestoreCollection("warehouses", warehouses, setWarehouses, { seedIfEmpty: true });
+  useFirestoreCollection("branches", branches, setBranches, { seedIfEmpty: true });
+  useFirestoreCollection("teams", teams, setTeams, { seedIfEmpty: true });
+  useFirestoreCollection("departments", departmentEntities, setDepartmentEntities, { seedIfEmpty: true });
+  useFirestoreCollection("jobPositions", jobPositions, setJobPositions, { seedIfEmpty: true });
+  useFirestoreCollection("purchaseCategories", purchaseCategories, setPurchaseCategories, { seedIfEmpty: true });
+  useFirestoreCollection("courses", courses, setCourses, { seedIfEmpty: true });
+  useFirestoreCollection("brokers", brokers, setBrokers);
+  useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices);
+  useFirestoreCollection("notifications", notifications, setNotifications);
+  useFirestoreCollection("leads", leads, setLeads);
+  useFirestoreCollection("visits", visits, setVisits);
+  useFirestoreCollection("followUps", followUps, setFollowUps);
+  useFirestoreCollection("bookings", bookings, setBookings);
+  useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents);
+  useFirestoreCollection("activityLogs", auditLogs, setAuditLogs);
+  useFirestoreDocument(["settings", "distribution"], distributionRule, setDistributionRule);
+  useFirestoreDocument(["settings", "permissions"], permissionMatrix, (m) =>
+    setPermissionMatrix(sanitizeMatrix(m)),
+  );
+
+  // The signed-in user comes from Firebase Auth; role/branch/active are the
+  // server-trusted values from authProfiles, not whatever the users doc says.
+  const { profile, logout, createStaffLogin } = useAuth();
+  const currentUser = useMemo<User>(() => {
+    const p = profile!;
+    const record = users.find((u) => u.id === p.userId);
+    return normalizeUser({
+      id: p.userId,
+      name: p.name,
+      email: p.email,
+      phone: "",
+      createdAt: "",
+      ...record,
+      role: p.role,
+      branchId: p.branchId ?? record?.branchId,
+      active: p.active,
+    });
+  }, [profile, users]);
 
   const [viewAsUser, setViewAsUser] = useState<User | null>(null);
 
@@ -345,7 +389,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     () => saveStorage("dist_rule", distributionRule),
     [distributionRule],
   );
-  useEffect(() => saveStorage("current_user", currentUser), [currentUser]);
 
   // Helper Audit
   const logAudit = (
@@ -418,7 +461,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setLeads((prev) => [newLead, ...prev]);
-    saveDocumentToFirestore("leads", newLead);
 
     addTimelineEvent({
       leadId: id,
@@ -443,7 +485,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       prev.map((l) => {
         if (l.id !== id) return l;
         const updated = { ...l, ...updates };
-        saveDocumentToFirestore("leads", updated);
 
         if (updates.status && updates.status !== l.status) {
           addTimelineEvent({
@@ -484,7 +525,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
           branchName: targetBranch?.name || l.branchName,
           teamId: newTeamId || targetAgent?.teamId,
         };
-        saveDocumentToFirestore("leads", updated);
         return updated;
       }),
     );
@@ -526,7 +566,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const deleteLead = (id: string) => {
     setLeads((prev) => prev.filter((l) => l.id !== id));
-    deleteDocumentFromFirestore("leads", id);
     logAudit("حذف عميل", "عميل", id, `تم حذف العميل رقم ${id}`);
   };
 
@@ -582,7 +621,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setVisits((prev) => [newVisit, ...prev]);
-    saveDocumentToFirestore("visits", newVisit);
 
     // If linked to lead, add timeline event & optional follow up
     if (linkedLeadId) {
@@ -808,29 +846,63 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     return newUser;
   };
 
-  const updateUser = (id: string, updates: Partial<User>) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id !== id) return u;
-        return { ...u, ...updates };
-      }),
+  // Keep the server-trusted access record in step with the user document.
+  const syncAuthProfile = (
+    userId: string,
+    patch: { role?: User["role"]; branchId?: string; active?: boolean; name?: string },
+  ) => {
+    const authUid = users.find((u) => u.id === userId)?.authUid;
+    if (!authUid) return;
+    const clean = Object.fromEntries(
+      Object.entries(patch).filter(([, v]) => v !== undefined),
     );
+    if (Object.keys(clean).length) {
+      updateDoc(doc(db, "authProfiles", authUid), clean).catch((e) =>
+        console.error("authProfile sync failed", e),
+      );
+    }
+  };
+
+  const updateUser = (id: string, updates: Partial<User>) => {
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+    syncAuthProfile(id, {
+      role: updates.role,
+      branchId: updates.branchId,
+      name: updates.name,
+    });
     logAudit("تعديل موظف", "مستخدم", id, `تعديل بيانات الحساب رقم ${id}`);
   };
 
   const toggleUserActive = (id: string) => {
+    const target = users.find((u) => u.id === id);
+    if (!target) return;
+    const active = !target.active;
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, active } : u)));
+    syncAuthProfile(id, { active });
+    logAudit(
+      "تغيير حالة حساب",
+      "مستخدم",
+      id,
+      `تغيير تفعيل الحساب إلى ${active ? "مفعل" : "معطل"}`,
+    );
+  };
+
+  /** Creates a Firebase login for a staff record and links the two. */
+  const createLoginForUser: CRMContextType["createLoginForUser"] = async (
+    userId,
+    email,
+    password,
+    info,
+  ) => {
+    const authUid = await createStaffLogin({ userId, email, password, ...info });
     setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id !== id) return u;
-        const active = !u.active;
-        logAudit(
-          "تغيير حالة حساب",
-          "مستخدم",
-          id,
-          `تغيير تفعيل الحساب إلى ${active ? "مفعل" : "معطل"}`,
-        );
-        return { ...u, active };
-      }),
+      prev.map((u) => (u.id === userId ? { ...u, email, authUid } : u)),
+    );
+    logAudit(
+      "إنشاء حساب دخول",
+      "مستخدم",
+      userId,
+      `تم إنشاء حساب دخول للموظف ${info.name}`,
     );
   };
 
@@ -874,23 +946,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
+  // Data lives in Firestore, so a reset only clears this browser's session/cache.
   const resetAllData = () => {
-    setUsers(initialUsers.map(normalizeUser));
-    setBranches(initialBranches);
-    setTeams(initialTeams);
-    setCourses(initialCourses);
-    setLeads(initialLeads);
-    setVisits(initialVisits);
-    setFollowUps(initialFollowUps);
-    setBookings(initialBookings);
-    setTimelineEvents(initialTimelineEvents);
-    setAuditLogs(initialAuditLogs);
-    setDistributionRule({
-      autoDistribute: true,
-      method: "round_robin",
-      maxLeadsPerAgentDay: 20,
-    });
-    setCurrentUser(initialUsers[0]);
     setViewAsUser(null);
     localStorage.clear();
   };
@@ -1090,7 +1147,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       totalVolume: 0,
     };
     setBrokers((prev) => [...prev, newBroker]);
-    saveDocumentToFirestore("brokers", newBroker);
     logAudit(
       "إضافة وسيط / جهة ترشيح",
       "وسيط",
@@ -1105,7 +1161,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       prev.map((b) => {
         if (b.id !== id) return b;
         const updated = { ...b, ...updates };
-        saveDocumentToFirestore("brokers", updated);
         return updated;
       }),
     );
@@ -1201,7 +1256,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     <CRMContext.Provider
       value={{
         currentUser,
-        setCurrentUser,
+        logout,
+        createLoginForUser,
         viewAsUser,
         setViewAsUser,
         effectiveUser,

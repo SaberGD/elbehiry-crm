@@ -5,7 +5,9 @@ import { PermissionsPage } from "./pages/PermissionsPage";
 import React, { useState } from "react";
 import { LanguageProvider } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CRMProvider, useCRM } from "./context/CRMContext";
+import { LoginPage, LoadingScreen, BlockedScreen } from "./pages/LoginPage";
 import { ViewAsBar } from "./components/layout/ViewAsBar";
 import { Navbar } from "./components/layout/Navbar";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -197,14 +199,27 @@ function WorkspaceShell() {
   );
 }
 
+const AuthGate: React.FC = () => {
+  const { status } = useAuth();
+  if (status === "loading") return <LoadingScreen />;
+  if (status === "signed_out") return <LoginPage />;
+  if (status === "no_profile" || status === "inactive")
+    return <BlockedScreen kind={status} />;
+  return (
+    <CRMProvider>
+      <WorkspaceShell />
+    </CRMProvider>
+  );
+};
+
 export default function App() {
   return (
     <PWAProvider>
       <ThemeProvider>
         <LanguageProvider>
-          <CRMProvider>
-            <WorkspaceShell />
-          </CRMProvider>
+          <AuthProvider>
+            <AuthGate />
+          </AuthProvider>
         </LanguageProvider>
       </ThemeProvider>
       <PWAStatus />

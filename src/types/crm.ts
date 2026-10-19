@@ -76,6 +76,7 @@ export interface User {
   permissions?: string[];
   specialty?: "sales" | "accounts" | "operations";
   supervisedBranchIds?: string[];
+  authUid?: string; // Firebase Auth uid once a login exists
 }
 
 export interface Company {
