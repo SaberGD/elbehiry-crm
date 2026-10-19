@@ -1,8 +1,21 @@
-import { authErrorMessage } from '../context/AuthContext';
-import React, { useState } from 'react';
-import { useCRM } from '../context/CRMContext';
-import { useLanguage } from '../context/LanguageContext';
-import { UserRole, User, FinancialRecord } from '../types/crm';
+import {
+  canManageStaff,
+  canEditStaff,
+  canViewPayroll,
+  canManageOrganization,
+  assignableRoles,
+} from "../lib/access";
+import {
+  positionNames,
+  positionRoles,
+  isDirector,
+  specialties,
+  type Specialty,
+} from "../lib/permissions";
+import React, { useState } from "react";
+import { useCRM } from "../context/CRMContext";
+import { useLanguage } from "../context/LanguageContext";
+import { UserRole, User, FinancialRecord } from "../types/crm";
 import {
   UserCheck2,
   Plus,
@@ -16,7 +29,7 @@ import {
   Edit2,
   ChevronRight,
   ShieldCheck,
-} from 'lucide-react';
+} from "lucide-react";
 
 export const StaffUsersPage: React.FC = () => {
   const {
@@ -31,7 +44,6 @@ export const StaffUsersPage: React.FC = () => {
     addUser,
     updateUser,
     toggleUserActive,
-    createLoginForUser,
     addDepartmentEntity,
     addJobPosition,
     updateUserSalaryInfo,
@@ -39,77 +51,85 @@ export const StaffUsersPage: React.FC = () => {
 
   const { t } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'employees' | 'departments' | 'financials'>('employees');
+  const [activeTab, setActiveTab] = useState<
+    "employees" | "departments" | "financials"
+  >("employees");
 
   // Search and Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedBranchFilter, setSelectedBranchFilter] = useState('');
-  const [selectedRoleFilter, setSelectedRoleFilter] = useState('');
-  const [selectedDeptFilter, setSelectedDeptFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedBranchFilter, setSelectedBranchFilter] = useState("");
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState("");
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "inactive"
+  >("all");
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [viewingSalaryHistoryUser, setViewingSalaryHistoryUser] = useState<User | null>(null);
+  const [viewingSalaryHistoryUser, setViewingSalaryHistoryUser] =
+    useState<User | null>(null);
 
   // Form states for Add/Edit Employee
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<UserRole>('sales_agent');
-  const [companyId, setCompanyId] = useState(companies[0]?.id || '');
-  const [governorateId, setGovernorateId] = useState(governorates[0]?.id || '');
-  const [branchId, setBranchId] = useState(branches[0]?.id || '');
-  const [teamId, setTeamId] = useState('');
-  const [departmentId, setDepartmentId] = useState('');
-  const [jobPositionId, setJobPositionId] = useState('');
-  const [directManagerId, setDirectManagerId] = useState('');
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [specialty, setSpecialty] = useState<Specialty>("sales");
+  const [supervisedBranchIds, setSupervisedBranchIds] = useState<string[]>([]);
+  const [role, setRole] = useState<UserRole>("sales_agent");
+  const [companyId, setCompanyId] = useState(companies[0]?.id || "");
+  const [governorateId, setGovernorateId] = useState(governorates[0]?.id || "");
+  const [branchId, setBranchId] = useState(branches[0]?.id || "");
+  const [teamId, setTeamId] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [jobPositionId, setJobPositionId] = useState("");
+  const [directManagerId, setDirectManagerId] = useState("");
 
   // Financial fields inside employee form
   const [baseSalary, setBaseSalary] = useState<number>(0);
   const [commissionRate, setCommissionRate] = useState<number>(0);
   const [bonus, setBonus] = useState<number>(0);
   const [deductions, setDeductions] = useState<number>(0);
-  const [effectiveDate, setEffectiveDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [salaryNotes, setSalaryNotes] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState<string>(
+    new Date().toISOString().split("T")[0],
+  );
+  const [salaryNotes, setSalaryNotes] = useState("");
 
   // Department & Job Position modal state
   const [showDeptModal, setShowDeptModal] = useState(false);
-  const [newDeptName, setNewDeptName] = useState('');
-  const [newDeptCode, setNewDeptCode] = useState('');
-  const [newDeptDesc, setNewDeptDesc] = useState('');
+  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptCode, setNewDeptCode] = useState("");
+  const [newDeptDesc, setNewDeptDesc] = useState("");
 
   const [showJobModal, setShowJobModal] = useState(false);
-  const [newJobTitle, setNewJobTitle] = useState('');
-  const [newJobDeptId, setNewJobDeptId] = useState(departmentEntities[0]?.id || '');
+  const [newJobTitle, setNewJobTitle] = useState("");
+  const [newJobDeptId, setNewJobDeptId] = useState(
+    departmentEntities[0]?.id || "",
+  );
 
-  const isAuthorizedForFinancials =
-    effectiveUser.role === 'admin' ||
-    effectiveUser.role === 'general_manager' ||
-    effectiveUser.role === 'regional_manager';
+  const isAuthorizedForFinancials = canViewPayroll(effectiveUser);
 
   const openAddEmployeeModal = () => {
     setEditingUser(null);
-    setName('');
-    setEmail('');
-    setLoginPassword('');
-    setPhone('');
-    setRole('sales_agent');
-    setCompanyId(companies[0]?.id || '');
-    setGovernorateId(governorates[0]?.id || '');
-    setBranchId(branches[0]?.id || '');
-    setTeamId('');
-    setDepartmentId('');
-    setJobPositionId('');
-    setDirectManagerId('');
+    setName("");
+    setEmail("");
+    setPhone("");
+    setRole("sales_agent");
+    setSpecialty("sales");
+    setSupervisedBranchIds([]);
+    setCompanyId(companies[0]?.id || "");
+    setGovernorateId(governorates[0]?.id || "");
+    setBranchId(branches[0]?.id || "");
+    setTeamId("");
+    setDepartmentId("");
+    setJobPositionId("");
+    setDirectManagerId("");
     setBaseSalary(5000);
     setCommissionRate(3);
     setBonus(0);
     setDeductions(0);
-    setEffectiveDate(new Date().toISOString().split('T')[0]);
-    setSalaryNotes('اعتماد مالي مبدئي عند إنشاء الحساب');
+    setEffectiveDate(new Date().toISOString().split("T")[0]);
+    setSalaryNotes("اعتماد مالي مبدئي عند إنشاء الحساب");
     setShowAddModal(true);
   };
 
@@ -117,37 +137,40 @@ export const StaffUsersPage: React.FC = () => {
     setEditingUser(u);
     setName(u.name);
     setEmail(u.email);
-    setLoginPassword('');
     setPhone(u.phone);
     setRole(u.role);
-    setCompanyId(u.companyId || companies[0]?.id || '');
-    setGovernorateId(u.governorateId || governorates[0]?.id || '');
-    setBranchId(u.branchId || branches[0]?.id || '');
-    setTeamId(u.teamId || '');
-    setDepartmentId(u.departmentId || '');
-    setJobPositionId(u.jobPositionId || '');
-    setDirectManagerId(u.directManagerId || '');
+    setSpecialty(u.specialty || "sales");
+    setSupervisedBranchIds(u.supervisedBranchIds || []);
+    setCompanyId(u.companyId || companies[0]?.id || "");
+    setGovernorateId(u.governorateId || governorates[0]?.id || "");
+    setBranchId(u.branchId || branches[0]?.id || "");
+    setTeamId(u.teamId || "");
+    setDepartmentId(u.departmentId || "");
+    setJobPositionId(u.jobPositionId || "");
+    setDirectManagerId(u.directManagerId || "");
 
     if (u.salaryInfo) {
       setBaseSalary(u.salaryInfo.baseSalary || 0);
       setCommissionRate(u.salaryInfo.commissionRate || 0);
       setBonus(u.salaryInfo.bonus || 0);
       setDeductions(u.salaryInfo.deductions || 0);
-      setEffectiveDate(u.salaryInfo.effectiveDate || new Date().toISOString().split('T')[0]);
-      setSalaryNotes('تعديل البيانات الحالية');
+      setEffectiveDate(
+        u.salaryInfo.effectiveDate || new Date().toISOString().split("T")[0],
+      );
+      setSalaryNotes("تعديل البيانات الحالية");
     } else {
       setBaseSalary(0);
       setCommissionRate(0);
       setBonus(0);
       setDeductions(0);
-      setEffectiveDate(new Date().toISOString().split('T')[0]);
-      setSalaryNotes('');
+      setEffectiveDate(new Date().toISOString().split("T")[0]);
+      setSalaryNotes("");
     }
 
     setShowAddModal(true);
   };
 
-  const handleEmployeeSubmit = async (e: React.FormEvent) => {
+  const handleEmployeeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     const companyObj = companies.find((c) => c.id === companyId);
@@ -158,15 +181,22 @@ export const StaffUsersPage: React.FC = () => {
     const posObj = jobPositions.find((p) => p.id === jobPositionId);
     const managerObj = users.find((u) => u.id === directManagerId);
 
-    let loginTargetId: string | null = null;
-
     if (editingUser) {
-      loginTargetId = editingUser.authUid ? null : editingUser.id;
       updateUser(editingUser.id, {
         name,
         email,
         phone,
         role,
+        ...(isDirector(effectiveUser)
+          ? {
+              specialty: role === "supervisor" ? specialty : undefined,
+              supervisedBranchIds: ["supervisor", "regional_manager"].includes(
+                role,
+              )
+                ? supervisedBranchIds
+                : undefined,
+            }
+          : {}),
         companyId,
         companyName: companyObj?.name,
         governorateId,
@@ -199,6 +229,16 @@ export const StaffUsersPage: React.FC = () => {
         email,
         phone,
         role,
+        ...(isDirector(effectiveUser)
+          ? {
+              specialty: role === "supervisor" ? specialty : undefined,
+              supervisedBranchIds: ["supervisor", "regional_manager"].includes(
+                role,
+              )
+                ? supervisedBranchIds
+                : undefined,
+            }
+          : {}),
         companyId,
         companyName: companyObj?.name,
         governorateId,
@@ -215,7 +255,6 @@ export const StaffUsersPage: React.FC = () => {
         directManagerName: managerObj?.name,
         active: true,
       });
-      loginTargetId = newUser.id;
 
       if (isAuthorizedForFinancials && newUser && baseSalary >= 0) {
         updateUserSalaryInfo(newUser.id, {
@@ -226,18 +265,6 @@ export const StaffUsersPage: React.FC = () => {
           effectiveDate,
           notes: salaryNotes,
         });
-      }
-    }
-
-    if (loginPassword && loginTargetId) {
-      try {
-        await createLoginForUser(loginTargetId, email, loginPassword, {
-          name,
-          role,
-          branchId: branchId || undefined,
-        });
-      } catch (err) {
-        alert(`تم حفظ الموظف لكن تعذر إنشاء حساب الدخول: ${authErrorMessage(err)}`);
       }
     }
 
@@ -253,9 +280,9 @@ export const StaffUsersPage: React.FC = () => {
       description: newDeptDesc,
       active: true,
     });
-    setNewDeptName('');
-    setNewDeptCode('');
-    setNewDeptDesc('');
+    setNewDeptName("");
+    setNewDeptCode("");
+    setNewDeptDesc("");
     setShowDeptModal(false);
   };
 
@@ -269,24 +296,26 @@ export const StaffUsersPage: React.FC = () => {
       departmentName: deptObj?.name,
       active: true,
     });
-    setNewJobTitle('');
+    setNewJobTitle("");
     setShowJobModal(false);
   };
 
   const filteredUsers = users.filter((u) => {
     // RBAC scoping
-    if (effectiveUser.role === 'branch_manager' && u.branchId !== effectiveUser.branchId) {
-      return false;
-    }
-    if (effectiveUser.role === 'regional_manager' && u.governorateId !== effectiveUser.governorateId) {
+    if (
+      effectiveUser.role === "branch_manager" &&
+      u.branchId !== effectiveUser.branchId
+    ) {
       return false;
     }
 
-    if (selectedBranchFilter && u.branchId !== selectedBranchFilter) return false;
+    if (selectedBranchFilter && u.branchId !== selectedBranchFilter)
+      return false;
     if (selectedRoleFilter && u.role !== selectedRoleFilter) return false;
-    if (selectedDeptFilter && u.departmentId !== selectedDeptFilter) return false;
-    if (statusFilter === 'active' && !u.active) return false;
-    if (statusFilter === 'inactive' && u.active) return false;
+    if (selectedDeptFilter && u.departmentId !== selectedDeptFilter)
+      return false;
+    if (statusFilter === "active" && !u.active) return false;
+    if (statusFilter === "inactive" && u.active) return false;
 
     const matchesSearch =
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -302,23 +331,22 @@ export const StaffUsersPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 glass-card p-4 sm:p-5 rounded-2xl shadow-xs">
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-            <UserCheck2 className="w-6 h-6 text-[#abcae9]" />
+            <UserCheck2 className="w-6 h-6 text-[#dc424b]" />
             <span>إدارة أطقم العمل والهيكل المؤسسي (EL.BEHERY)</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            إدارة الموظفين، الأدوار القيادية، الأقسام والوظائف، المسميات، والمسيرات المالية والعمولات
+            إدارة الموظفين، الأدوار القيادية، الأقسام والوظائف، المسميات،
+            والمسيرات المالية والعمولات
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {(effectiveUser.role === 'admin' ||
-            effectiveUser.role === 'general_manager' ||
-            effectiveUser.role === 'branch_manager') && (
+          {canManageStaff(effectiveUser) && (
             <button
               onClick={openAddEmployeeModal}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#1a212e] dark:hover:bg-[#252f42] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 shadow-sm flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#292928] dark:hover:bg-[#343431] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 shadow-sm flex items-center gap-2 cursor-pointer"
             >
-              <Plus className="w-4 h-4 text-[#abcae9]" />
+              <Plus className="w-4 h-4 text-[#dc424b]" />
               <span>إضافة موظف جديد</span>
             </button>
           )}
@@ -328,46 +356,46 @@ export const StaffUsersPage: React.FC = () => {
       {/* Tabs Navigation */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
-          onClick={() => setActiveTab('employees')}
+          onClick={() => setActiveTab("employees")}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            activeTab === 'employees'
-              ? 'bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            activeTab === "employees"
+              ? "bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm"
+              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
           }`}
         >
-          <UserCheck2 className="w-4 h-4 text-[#abcae9]" />
+          <UserCheck2 className="w-4 h-4 text-[#dc424b]" />
           <span>سجل الموظفين والأطقم ({filteredUsers.length})</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('departments')}
+          onClick={() => setActiveTab("departments")}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            activeTab === 'departments'
-              ? 'bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            activeTab === "departments"
+              ? "bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm"
+              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
           }`}
         >
-          <Briefcase className="w-4 h-4 text-[#abcae9]" />
+          <Briefcase className="w-4 h-4 text-[#dc424b]" />
           <span>هيكل الأقسام والوظائف ({departmentEntities.length})</span>
         </button>
 
         {isAuthorizedForFinancials && (
           <button
-            onClick={() => setActiveTab('financials')}
+            onClick={() => setActiveTab("financials")}
             className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'financials'
-                ? 'bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm'
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+              activeTab === "financials"
+                ? "bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm"
+                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
             }`}
           >
-            <DollarSign className="w-4 h-4 text-[#abcae9]" />
+            <DollarSign className="w-4 h-4 text-[#dc424b]" />
             <span>المسيرات المالية والعمولات</span>
           </button>
         )}
       </div>
 
       {/* TAB 1: EMPLOYEES LIST */}
-      {activeTab === 'employees' && (
+      {activeTab === "employees" && (
         <div className="space-y-4">
           {/* Filters Bar */}
           <div className="glass-card p-4 rounded-2xl shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -404,13 +432,11 @@ export const StaffUsersPage: React.FC = () => {
                 className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
               >
                 <option value="">جميع الأدوار الوظيفية</option>
-                <option value="admin">مدير نظام (Admin)</option>
-                <option value="general_manager">المدير العام (General Manager)</option>
-                <option value="regional_manager">مدير إقليمي (Regional Manager)</option>
-                <option value="branch_manager">مدير فرع (Branch Manager)</option>
-                <option value="supervisor">مشرف قسم (Supervisor)</option>
-                <option value="team_leader">قائد فريق (Team Leader)</option>
-                <option value="sales_agent">مسؤول مبيعات (Sales Agent)</option>
+                {positionRoles.map((r) => (
+                  <option key={r} value={r}>
+                    {positionNames[r]}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -461,10 +487,17 @@ export const StaffUsersPage: React.FC = () => {
 
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <tr
+                      key={u.id}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                    >
                       <td className="p-3.5 font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                         {u.avatar ? (
-                          <img src={u.avatar} alt={u.name} className="w-7 h-7 rounded-full object-cover" />
+                          <img
+                            src={u.avatar}
+                            alt={u.name}
+                            className="w-7 h-7 rounded-full object-cover"
+                          />
                         ) : (
                           <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-[10px]">
                             {u.name.slice(0, 2)}
@@ -474,11 +507,11 @@ export const StaffUsersPage: React.FC = () => {
                       </td>
 
                       <td className="p-3.5 font-semibold text-indigo-700 dark:text-indigo-400">
-                        {t(`role.${u.role}`) || u.role}
+                        {positionNames[u.role]}
                       </td>
 
                       <td className="p-3.5 text-slate-600 dark:text-slate-400">
-                        {u.departmentName || '—'}
+                        {u.departmentName || "—"}
                         {u.jobPositionTitle && (
                           <span className="block text-[11px] text-slate-400 dark:text-slate-500 font-normal">
                             {u.jobPositionTitle}
@@ -486,49 +519,59 @@ export const StaffUsersPage: React.FC = () => {
                         )}
                       </td>
 
-                      <td className="p-3.5 text-slate-600 dark:text-slate-400">{u.branchName || 'عام على المستوى الرئيسي'}</td>
+                      <td className="p-3.5 text-slate-600 dark:text-slate-400">
+                        {u.branchName || "عام على المستوى الرئيسي"}
+                      </td>
 
-                      <td className="p-3.5 text-slate-600 dark:text-slate-400">{u.directManagerName || '—'}</td>
+                      <td className="p-3.5 text-slate-600 dark:text-slate-400">
+                        {u.directManagerName || "—"}
+                      </td>
 
                       <td className="p-3.5">
                         <span className="block font-mono text-slate-700 dark:text-slate-300 text-[11px]">
                           {u.email}
                         </span>
-                        <span className="block font-mono-numbers text-slate-500 text-[11px]">{u.phone}</span>
+                        <span className="block font-mono-numbers text-slate-500 text-[11px]">
+                          {u.phone}
+                        </span>
                       </td>
 
                       <td className="p-3.5">
                         <span
                           className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                             u.active
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                              : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
                           }`}
                         >
-                          {u.active ? 'مفعل' : 'معطل'}
+                          {u.active ? "مفعل" : "معطل"}
                         </span>
                       </td>
 
                       <td className="p-3.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => openEditEmployeeModal(u)}
-                            className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                            title="تعديل الموظف والمسير المالي"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canEditStaff(effectiveUser, u, branches) && (
+                            <button
+                              onClick={() => openEditEmployeeModal(u)}
+                              className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                              title="تعديل الموظف والمسير المالي"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
-                          <button
-                            onClick={() => toggleUserActive(u.id)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                              u.active
-                                ? 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 hover:bg-red-100'
-                                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100'
-                            }`}
-                          >
-                            {u.active ? 'تعطيل' : 'تفعيل'}
-                          </button>
+                          {canEditStaff(effectiveUser, u, branches) && (
+                            <button
+                              onClick={() => toggleUserActive(u.id)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                                u.active
+                                  ? "bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 hover:bg-red-100"
+                                  : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100"
+                              }`}
+                            >
+                              {u.active ? "تعطيل" : "تفعيل"}
+                            </button>
+                          )}
 
                           {isAuthorizedForFinancials && u.salaryInfo && (
                             <button
@@ -551,7 +594,7 @@ export const StaffUsersPage: React.FC = () => {
       )}
 
       {/* TAB 2: DEPARTMENTS & JOB POSITIONS */}
-      {activeTab === 'departments' && (
+      {activeTab === "departments" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Departments Box */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
@@ -560,13 +603,15 @@ export const StaffUsersPage: React.FC = () => {
                 <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <span>أقسام المؤسسة الإدارية والتنفيذية</span>
               </h3>
-              <button
-                onClick={() => setShowDeptModal(true)}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>إضافة قسم</span>
-              </button>
+              {canManageOrganization(effectiveUser) && (
+                <button
+                  onClick={() => setShowDeptModal(true)}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إضافة قسم</span>
+                </button>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -577,13 +622,17 @@ export const StaffUsersPage: React.FC = () => {
                 >
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{d.name}</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                        {d.name}
+                      </span>
                       <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-mono">
                         {d.code}
                       </span>
                     </div>
                     {d.description && (
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{d.description}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {d.description}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -598,36 +647,42 @@ export const StaffUsersPage: React.FC = () => {
                 <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <span>المسميات والوظائف المتاحة</span>
               </h3>
-              <button
-                onClick={() => setShowJobModal(true)}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>إضافة مسمى وظيفي</span>
-              </button>
+              {canManageOrganization(effectiveUser) && (
+                <button
+                  onClick={() => setShowJobModal(true)}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إضافة مسمى وظيفي</span>
+                </button>
+              )}
             </div>
 
             <div className="space-y-2">
-              {jobPositions.map((j) => (
-                <div
-                  key={j.id}
-                  className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-center justify-between"
-                >
-                  <div>
-                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{j.title}</span>
-                    <span className="block text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">
-                      القسم: {j.departmentName || 'عام'}
-                    </span>
+              {jobPositions
+                .filter((j) => j.active && j.departmentId === departmentId)
+                .map((j) => (
+                  <div
+                    key={j.id}
+                    className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-center justify-between"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                        {j.title}
+                      </span>
+                      <span className="block text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">
+                        القسم: {j.departmentName || "عام"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
         </div>
       )}
 
       {/* TAB 3: FINANCIAL OVERVIEW */}
-      {activeTab === 'financials' && isAuthorizedForFinancials && (
+      {activeTab === "financials" && isAuthorizedForFinancials && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div>
@@ -636,7 +691,8 @@ export const StaffUsersPage: React.FC = () => {
                 <span>المسيرات المالية والمرتبات ونسب العمولات للموظفين</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                سجل المخصصات المالية المعتمدة للرواتب الأساسية، المكافآت والحوافز، ونسب العمولات المباشرة
+                سجل المخصصات المالية المعتمدة للرواتب الأساسية، المكافآت
+                والحوافز، ونسب العمولات المباشرة
               </p>
             </div>
           </div>
@@ -656,34 +712,52 @@ export const StaffUsersPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {users.map((u) => {
+                {filteredUsers.map((u) => {
                   const sal = u.salaryInfo;
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="p-3.5 font-bold text-slate-900 dark:text-slate-100">{u.name}</td>
+                    <tr
+                      key={u.id}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                    >
+                      <td className="p-3.5 font-bold text-slate-900 dark:text-slate-100">
+                        {u.name}
+                      </td>
                       <td className="p-3.5 text-slate-600 dark:text-slate-400">
-                        {t(`role.${u.role}`)} — <span className="font-semibold">{u.branchName || 'عام'}</span>
+                        {positionNames[u.role]} —{" "}
+                        <span className="font-semibold">
+                          {u.branchName || "عام"}
+                        </span>
                       </td>
                       <td className="p-3.5 font-bold font-mono text-slate-900 dark:text-slate-100">
-                        {sal?.baseSalary ? `${sal.baseSalary.toLocaleString()} ج.م` : 'غير محدد'}
+                        {sal?.baseSalary
+                          ? `${sal.baseSalary.toLocaleString()} ج.م`
+                          : "غير محدد"}
                       </td>
                       <td className="p-3.5 font-bold font-mono text-indigo-600 dark:text-indigo-400">
-                        {sal?.commissionRate ? `${sal.commissionRate}%` : '0%'}
+                        {sal?.commissionRate ? `${sal.commissionRate}%` : "0%"}
                       </td>
                       <td className="p-3.5 font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                        {sal?.bonus ? `${sal.bonus.toLocaleString()} ج.م` : '0 ج.م'}
+                        {sal?.bonus
+                          ? `${sal.bonus.toLocaleString()} ج.م`
+                          : "0 ج.م"}
                       </td>
                       <td className="p-3.5 font-bold font-mono text-red-600 dark:text-red-400">
-                        {sal?.deductions ? `${sal.deductions.toLocaleString()} ج.م` : '0 ج.م'}
+                        {sal?.deductions
+                          ? `${sal.deductions.toLocaleString()} ج.م`
+                          : "0 ج.م"}
                       </td>
-                      <td className="p-3.5 font-mono text-slate-500 text-[11px]">{sal?.effectiveDate || '—'}</td>
+                      <td className="p-3.5 font-mono text-slate-500 text-[11px]">
+                        {sal?.effectiveDate || "—"}
+                      </td>
                       <td className="p-3.5 text-center">
-                        <button
-                          onClick={() => openEditEmployeeModal(u)}
-                          className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 rounded-lg font-semibold text-xs transition-colors cursor-pointer"
-                        >
-                          تعديل المسير المالي
-                        </button>
+                        {canEditStaff(effectiveUser, u, branches) && (
+                          <button
+                            onClick={() => openEditEmployeeModal(u)}
+                            className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 rounded-lg font-semibold text-xs transition-colors cursor-pointer"
+                          >
+                            تعديل المسير المالي
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -699,16 +773,26 @@ export const StaffUsersPage: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto my-8">
             <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base pb-3 border-b border-slate-100 dark:border-slate-800 mb-4 flex items-center justify-between">
-              <span>{editingUser ? `تعديل بيانات الموظف: ${editingUser.name}` : 'إنشاء حساب موظف جديد'}</span>
-              <span className="text-xs font-normal text-slate-400">مؤسسة EL.BEHERY</span>
+              <span>
+                {editingUser
+                  ? `تعديل بيانات الموظف: ${editingUser.name}`
+                  : "إنشاء حساب موظف جديد"}
+              </span>
+              <span className="text-xs font-normal text-slate-400">
+                مؤسسة EL.BEHERY
+              </span>
             </h3>
 
             <form onSubmit={handleEmployeeSubmit} className="space-y-4 text-xs">
               {/* Basic Info */}
               <div className="space-y-3">
-                <h4 className="font-bold text-indigo-600 dark:text-indigo-400 text-xs">1. البيانات الشخصية وحساب الدخول</h4>
+                <h4 className="font-bold text-indigo-600 dark:text-indigo-400 text-xs">
+                  1. البيانات الشخصية وحساب الدخول
+                </h4>
                 <div>
-                  <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">اسم الموظف الثلاثي/الكامل *</label>
+                  <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    اسم الموظف الثلاثي/الكامل *
+                  </label>
                   <input
                     type="text"
                     required
@@ -720,7 +804,9 @@ export const StaffUsersPage: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">البريد الإلكتروني *</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      البريد الإلكتروني *
+                    </label>
                     <input
                       type="email"
                       required
@@ -730,24 +816,10 @@ export const StaffUsersPage: React.FC = () => {
                     />
                   </div>
 
-                  {(!editingUser || !editingUser.authUid) && (
-                    <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">كلمة مرور الدخول</label>
-                      <input
-                        type="password"
-                        dir="ltr"
-                        minLength={6}
-                        autoComplete="new-password"
-                        placeholder="6 أحرف على الأقل (اتركها فارغة لعدم إنشاء حساب دخول)"
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-                      />
-                    </div>
-                  )}
-
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">رقم الهاتف التواصل *</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      رقم الهاتف التواصل *
+                    </label>
                     <input
                       type="tel"
                       required
@@ -759,30 +831,80 @@ export const StaffUsersPage: React.FC = () => {
                 </div>
               </div>
 
+              {isDirector(effectiveUser) &&
+                ["supervisor", "regional_manager"].includes(role) && (
+                  <section className="panel" style={{ padding: 16 }}>
+                    {role === "supervisor" && (
+                      <label className="field">
+                        <span>اختصاص المشرف</span>
+                        <select
+                          aria-label="اختصاص المشرف"
+                          value={specialty}
+                          onChange={(e) =>
+                            setSpecialty(e.target.value as Specialty)
+                          }
+                        >
+                          {Object.entries(specialties).map(([id, label]) => (
+                            <option key={id} value={id}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    <p>
+                      الفروع المشمولـة بالإشراف{" "}
+                      {role === "regional_manager"
+                        ? "(تركها فارغة يعني كل الفروع)"
+                        : "(اختر الفروع؛ عند تركها فارغة يكون النطاق هو الفرع المسجل فقط)"}
+                    </p>
+                    {branches.map((b) => (
+                      <label className="checkbox-line" key={b.id}>
+                        <input
+                          type="checkbox"
+                          checked={supervisedBranchIds.includes(b.id)}
+                          onChange={(e) =>
+                            setSupervisedBranchIds((prev) =>
+                              e.target.checked
+                                ? [...prev, b.id]
+                                : prev.filter((id) => id !== b.id),
+                            )
+                          }
+                        />
+                        {b.name}
+                      </label>
+                    ))}
+                  </section>
+                )}
               {/* Role & Org Position */}
               <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <h4 className="font-bold text-indigo-600 dark:text-indigo-400 text-xs">2. المسمى الوظيفي والتبعية الإدارية</h4>
+                <h4 className="font-bold text-indigo-600 dark:text-indigo-400 text-xs">
+                  2. المسمى الوظيفي والتبعية الإدارية
+                </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الدور الوظيفي والصلاحيات *</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      الدور الوظيفي والصلاحيات *
+                    </label>
                     <select
+                      aria-label="المنصب"
                       value={role}
                       onChange={(e) => setRole(e.target.value as UserRole)}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-semibold"
                     >
-                      <option value="sales_agent">مسؤول مبيعات (Sales Agent)</option>
-                      <option value="team_leader">قائد فريق (Team Leader)</option>
-                      <option value="supervisor">مشرف قسم (Supervisor)</option>
-                      <option value="branch_manager">مدير فرع (Branch Manager)</option>
-                      <option value="regional_manager">مدير إقليمي / محافظة (Regional Manager)</option>
-                      <option value="general_manager">المدير العام (General Manager)</option>
-                      {effectiveUser.role === 'admin' && <option value="admin">مدير نظام (Admin)</option>}
+                      {assignableRoles(effectiveUser).map((r) => (
+                        <option key={r} value={r}>
+                          {positionNames[r]}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">المحافطة / الإقليم *</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      المحافطة / الإقليم *
+                    </label>
                     <select
                       value={governorateId}
                       onChange={(e) => setGovernorateId(e.target.value)}
@@ -799,10 +921,21 @@ export const StaffUsersPage: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الفرع المباشر *</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      الفرع المباشر *
+                    </label>
                     <select
                       value={branchId}
-                      onChange={(e) => setBranchId(e.target.value)}
+                      onChange={(e) => {
+                        setBranchId(e.target.value);
+                        setTeamId("");
+                        setDirectManagerId("");
+                        const branch = branches.find(
+                          (b) => b.id === e.target.value,
+                        );
+                        setGovernorateId(branch?.governorateId || "");
+                        setCompanyId(branch?.companyId || "");
+                      }}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-semibold"
                     >
                       {branches.map((b) => (
@@ -814,10 +947,15 @@ export const StaffUsersPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">القسم الداخلي</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      القسم الداخلي
+                    </label>
                     <select
                       value={departmentId}
-                      onChange={(e) => setDepartmentId(e.target.value)}
+                      onChange={(e) => {
+                        setDepartmentId(e.target.value);
+                        setJobPositionId("");
+                      }}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                     >
                       <option value="">اختر القسم</option>
@@ -832,23 +970,31 @@ export const StaffUsersPage: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">المسمى الوظيفي المحدد</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      المسمى الوظيفي المحدد
+                    </label>
                     <select
                       value={jobPositionId}
                       onChange={(e) => setJobPositionId(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                     >
                       <option value="">اختر الوظيفة</option>
-                      {jobPositions.map((j) => (
-                        <option key={j.id} value={j.id}>
-                          {j.title} ({j.departmentName || 'عام'})
-                        </option>
-                      ))}
+                      {jobPositions
+                        .filter(
+                          (j) => j.active && j.departmentId === departmentId,
+                        )
+                        .map((j) => (
+                          <option key={j.id} value={j.id}>
+                            {j.title} ({j.departmentName || "عام"})
+                          </option>
+                        ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">المسؤول الإداري المباشر</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      المسؤول الإداري المباشر
+                    </label>
                     <select
                       value={directManagerId}
                       onChange={(e) => setDirectManagerId(e.target.value)}
@@ -856,10 +1002,16 @@ export const StaffUsersPage: React.FC = () => {
                     >
                       <option value="">بدون مدير مباشر أعلى</option>
                       {users
-                        .filter((u) => u.id !== editingUser?.id)
+                        .filter(
+                          (u) =>
+                            u.active &&
+                            u.id !== editingUser?.id &&
+                            !["sales_agent", "team_leader"].includes(u.role) &&
+                            (!u.branchId || u.branchId === branchId),
+                        )
                         .map((u) => (
                           <option key={u.id} value={u.id}>
-                            {u.name} ({u.role})
+                            {u.name} ({positionNames[u.role]})
                           </option>
                         ))}
                     </select>
@@ -872,12 +1024,16 @@ export const StaffUsersPage: React.FC = () => {
                 <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
                   <h4 className="font-bold text-emerald-700 dark:text-emerald-400 text-xs flex items-center gap-1.5">
                     <DollarSign className="w-4 h-4" />
-                    <span>3. البيانات المالية والرواتب والعمولات (صلاحية خاصة)</span>
+                    <span>
+                      3. البيانات المالية والرواتب والعمولات (صلاحية خاصة)
+                    </span>
                   </h4>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الراتب الأساسي (ج.م)</label>
+                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                        الراتب الأساسي (ج.م)
+                      </label>
                       <input
                         type="number"
                         min="0"
@@ -888,14 +1044,18 @@ export const StaffUsersPage: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">نسبة العمولات %</label>
+                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                        نسبة العمولات %
+                      </label>
                       <input
                         type="number"
                         step="0.1"
                         min="0"
                         max="100"
                         value={commissionRate}
-                        onChange={(e) => setCommissionRate(Number(e.target.value))}
+                        onChange={(e) =>
+                          setCommissionRate(Number(e.target.value))
+                        }
                         className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-bold font-mono"
                       />
                     </div>
@@ -903,7 +1063,9 @@ export const StaffUsersPage: React.FC = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الحوافز والمكافآت (ج.م)</label>
+                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                        الحوافز والمكافآت (ج.م)
+                      </label>
                       <input
                         type="number"
                         min="0"
@@ -914,7 +1076,9 @@ export const StaffUsersPage: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الخصومات المعتمدة (ج.م)</label>
+                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                        الخصومات المعتمدة (ج.م)
+                      </label>
                       <input
                         type="number"
                         min="0"
@@ -925,7 +1089,9 @@ export const StaffUsersPage: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">تاريخ بداية السريان</label>
+                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                        تاريخ بداية السريان
+                      </label>
                       <input
                         type="date"
                         value={effectiveDate}
@@ -936,7 +1102,9 @@ export const StaffUsersPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">ملاحظات التعديل المالي</label>
+                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      ملاحظات التعديل المالي
+                    </label>
                     <input
                       type="text"
                       placeholder="مثال: زيادة استثنائية أو تعديل عمولات البيع..."
@@ -960,7 +1128,7 @@ export const StaffUsersPage: React.FC = () => {
                   type="submit"
                   className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md shadow-indigo-600/20 cursor-pointer"
                 >
-                  {editingUser ? 'حفظ التعديلات' : 'إنشاء حساب الموظف'}
+                  {editingUser ? "حفظ التعديلات" : "إنشاء حساب الموظف"}
                 </button>
               </div>
             </form>
@@ -974,11 +1142,14 @@ export const StaffUsersPage: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
             <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
               <History className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <span>سجل التغييرات المالية: {viewingSalaryHistoryUser.name}</span>
+              <span>
+                سجل التغييرات المالية: {viewingSalaryHistoryUser.name}
+              </span>
             </h3>
 
             <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {viewingSalaryHistoryUser.salaryInfo?.history && viewingSalaryHistoryUser.salaryInfo.history.length > 0 ? (
+              {viewingSalaryHistoryUser.salaryInfo?.history &&
+              viewingSalaryHistoryUser.salaryInfo.history.length > 0 ? (
                 viewingSalaryHistoryUser.salaryInfo.history.map((h) => (
                   <div
                     key={h.id}
@@ -986,17 +1157,28 @@ export const StaffUsersPage: React.FC = () => {
                   >
                     <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100">
                       <span>الراتب: {h.baseSalary.toLocaleString()} ج.م</span>
-                      <span className="text-indigo-600 dark:text-indigo-400">العمولة: {h.commissionRate}%</span>
+                      <span className="text-indigo-600 dark:text-indigo-400">
+                        العمولة: {h.commissionRate}%
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-slate-500">
                       <span>بواسطة: {h.updatedByName}</span>
-                      <span>التاريخ: {new Date(h.updatedAt).toLocaleDateString('ar-EG')}</span>
+                      <span>
+                        التاريخ:{" "}
+                        {new Date(h.updatedAt).toLocaleDateString("ar-EG")}
+                      </span>
                     </div>
-                    {h.notes && <p className="text-[11px] text-slate-600 dark:text-slate-300 italic">{h.notes}</p>}
+                    {h.notes && (
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300 italic">
+                        {h.notes}
+                      </p>
+                    )}
                   </div>
                 ))
               ) : (
-                <p className="text-xs text-slate-500 py-4 text-center">لا توجد سجلات تاريخية سابقة للمسير المالي.</p>
+                <p className="text-xs text-slate-500 py-4 text-center">
+                  لا توجد سجلات تاريخية سابقة للمسير المالي.
+                </p>
               )}
             </div>
 
@@ -1021,7 +1203,9 @@ export const StaffUsersPage: React.FC = () => {
             </h3>
             <form onSubmit={handleAddDept} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">اسم القسم *</label>
+                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  اسم القسم *
+                </label>
                 <input
                   type="text"
                   required
@@ -1033,7 +1217,9 @@ export const StaffUsersPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">كود القسم</label>
+                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  كود القسم
+                </label>
                 <input
                   type="text"
                   placeholder="مثال: DECOR"
@@ -1044,7 +1230,9 @@ export const StaffUsersPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الوصف والمهام</label>
+                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  الوصف والمهام
+                </label>
                 <textarea
                   rows={2}
                   value={newDeptDesc}
@@ -1061,7 +1249,10 @@ export const StaffUsersPage: React.FC = () => {
                 >
                   إلغاء
                 </button>
-                <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold">
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold"
+                >
                   إضافة القسم
                 </button>
               </div>
@@ -1079,7 +1270,9 @@ export const StaffUsersPage: React.FC = () => {
             </h3>
             <form onSubmit={handleAddJob} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">المسمى الوظيفي *</label>
+                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  المسمى الوظيفي *
+                </label>
                 <input
                   type="text"
                   required
@@ -1091,7 +1284,9 @@ export const StaffUsersPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">القسم التابع له *</label>
+                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  القسم التابع له *
+                </label>
                 <select
                   value={newJobDeptId}
                   onChange={(e) => setNewJobDeptId(e.target.value)}
@@ -1113,7 +1308,10 @@ export const StaffUsersPage: React.FC = () => {
                 >
                   إلغاء
                 </button>
-                <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold">
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold"
+                >
                   إضافة الوظيفة
                 </button>
               </div>

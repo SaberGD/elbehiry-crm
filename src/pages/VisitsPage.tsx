@@ -1,25 +1,51 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useCRM } from '../context/CRMContext';
-import { useLanguage } from '../context/LanguageContext';
-import { Visit, LeadSource, Department, InvoiceLineItem } from '../types/crm';
-import { PurchaseCategorySelector } from '../components/common/PurchaseCategorySelector';
-import { Compass, Search, PlusCircle, Calendar, User, Phone, MessageSquare, Star, Building, Paintbrush, Trees, Layers, Send } from 'lucide-react';
+import { hasPermission } from "../lib/permissions";
+import { canCreateCustomer } from "../lib/access";
+import React, { useState, useMemo, useEffect } from "react";
+import { useCRM } from "../context/CRMContext";
+import { useLanguage } from "../context/LanguageContext";
+import { Visit, LeadSource, Department, InvoiceLineItem } from "../types/crm";
+import { PurchaseCategorySelector } from "../components/common/PurchaseCategorySelector";
+import {
+  Compass,
+  Search,
+  PlusCircle,
+  Calendar,
+  User,
+  Phone,
+  MessageSquare,
+  Star,
+  Building,
+  Paintbrush,
+  Trees,
+  Layers,
+  Send,
+} from "lucide-react";
 
 interface VisitsPageProps {
   onOpenLead: (leadId: string) => void;
 }
 
 export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
-  const { effectiveUser, visits, branches, users, leads, addVisit, addPurchaseInvoice } = useCRM();
+  const {
+    effectiveUser,
+    visits,
+    branches,
+    users,
+    leads,
+    addVisit,
+    addPurchaseInvoice,
+  } = useCRM();
   const { t } = useLanguage();
 
   const [showForm, setShowForm] = useState(false);
-  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
-  const [visitorName, setVisitorName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [customerSearchTerm, setCustomerSearchTerm] = useState("");
+  const [visitorName, setVisitorName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [whatsappPhone, setWhatsappPhone] = useState("");
   const [isSameWhatsApp, setIsSameWhatsApp] = useState(true);
-  const [branchId, setBranchId] = useState(effectiveUser.branchId || branches[0]?.id || '');
+  const [branchId, setBranchId] = useState(
+    effectiveUser.branchId || branches[0]?.id || "",
+  );
   const [receivedByAgentId, setReceivedByAgentId] = useState(effectiveUser.id);
 
   // Sync default branch to current logged-in employee branch
@@ -28,27 +54,29 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
       setBranchId(effectiveUser.branchId);
     }
   }, [effectiveUser.branchId]);
-  const [source, setSource] = useState<LeadSource>('walk_in');
-  const [department, setDepartment] = useState<Department>('decor');
-  const [reason, setReason] = useState('');
-  const [outcome, setOutcome] = useState('');
-  const [locationRating, setLocationRating] = useState<number>(5);
-  const [treatmentRating, setTreatmentRating] = useState<number>(5);
-  const [priceRating, setPriceRating] = useState<number>(4);
-  const [notes, setNotes] = useState('');
+  const [source, setSource] = useState<LeadSource>("walk_in");
+  const [department, setDepartment] = useState<Department>("decor");
+  const [reason, setReason] = useState("");
+  const [outcome, setOutcome] = useState("");
+  const [locationRating, setLocationRating] = useState<number>(0);
+  const [treatmentRating, setTreatmentRating] = useState<number>(0);
+  const [priceRating, setPriceRating] = useState<number>(0);
+  const [notes, setNotes] = useState("");
   const [requiresFollowUp, setRequiresFollowUp] = useState(false);
-  const [followUpDate, setFollowUpDate] = useState('');
-  const [visitorPurchaseItems, setVisitorPurchaseItems] = useState<InvoiceLineItem[]>([]);
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [visitorPurchaseItems, setVisitorPurchaseItems] = useState<
+    InvoiceLineItem[]
+  >([]);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Search existing customers for pre-filling visitor
   const matchingCustomers = useMemo(() => {
     if (!customerSearchTerm.trim()) return [];
     const q = customerSearchTerm.toLowerCase();
-    return leads.filter(
-      (l) => l.name.toLowerCase().includes(q) || l.phone.includes(q)
-    ).slice(0, 5);
+    return leads
+      .filter((l) => l.name.toLowerCase().includes(q) || l.phone.includes(q))
+      .slice(0, 5);
   }, [customerSearchTerm, leads]);
 
   const selectExistingCustomer = (l: any) => {
@@ -56,14 +84,14 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
     setPhone(l.phone);
     if (l.branchId) setBranchId(l.branchId);
     if (l.assignedAgentId) setReceivedByAgentId(l.assignedAgentId);
-    setCustomerSearchTerm('');
+    setCustomerSearchTerm("");
   };
 
   const deptLabels: Record<Department, string> = {
-    construction: '🏗️ قسم الإنشائي والمقاولات',
-    decor: '🎨 قسم الديكورات والدهانات',
-    garden: '🌿 قسم البستان واللاندسكيب',
-    general: '📦 قسم المتنوع والخدمات',
+    construction: "🏗️ قسم الإنشائي والمقاولات",
+    decor: "🎨 قسم الديكورات والدهانات",
+    garden: "🌿 قسم البستان واللاندسكيب",
+    general: "📦 قسم المتنوع والخدمات",
   };
 
   const handlePhoneChange = (val: string) => {
@@ -75,16 +103,33 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
 
   const handleAddVisit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateCustomer(effectiveUser)) return;
+    if (
+      !users.some(
+        (u) =>
+          u.id === receivedByAgentId && u.active && u.branchId === branchId,
+      )
+    ) {
+      alert("اختَر موظفًا نشطًا من نفس الفرع.");
+      return;
+    }
 
     const todayStr = new Date().toISOString().slice(0, 10);
-    const timeStr = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = new Date().toLocaleTimeString("ar-EG", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
     // Append purchase summary to visit notes if any exists
     const validItems = visitorPurchaseItems.filter((i) => i.amount > 0);
-    const totalPurchase = validItems.reduce((s, i) => s + (Number(i.amount) || 0), 0);
-    const purchaseNoteStr = validItems.length > 0
-      ? ` | المشتريات بالفرع: ${validItems.map((i) => `${i.categoryName}: ${i.amount} ج.م`).join('، ')} (الإجمالي: ${totalPurchase} ج.م)`
-      : '';
+    const totalPurchase = validItems.reduce(
+      (s, i) => s + (Number(i.amount) || 0),
+      0,
+    );
+    const purchaseNoteStr =
+      validItems.length > 0
+        ? ` | المشتريات بالفرع: ${validItems.map((i) => `${i.categoryName}: ${i.amount} ج.م`).join("، ")} (الإجمالي: ${totalPurchase} ج.م)`
+        : "";
 
     const createdVisit = addVisit({
       visitorName,
@@ -96,12 +141,12 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
       receivedByAgentId,
       source,
       department,
-      locationRating,
-      treatmentRating,
-      priceRating,
+      locationRating: locationRating || undefined,
+      treatmentRating: treatmentRating || undefined,
+      priceRating: priceRating || undefined,
       reason,
       outcome,
-      notes: (notes || '') + purchaseNoteStr,
+      notes: (notes || "") + purchaseNoteStr,
       hasPreviousRecord: false,
       requiresFollowUp,
       followUpAgentId: receivedByAgentId,
@@ -114,29 +159,29 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
       const agentObj = users.find((u) => u.id === receivedByAgentId);
       addPurchaseInvoice({
         date: todayStr,
-        leadId: createdVisit.id,
+        leadId: createdVisit.linkedLeadId!,
         leadName: visitorName,
         leadPhone: phone,
         branchId,
-        branchName: branchObj?.name || 'الفرع الرئيسي',
+        branchName: branchObj?.name || "الفرع الرئيسي",
         agentId: receivedByAgentId,
         agentName: agentObj?.name || effectiveUser.name,
         items: validItems,
         totalAmount: totalPurchase,
-        status: 'paid',
+        status: "draft",
         notes: `فاتورة مبيعات زائر بالفرع بتاريخ ${todayStr}`,
       });
     }
 
     // Reset Form
-    setVisitorName('');
-    setPhone('');
-    setWhatsappPhone('');
-    setReason('');
-    setOutcome('');
-    setNotes('');
+    setVisitorName("");
+    setPhone("");
+    setWhatsappPhone("");
+    setReason("");
+    setOutcome("");
+    setNotes("");
     setRequiresFollowUp(false);
-    setFollowUpDate('');
+    setFollowUpDate("");
     setVisitorPurchaseItems([]);
     setShowForm(false);
   };
@@ -149,7 +194,9 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
           type="button"
           onClick={() => onChange(star)}
           className={`p-1 rounded transition-colors cursor-pointer ${
-            star <= value ? 'text-amber-400' : 'text-slate-300 dark:text-slate-700'
+            star <= value
+              ? "text-amber-400"
+              : "text-slate-300 dark:text-slate-700"
           }`}
         >
           <Star className="w-4 h-4 fill-current" />
@@ -179,17 +226,20 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
             <span>تسجيل الزيارات والاستفسارات بمقرات الفروع</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            تسجيل وتوثيق كل شخص يزور الفرع أو يستفسر عن الخدمات حتى لو لم يقم بالحجز المباشر
+            تسجيل وتوثيق كل شخص يزور الفرع أو يستفسر عن الخدمات حتى لو لم يقم
+            بالحجز المباشر
           </p>
         </div>
 
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer min-h-[40px] justify-center"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>{showForm ? 'إغلاق النموذج' : 'تسجيل زيارة فرع جديدة'}</span>
-        </button>
+        {canCreateCustomer(effectiveUser) && (
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer min-h-[40px] justify-center"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>{showForm ? "إغلاق النموذج" : "تسجيل زيارة فرع جديدة"}</span>
+          </button>
+        )}
       </div>
 
       {/* New Visit Form */}
@@ -225,8 +275,12 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
                     className="w-full text-right p-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors flex items-center justify-between cursor-pointer"
                   >
                     <div>
-                      <span className="font-bold text-slate-900 dark:text-slate-100 block">{mc.name}</span>
-                      <span className="text-[11px] text-slate-500 font-mono-numbers">{mc.phone}</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                        {mc.name}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-mono-numbers">
+                        {mc.phone}
+                      </span>
                     </div>
                     <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full font-bold">
                       تعبئة بيانات الزائر
@@ -239,7 +293,9 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">اسم الزائر الكامل *</label>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                اسم الزائر الكامل *
+              </label>
               <input
                 type="text"
                 required
@@ -251,7 +307,9 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
             </div>
 
             <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">رقم الهاتف الرئيسي</label>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                رقم الهاتف الرئيسي
+              </label>
               <input
                 type="tel"
                 value={phone}
@@ -289,10 +347,15 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
             </div>
 
             <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الفرع الذي تمت زيارته *</label>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                الفرع الذي تمت زيارته *
+              </label>
               <select
                 value={branchId}
-                onChange={(e) => setBranchId(e.target.value)}
+                onChange={(e) => {
+                  setBranchId(e.target.value);
+                  setReceivedByAgentId("");
+                }}
                 className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
               >
                 {branches.map((b) => (
@@ -304,22 +367,37 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
             </div>
 
             <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">الموظف المستقبل *</label>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                الموظف المستقبل *
+              </label>
               <select
+                disabled={effectiveUser.role === "sales_agent"}
                 value={receivedByAgentId}
                 onChange={(e) => setReceivedByAgentId(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
               >
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} ({u.branchName || 'عام'})
-                  </option>
-                ))}
+                <option value="">اختر الموظف المسؤول</option>
+                {users
+                  .filter(
+                    (u) =>
+                      u.active &&
+                      u.branchId === branchId &&
+                      ["sales_agent", "branch_manager", "supervisor"].includes(
+                        u.role,
+                      ),
+                  )
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.branchName || "عام"})
+                    </option>
+                  ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">القسم محل الاستفسار *</label>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                القسم محل الاستفسار *
+              </label>
               <select
                 value={department}
                 onChange={(e) => setDepartment(e.target.value as Department)}
@@ -333,7 +411,9 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
             </div>
 
             <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">مصدر الزيارة</label>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                مصدر الزيارة
+              </label>
               <select
                 value={source}
                 onChange={(e) => setSource(e.target.value as LeadSource)}
@@ -350,19 +430,23 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">سبب الزيارة بالتفصيل *</label>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                سبب الزيارة بالتفصيل *
+              </label>
               <input
                 type="text"
                 required
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="مثال: حضر لمعرفة مواعيد كورس الذكاء الاصطناعي ومعاينة القاعات"
+                placeholder="مثال: حضر لمعاينة درجات الدهانات وطلب عرض سعر"
                 className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
               />
             </div>
 
             <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">نتيجة الزيارة *</label>
+              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
+                نتيجة الزيارة *
+              </label>
               <input
                 type="text"
                 required
@@ -375,18 +459,21 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
           </div>
 
           {/* Purchase Categories & Prices for Visitor Purchases */}
-          <PurchaseCategorySelector
-            items={visitorPurchaseItems}
-            onChange={setVisitorPurchaseItems}
-            isOptional={true}
-            title="مشتريات/تعاقدات الزائر بالفرع (اختياري)"
-            subtitle="إذا قام الزائر بشراء منتجات/خدمات أثناء الزيارة، حدد التصنيفات والأسعار بالجنيه المصري (EGP)"
-          />
+          {hasPermission(effectiveUser, "invoices.manage") && (
+            <PurchaseCategorySelector
+              items={visitorPurchaseItems}
+              onChange={setVisitorPurchaseItems}
+              isOptional={true}
+              title="مشتريات/تعاقدات الزائر بالفرع (اختياري)"
+              subtitle="إذا قام الزائر بشراء منتجات/خدمات أثناء الزيارة، حدد التصنيفات والأسعار بالجنيه المصري (EGP)"
+            />
+          )}
 
           <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800 dark:text-slate-200">
               <input
                 type="checkbox"
+                disabled={!hasPermission(effectiveUser, "followups.create")}
                 checked={requiresFollowUp}
                 onChange={(e) => setRequiresFollowUp(e.target.checked)}
                 className="w-4 h-4 text-indigo-600 rounded"
@@ -396,7 +483,9 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
 
             {requiresFollowUp && (
               <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-700 dark:text-slate-300">موعد المتابعة:</span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  موعد المتابعة:
+                </span>
                 <input
                   type="datetime-local"
                   required
@@ -459,22 +548,40 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredVisits.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">
+                  <td
+                    colSpan={8}
+                    className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs"
+                  >
                     لا توجد زيارات مسجلة تطابق البحث
                   </td>
                 </tr>
               ) : (
                 filteredVisits.map((v) => (
-                  <tr key={v.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                    <td className="p-3.5 font-bold text-slate-900 dark:text-slate-100">{v.visitorName}</td>
-                    <td className="p-3.5 font-mono-numbers text-slate-700 dark:text-slate-300">{v.phone || '—'}</td>
+                  <tr
+                    key={v.id}
+                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                  >
+                    <td className="p-3.5 font-bold text-slate-900 dark:text-slate-100">
+                      {v.visitorName}
+                    </td>
+                    <td className="p-3.5 font-mono-numbers text-slate-700 dark:text-slate-300">
+                      {v.phone || "—"}
+                    </td>
                     <td className="p-3.5 font-mono-numbers text-indigo-700 dark:text-indigo-400 font-semibold">
                       {v.date} {v.time}
                     </td>
-                    <td className="p-3.5 text-slate-700 dark:text-slate-300">{v.branchName}</td>
-                    <td className="p-3.5 text-slate-800 dark:text-slate-200 max-w-xs truncate">{v.reason}</td>
-                    <td className="p-3.5 text-emerald-700 dark:text-emerald-400 font-medium max-w-xs truncate">{v.outcome}</td>
-                    <td className="p-3.5 text-slate-600 dark:text-slate-400">{v.receivedByAgentName}</td>
+                    <td className="p-3.5 text-slate-700 dark:text-slate-300">
+                      {v.branchName}
+                    </td>
+                    <td className="p-3.5 text-slate-800 dark:text-slate-200 max-w-xs truncate">
+                      {v.reason}
+                    </td>
+                    <td className="p-3.5 text-emerald-700 dark:text-emerald-400 font-medium max-w-xs truncate">
+                      {v.outcome}
+                    </td>
+                    <td className="p-3.5 text-slate-600 dark:text-slate-400">
+                      {v.receivedByAgentName}
+                    </td>
                     <td className="p-3.5 text-center">
                       {v.linkedLeadId ? (
                         <button
@@ -484,7 +591,9 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
                           سجل العميل
                         </button>
                       ) : (
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">زائر عام</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                          زائر عام
+                        </span>
                       )}
                     </td>
                   </tr>

@@ -25,7 +25,7 @@ export interface FontPreference {
 
 export const FONT_OPTIONS = [
   { id: 'Readex Pro', name: 'Readex Pro', desc: 'افتراضي - عصري، متوازن وواضح جداً', family: "'Readex Pro', sans-serif" },
-  { id: 'Tajawal', name: 'تجامع (Tajawal)', desc: 'أنيق وخفيف، ممتاز للواجهات العربية', family: "'Tajawal', sans-serif" },
+  { id: 'Tajawal', name: 'تجوال (Tajawal)', desc: 'أنيق وخفيف، ممتاز للواجهات العربية', family: "'Tajawal', sans-serif" },
   { id: 'Cairo', name: 'كايرو (Cairo)', desc: 'خط هندسي عربي عريض ومقروء لمختلف الأعمار', family: "'Cairo', sans-serif" },
   { id: 'Almarai', name: 'المرعي (Almarai)', desc: 'خط شاشة رقمي دقيق ومتزن', family: "'Almarai', sans-serif" },
   { id: 'Alexandria', name: 'الإسكندرية (Alexandria)', desc: 'خط عصري فاخر ذو حضور قوي', family: "'Alexandria', sans-serif" },

@@ -1,141 +1,206 @@
-import React from 'react';
-import { useCRM } from '../context/CRMContext';
-import { useLanguage } from '../context/LanguageContext';
-import { BarChart3, TrendingUp, Users, ShoppingBag, Award, Building2, Calendar } from 'lucide-react';
-
-export const ReportsPage: React.FC = () => {
-  const { effectiveUser, leads, visits, followUps, bookings, branches, users } = useCRM();
-  const { t } = useLanguage();
-
-  const role = effectiveUser.role;
-
-  // Scoped Data
-  const scopedLeads = leads.filter((l) => {
-    if (role === 'admin') return true;
-    if (role === 'branch_manager' || role === 'supervisor') return l.branchId === effectiveUser.branchId;
-    if (role === 'team_leader') return l.branchId === effectiveUser.branchId && l.teamId === effectiveUser.teamId;
-    return l.assignedAgentId === effectiveUser.id;
-  });
-
-  const scopedBookings = bookings.filter((b) => {
-    if (role === 'admin') return true;
-    if (role === 'branch_manager' || role === 'supervisor') return b.branchId === effectiveUser.branchId;
-    if (role === 'team_leader') return b.branchId === effectiveUser.branchId;
-    return b.agentId === effectiveUser.id;
-  });
-
-  const totalRevenue = scopedBookings.reduce((sum, b) => sum + b.amount, 0);
-  const conversionRate = scopedLeads.length > 0 ? Math.round((scopedBookings.length / scopedLeads.length) * 100) : 0;
-
-  // Source breakdown
-  const sourceBreakdown = scopedLeads.reduce((acc, l) => {
-    acc[l.source] = (acc[l.source] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
+import { useCRM } from "../context/CRMContext";
+import { hasPermission } from "../lib/permissions";
+import { isSales, scopeLabel } from "../lib/access";
+import { followUpStatus, formatMoney, sourceNames } from "../lib/presentation";
+export function ReportsPage() {
+  const {
+    effectiveUser: u,
+    leads,
+    bookings,
+    followUps,
+    purchaseInvoices,
+    branches,
+  } = useCRM();
+  const has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
+  const contracts = bookings.filter((b) => b.bookingStatus !== "cancelled");
+  const converted = new Set(
+    contracts
+      .filter((b) => leads.some((l) => l.id === b.leadId))
+      .map((b) => b.leadId),
+  ).size;
+  const metrics = [
+    {
+      allowed: has("customers.view"),
+      name: "العملاء",
+      value: leads.length,
+      note: "داخل نطاق العمل",
+    },
+    {
+      allowed: has("customers.view") && has("bookings.view"),
+      name: "عملاء لديهم تعاقد",
+      value: leads.length
+        ? `${Math.round((converted / leads.length) * 100)}%`
+        : "—",
+      note: `${converted} عميل من أصل ${leads.length}`,
+    },
+    {
+      allowed: has("bookings.view"),
+      name: "قيمة التعاقدات",
+      value: `${formatMoney(contracts.reduce((s, b) => s + b.amount, 0))} ج.م`,
+      note: "باستبعاد الملغى · ليست قيمة التحصيل",
+    },
+    {
+      allowed: has("followups.view"),
+      name: "المتابعات المكتملة",
+      value: followUps.filter((f) => f.status === "completed").length,
+      note: `من أصل ${followUps.filter((f) => f.status !== "cancelled").length} متابعة غير ملغاة`,
+    },
+    {
+      allowed: has("invoices.view"),
+      name: "فواتير في انتظار السداد",
+      value: purchaseInvoices.filter((i) =>
+        ["draft", "partial"].includes(i.status),
+      ).length,
+      note: "مسودات ومدفوعة جزئيًا",
+    },
+  ];
   return (
-    <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-150">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-          <span>التقارير الإحصائية ومؤشرات الأداء (KPIs)</span>
-        </h1>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          تحليلات رقمية حقيقية لنطاق عملك الحالي ({t(`role.${role}`)})
-        </p>
-      </div>
-
-      {/* Primary KPI Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-card p-5 rounded-2xl shadow-xs">
-          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">إجمالي إيرادات المبيعات</div>
-          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2 font-mono-numbers">
-            {totalRevenue.toLocaleString('ar-EG')} ج.م
-          </div>
-          <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 font-mono-numbers">{scopedBookings.length} عملية حجز مؤكدة</div>
-        </div>
-
-        <div className="glass-card p-5 rounded-2xl shadow-xs">
-          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">معدل التحويل (Lead Conversion)</div>
-          <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-2 font-mono-numbers">{conversionRate}%</div>
-          <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 font-mono-numbers">من أصل {scopedLeads.length} عميل محتمل</div>
-        </div>
-
-        <div className="glass-card p-5 rounded-2xl shadow-xs">
-          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">الزيارات والاستفسارات الميدانية</div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-2 font-mono-numbers">{visits.length}</div>
-          <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">مسجلة بمقرات الفروع</div>
-        </div>
-
-        <div className="glass-card p-5 rounded-2xl shadow-xs">
-          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">إجمالي المتابعات المنجزة</div>
-          <div className="text-2xl font-bold text-teal-600 dark:text-teal-400 mt-2 font-mono-numbers">
-            {followUps.filter((f) => f.status === 'completed').length}
-          </div>
-          <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 font-mono-numbers">مكالمات وزيارات منفذة</div>
+    <div>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">الأرقام في سياقها</span>
+          <h1>{isSales(u) ? "أدائي" : "تقارير نطاق العمل"}</h1>
+          <p>{scopeLabel(u)} · جميع الفترات · المؤشرات المتاحة لصلاحياتك</p>
         </div>
       </div>
-
-      {/* Analysis Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Lead Sources Breakdown */}
-        <div className="glass-card rounded-2xl p-5 shadow-xs">
-          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm mb-4 flex items-center gap-2">
-            <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>توزيع العملاء حسب مصادر الحملات والاستفسارات</span>
-          </h3>
-
-          <div className="space-y-3">
-            {Object.entries(sourceBreakdown).map(([source, count]) => {
-              const pct = scopedLeads.length > 0 ? Math.round((count / scopedLeads.length) * 100) : 0;
-              return (
-                <div key={source} className="space-y-1">
-                  <div className="flex justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
-                    <span className="capitalize">{source}</span>
-                    <span className="font-mono-numbers text-indigo-700 dark:text-indigo-400">{count} عميل ({pct}%)</span>
+      <div className="metric-grid">
+        {metrics
+          .filter((m) => m.allowed)
+          .map((m) => (
+            <div className="metric" key={m.name}>
+              <span className="metric-top">{m.name}</span>
+              <strong className="metric-value">{m.value}</strong>
+              <span className="metric-note">{m.note}</span>
+            </div>
+          ))}
+      </div>
+      <div className="home-grid">
+        {has("customers.view") && (
+          <section className="panel">
+            <div className="panel-header">
+              <h2>العملاء حسب المصدر</h2>
+            </div>
+            <div className="department-list">
+              {Object.entries(sourceNames)
+                .map(([id, label]) => ({
+                  id,
+                  label,
+                  count: leads.filter((l) => l.source === id).length,
+                }))
+                .filter((s) => s.count)
+                .map((s) => (
+                  <div className="department-row" key={s.id}>
+                    <div>
+                      <span>{s.label}</span>
+                      <strong>{s.count} عميل</strong>
+                    </div>
+                    <div className="department-bar">
+                      <i
+                        style={{ width: `${(s.count / leads.length) * 100}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-indigo-600 dark:bg-indigo-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Branch / Staff Conversion Ranking */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs">
-          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm mb-4 flex items-center gap-2">
-            <Award className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>ترتيب أداء الفروع والمبيعات</span>
-          </h3>
-
-          <div className="space-y-3">
-            {branches.map((b) => {
-              const bLeads = leads.filter((l) => l.branchId === b.id);
-              const bBookings = bookings.filter((bk) => bk.branchId === b.id);
-              const bRev = bBookings.reduce((sum, bk) => sum + bk.amount, 0);
-
-              return (
-                <div key={b.id} className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                ))}
+            </div>
+          </section>
+        )}
+        {has("bookings.view") && (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>حالة الدفع في التعاقدات</h2>
+                <p>عدد التعاقدات، وليس المبالغ المحصلة</p>
+              </div>
+            </div>
+            <div className="department-list">
+              {Object.entries({
+                full: "مدفوع بالكامل",
+                deposit: "تم استلام مقدم",
+                pending: "في انتظار الدفع",
+                refunded: "مسترد",
+              }).map(([id, label]) => (
+                <div className="department-row" key={id}>
                   <div>
-                    <div className="font-bold text-xs text-slate-900 dark:text-slate-100">{b.name}</div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono-numbers mt-0.5">
-                      {bLeads.length} عميل · {bBookings.length} حجز
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-emerald-700 dark:text-emerald-400 font-mono-numbers text-sm">
-                      {bRev.toLocaleString('ar-EG')} ج.م
-                    </div>
+                    <span>{label}</span>
+                    <strong>
+                      {contracts.filter((b) => b.paymentStatus === id).length}{" "}
+                      تعاقد
+                    </strong>
                   </div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+            <p className="quiet-note">
+              حساب المحصل والمتبقي بدقة يحتاج تسجيل مبالغ الدفعات، وهي غير متاحة
+              في البيانات الحالية.
+            </p>
+          </section>
+        )}
+      </div>
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <div>
+            <h2>{isSales(u) ? "سجلاتي حسب الفرع" : "مؤشرات الفروع المتاحة"}</h2>
+            <p>
+              {isSales(u)
+                ? "يعرض سجلاتك وتكليفاتك فقط."
+                : "داخل حدود نطاق عملك."}
+            </p>
           </div>
         </div>
-      </div>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>الفرع</th>
+                {has("customers.view") && <th>العملاء</th>}
+                {has("bookings.view") && <th>قيمة التعاقدات</th>}
+                {has("followups.view") && <th>المتابعات المتأخرة</th>}
+                {has("invoices.view") && <th>الفواتير</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {branches.map((b) => (
+                <tr key={b.id}>
+                  <td>{b.name}</td>
+                  {has("customers.view") && (
+                    <td>{leads.filter((l) => l.branchId === b.id).length}</td>
+                  )}
+                  {has("bookings.view") && (
+                    <td>
+                      {formatMoney(
+                        contracts
+                          .filter((c) => c.branchId === b.id)
+                          .reduce((s, c) => s + c.amount, 0),
+                      )}{" "}
+                      ج.م
+                    </td>
+                  )}
+                  {has("followups.view") && (
+                    <td>
+                      {
+                        followUps.filter(
+                          (f) =>
+                            f.branchId === b.id &&
+                            followUpStatus(f) === "overdue",
+                        ).length
+                      }
+                    </td>
+                  )}
+                  {has("invoices.view") && (
+                    <td>
+                      {
+                        purchaseInvoices.filter((i) => i.branchId === b.id)
+                          .length
+                      }
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
-};
+}

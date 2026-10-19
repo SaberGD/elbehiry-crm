@@ -1,1041 +1,996 @@
-import React, { useEffect, useState } from 'react';
-import { Lead, LeadStatus, Department } from '../../types/crm';
-import { useCRM } from '../../context/CRMContext';
-import { useLanguage } from '../../context/LanguageContext';
-import { CustomerRatingModal } from './CustomerRatingModal';
+import {
+  canEditCustomer,
+  canContactCustomer,
+  canCreateCustomer,
+  canScheduleFollowUp,
+  canAssignCustomers,
+  isSales,
+} from "../../lib/access";
+import { hasPermission } from "../../lib/permissions";
+import { useEffect, useRef, useState } from "react";
 import {
   X,
-  User,
   Phone,
-  Mail,
-  Building2,
-  UserCheck,
-  Calendar,
-  Clock,
-  Compass,
-  PhoneCall,
-  ShoppingBag,
+  MessageCircle,
   Plus,
-  CheckCircle2,
-  AlertCircle,
-  FileText,
-  Edit3,
-  Share2,
-  MessageSquare,
-  Star,
-  Building,
-  Paintbrush,
-  Trees,
-  Layers,
-  Sparkles,
-  ExternalLink,
+  MoreHorizontal,
+  ArrowRight,
+  Pencil,
   MapPin,
-} from 'lucide-react';
+  FileText,
+  ShoppingBag,
+  Users,
+  Star,
+  CalendarDays,
+  Clock3,
+  Building2,
+  UserRound,
+  CheckCircle2,
+} from "lucide-react";
+import type { Lead, Department, LeadStatus, Booking } from "../../types/crm";
+import { useCRM } from "../../context/CRMContext";
+import {
+  statusNames,
+  sourceNames,
+  departmentNames,
+  phoneNumber,
+  formatMoney,
+  today,
+  followUpStatus,
+  isManagement,
+  canSeeBranch,
+} from "../../lib/presentation";
+import { useDialog } from "./useDialog";
+import { CustomerRatingModal } from "./CustomerRatingModal";
 
-export type LeadQuickAction = 'edit' | 'visit' | 'followup';
-
-interface LeadDetailsModalProps {
+export type LeadQuickAction = "edit" | "visit" | "followup";
+interface Props {
   lead: Lead | null;
   isOpen: boolean;
   onClose: () => void;
   initialAction?: LeadQuickAction | null;
 }
-
-export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
+type Action = LeadQuickAction | "note" | "booking" | "reassign" | null;
+export function LeadDetailsModal({
   lead,
   isOpen,
   onClose,
   initialAction = null,
-}) => {
+}: Props) {
   const {
+    effectiveUser,
+    users,
+    branches,
     timelineEvents,
     visits,
     followUps,
     bookings,
     purchaseInvoices,
-    users,
-    branches,
-    courses,
-    effectiveUser,
     updateLead,
-    reassignLead,
     addFollowUp,
-    updateFollowUpResult,
     addBooking,
-    addTimelineEvent,
     addVisit,
+    reassignLead,
+    addTimelineEvent,
   } = useCRM();
-
-  const { t } = useLanguage();
-
-  const [activeTab, setActiveTab] = useState<'timeline' | 'visits' | 'followups' | 'bookings' | 'invoices'>('timeline');
-
-  // Rating Modal
-  const [showRatingModal, setShowRatingModal] = useState(false);
-
-  // Quick Action Form States
-  const [showNoteForm, setShowNoteForm] = useState(false);
-  const [noteText, setNoteText] = useState('');
-
-  const [showFollowUpForm, setShowFollowUpForm] = useState(false);
-  const [followUpDate, setFollowUpDate] = useState('');
-  const [followUpReason, setFollowUpReason] = useState('');
-  const [followUpType, setFollowUpType] = useState<'call' | 'whatsapp' | 'branch_visit' | 'email'>('call');
-
-  const [showBookingForm, setShowBookingForm] = useState(false);
-  const [selectedDept, setSelectedDept] = useState<Department>('decor');
-  const [bookingAmount, setBookingAmount] = useState<number>(18500);
-  const [paymentStatus, setPaymentStatus] = useState<'full' | 'deposit' | 'pending'>('deposit');
-  const [bookingNotes, setBookingNotes] = useState('');
-
-  const [showReassignForm, setShowReassignForm] = useState(false);
-  const [newAgentId, setNewAgentId] = useState('');
-
-  // Edit lead data
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editWhatsapp, setEditWhatsapp] = useState('');
-  const [editEmail, setEditEmail] = useState('');
-  const [editBranchId, setEditBranchId] = useState('');
-  const [editDept, setEditDept] = useState<Department>('decor');
-  const [editNotes, setEditNotes] = useState('');
-
-  // Add visit
-  const [showVisitForm, setShowVisitForm] = useState(false);
-  const [visitDate, setVisitDate] = useState('');
-  const [visitTime, setVisitTime] = useState('');
-  const [visitReason, setVisitReason] = useState('');
-  const [visitOutcome, setVisitOutcome] = useState('');
-  const [visitNotes, setVisitNotes] = useState('');
-
-  // Complete follow-up
-  const [completingFollowUpId, setCompletingFollowUpId] = useState<string | null>(null);
-  const [followUpResultText, setFollowUpResultText] = useState('');
-
-  const openEditForm = () => {
-    if (!lead) return;
-    setEditName(lead.name);
-    setEditPhone(lead.phone);
-    setEditWhatsapp(lead.whatsappPhone || lead.phone);
-    setEditEmail(lead.email || '');
-    setEditBranchId(lead.branchId);
-    setEditDept(lead.department || 'decor');
-    setEditNotes(lead.notes || '');
-    setShowEditForm(true);
-  };
-
-  const openVisitForm = () => {
-    const now = new Date();
-    setVisitDate(now.toISOString().slice(0, 10));
-    setVisitTime(now.toTimeString().slice(0, 5));
-    setVisitReason('');
-    setVisitOutcome('');
-    setVisitNotes('');
-    setShowVisitForm(true);
-    setActiveTab('visits');
-  };
-
-  const openFollowUpForm = () => {
-    setFollowUpDate(new Date().toISOString().slice(0, 10));
-    setShowFollowUpForm(true);
-    setActiveTab('followups');
-  };
-
-  // Reset forms on open & apply the requested quick action
+  const [tab, setTab] = useState("timeline");
+  const [action, setAction] = useState<Action>(null);
+  const [more, setMore] = useState(false);
+  const [rating, setRating] = useState(false);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [department, setDepartment] = useState<Department>("decor");
+  const [note, setNote] = useState("");
+  const [date, setDate] = useState(today());
+  const [reason, setReason] = useState("");
+  const [amount, setAmount] = useState("");
+  const [payment, setPayment] = useState<Booking["paymentStatus"]>("pending");
+  const [agent, setAgent] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const allowed = (value: Action) =>
+    !!lead &&
+    (value === "edit" || value === "note"
+      ? canEditCustomer(effectiveUser, lead)
+      : value === "followup"
+        ? canScheduleFollowUp(effectiveUser, lead)
+        : value === "reassign"
+          ? canAssignCustomers(effectiveUser)
+          : value === "visit"
+            ? canCreateCustomer(effectiveUser)
+            : value === "booking"
+              ? hasPermission(effectiveUser, "bookings.create") &&
+                (!isSales(effectiveUser) ||
+                  lead.assignedAgentId === effectiveUser.id)
+              : false);
+  const ref = useDialog(isOpen, onClose);
+  const actionForm = useRef<HTMLFormElement>(null);
   useEffect(() => {
-    if (!isOpen || !lead) return;
-    setShowEditForm(false);
-    setShowVisitForm(false);
-    setShowFollowUpForm(false);
-    setShowNoteForm(false);
-    setShowBookingForm(false);
-    setShowReassignForm(false);
-    setCompletingFollowUpId(null);
-    setActiveTab('timeline');
-    if (initialAction === 'edit') openEditForm();
-    else if (initialAction === 'visit') openVisitForm();
-    else if (initialAction === 'followup') openFollowUpForm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!isOpen || !action) return;
+    const form = actionForm.current;
+    const scroll = form?.closest<HTMLElement>(".client-scroll");
+    if (!form || !scroll) return;
+    scroll.scrollTo({
+      top:
+        scroll.scrollTop +
+        form.getBoundingClientRect().top -
+        scroll.getBoundingClientRect().top -
+        16,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+    });
+  }, [action, isOpen]);
+  useEffect(() => {
+    if (isOpen && lead) {
+      setTab("timeline");
+      setAction(initialAction && allowed(initialAction) ? initialAction : null);
+      setMore(false);
+      setRating(false);
+      setName(lead.name);
+      setPhone(lead.phone);
+      setEmail(lead.email || "");
+      setWhatsapp(lead.whatsappPhone || lead.phone);
+      setDepartment(lead.department);
+      setDate(today());
+      setNote(initialAction === "edit" ? lead.notes : "");
+      setReason("");
+      setAmount("");
+      setAgent(
+        lead.assignedAgentId ||
+          (isSales(effectiveUser) ? effectiveUser.id : ""),
+      );
+      setFeedback("");
+    }
   }, [isOpen, lead?.id, initialAction]);
-
   if (!isOpen || !lead) return null;
-
-  const leadTimeline = timelineEvents.filter((e) => e.leadId === lead.id);
-  const leadVisits = visits.filter((v) => v.linkedLeadId === lead.id || (v.phone && v.phone === lead.phone));
-  const leadFollowUps = followUps.filter((f) => f.leadId === lead.id);
-  const completedFollowUps = leadFollowUps.filter((f) => f.status === 'completed');
-  const sortedVisitDates = leadVisits.map((v) => v.date).sort((a, b) => b.localeCompare(a));
+  const events = timelineEvents
+    .filter((e) => e.leadId === lead.id)
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const leadVisits = visits.filter((v) => v.linkedLeadId === lead.id);
+  const leadFollowUps = followUps
+    .filter((f) => f.leadId === lead.id)
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
   const leadBookings = bookings.filter((b) => b.leadId === lead.id);
-  const leadInvoices = purchaseInvoices.filter((i) => i.leadId === lead.id || i.leadPhone === lead.phone);
-
-  const availableAgents = users.filter((u) => u.role === 'sales_agent' || u.role === 'team_leader');
-
-  const whatsappNum = lead.whatsappPhone || lead.phone;
-  const whatsappUrl = `https://wa.me/20${whatsappNum.replace(/\D/g, '')}`;
-
-  const deptLabels: Record<Department, string> = {
-    construction: '🏗️ قسم الإنشائي والمقاولات',
-    decor: '🎨 قسم الديكورات والدهانات',
-    garden: '🌿 قسم البستان واللاندسكيب',
-    general: '📦 قسم المتنوع والخدمات',
+  const invoices = purchaseInvoices.filter((i) => i.leadId === lead.id);
+  const next = leadFollowUps.find(
+    (f) => !["completed", "cancelled"].includes(followUpStatus(f)),
+  );
+  const show = (value: Action) => {
+    if (!allowed(value)) return;
+    setAction(action === value ? null : value);
+    setMore(false);
+    setFeedback("");
+    setNote(value === "edit" ? lead.notes : "");
+    setReason("");
   };
-
-  const handleAddNote = (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!noteText.trim()) return;
-
-    addTimelineEvent({
-      leadId: lead.id,
-      authorId: effectiveUser.id,
-      authorName: effectiveUser.name,
-      type: 'note',
-      title: 'إضافة ملاحظة تواصل جديدة',
-      details: noteText,
-    });
-
-    updateLead(lead.id, {
-      lastContactDate: new Date().toISOString().slice(0, 10),
-      notes: `${lead.notes ? lead.notes + ' | ' : ''}${noteText}`,
-    });
-
-    setNoteText('');
-    setShowNoteForm(false);
+    setFeedback("");
+    if (!allowed(action)) return;
+    if (
+      ["followup", "booking", "visit", "reassign"].includes(action || "") &&
+      !agent
+    ) {
+      setFeedback("اختَر الموظف المسؤول من نفس الفرع.");
+      return;
+    }
+    if (action === "edit") {
+      if (!name.trim() || !/^\+?[\d\s()-]{10,18}$/.test(phone)) {
+        setFeedback("راجع الاسم ورقم الهاتف.");
+        return;
+      }
+      updateLead(lead.id, {
+        name: name.trim(),
+        phone: phone.trim(),
+        department,
+        departmentName: departmentNames[department],
+        email: email.trim() || undefined,
+        whatsappPhone: whatsapp.trim() || phone.trim(),
+        isSameWhatsApp: !whatsapp.trim() || whatsapp.trim() === phone.trim(),
+        notes: note.trim(),
+      });
+    }
+    if (action === "note") {
+      if (!note.trim()) {
+        setFeedback("اكتب الملاحظة قبل الحفظ.");
+        return;
+      }
+      addTimelineEvent({
+        leadId: lead.id,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "note",
+        title: "ملاحظة على ملف العميل",
+        details: note.trim(),
+      });
+      updateLead(lead.id, {
+        ...(canContactCustomer(effectiveUser, lead, followUps)
+          ? { lastContactDate: today() }
+          : {}),
+        notes: [lead.notes, note.trim()].filter(Boolean).join(" | "),
+      });
+    }
+    if (action === "followup") {
+      if (!date || !reason.trim()) {
+        setFeedback("حدد الموعد وسبب المتابعة.");
+        return;
+      }
+      addFollowUp({
+        leadId: lead.id,
+        leadName: lead.name,
+        leadPhone: lead.phone,
+        assignedAgentId: agent,
+        branchId: lead.branchId,
+        scheduledAt: date,
+        reason: reason.trim(),
+        type: "call",
+        notes: note.trim(),
+      });
+      setTab("followups");
+    }
+    if (action === "visit") {
+      if (!date || !reason.trim()) {
+        setFeedback("حدد تاريخ الزيارة وسببها.");
+        return;
+      }
+      addVisit({
+        visitorName: lead.name,
+        phone: lead.phone,
+        whatsappPhone: lead.whatsappPhone,
+        date,
+        time: new Intl.DateTimeFormat("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "Africa/Cairo",
+        }).format(new Date()),
+        branchId: lead.branchId,
+        receivedByAgentId: agent,
+        source: lead.source,
+        department: lead.department,
+        reason: reason.trim(),
+        outcome: note.trim() || "لم تُسجل نتيجة",
+        notes: note.trim(),
+        hasPreviousRecord: true,
+        linkedLeadId: lead.id,
+        requiresFollowUp: false,
+      });
+      setTab("visits");
+    }
+    if (action === "booking") {
+      if (!amount || Number(amount) <= 0 || !Number.isFinite(Number(amount))) {
+        setFeedback("اكتب قيمة تعاقد أكبر من صفر.");
+        return;
+      }
+      addBooking({
+        leadId: lead.id,
+        leadName: lead.name,
+        leadPhone: lead.phone,
+        branchId: lead.branchId,
+        agentId: agent,
+        department,
+        courseId: `ps-${department}`,
+        courseName: departmentNames[department],
+        bookingDate: today(),
+        amount: Number(amount),
+        paymentStatus: payment,
+        bookingStatus: payment === "pending" ? "pending_payment" : "confirmed",
+        source: lead.source,
+        notes: note.trim(),
+      });
+      setTab("bookings");
+    }
+    if (action === "reassign") {
+      if (!agent) {
+        setFeedback("اختَر الموظف المسؤول.");
+        return;
+      }
+      reassignLead(lead.id, agent);
+    }
+    setAction(null);
+    setFeedback("حُفظ التعديل على هذا الجهاز.");
   };
-
-  const handleAddFollowUp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!followUpDate || !followUpReason) return;
-
-    addFollowUp({
-      leadId: lead.id,
-      leadName: lead.name,
-      leadPhone: lead.phone,
-      assignedAgentId: lead.assignedAgentId || effectiveUser.id,
-      branchId: lead.branchId,
-      scheduledAt: followUpDate,
-      reason: followUpReason,
-      type: followUpType,
-      notes: `تم الإضافة من سجل العميل بواسطة ${effectiveUser.name}`,
-    });
-
-    setFollowUpDate('');
-    setFollowUpReason('');
-    setShowFollowUpForm(false);
+  const actionTitles: Record<NonNullable<Action>, string> = {
+    edit: "تعديل بيانات العميل",
+    note: "تسجيل ملاحظة",
+    followup: "تحديد متابعة",
+    visit: "تسجيل زيارة",
+    booking: "تسجيل تعاقد",
+    reassign: "تغيير الموظف المسؤول",
   };
-
-  const handleAddBooking = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    addBooking({
-      leadId: lead.id,
-      leadName: lead.name,
-      leadPhone: lead.phone,
-      branchId: lead.branchId,
-      agentId: lead.assignedAgentId || effectiveUser.id,
-      department: selectedDept,
-      courseId: `ps-${selectedDept}`,
-      courseName: deptLabels[selectedDept],
-      bookingDate: new Date().toISOString().slice(0, 10),
-      amount: bookingAmount,
-      paymentStatus: paymentStatus,
-      bookingStatus: 'confirmed',
-      source: lead.source,
-      notes: bookingNotes,
-    });
-
-    setShowBookingForm(false);
+  const labels: Record<string, string> = {
+    timeline: "سجل التعاملات",
+    followups: `المتابعات (${leadFollowUps.length})`,
+    visits: `الزيارات (${leadVisits.length})`,
+    bookings: `التعاقدات (${leadBookings.length})`,
+    invoices: `الفواتير (${invoices.length})`,
   };
-
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editName.trim() || !editPhone.trim()) return;
-    const branch = branches.find((b) => b.id === editBranchId);
-    updateLead(lead.id, {
-      name: editName.trim(),
-      phone: editPhone.trim(),
-      whatsappPhone: editWhatsapp.trim() || editPhone.trim(),
-      isSameWhatsApp: (editWhatsapp.trim() || editPhone.trim()) === editPhone.trim(),
-      email: editEmail.trim() || undefined,
-      branchId: editBranchId,
-      branchName: branch?.name || lead.branchName,
-      department: editDept,
-      notes: editNotes,
-    });
-    addTimelineEvent({
-      leadId: lead.id,
-      authorId: effectiveUser.id,
-      authorName: effectiveUser.name,
-      type: 'note',
-      title: 'تعديل بيانات العميل',
-      details: `قام ${effectiveUser.name} بتحديث بيانات العميل.`,
-    });
-    setShowEditForm(false);
-  };
-
-  const handleAddVisit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!visitDate || !visitReason.trim()) return;
-    addVisit({
-      visitorName: lead.name,
-      phone: lead.phone,
-      whatsappPhone: lead.whatsappPhone,
-      date: visitDate,
-      time: visitTime || '00:00',
-      branchId: lead.branchId,
-      branchName: lead.branchName,
-      receivedByAgentId: effectiveUser.id,
-      receivedByAgentName: effectiveUser.name,
-      source: lead.source,
-      department: lead.department || 'decor',
-      reason: visitReason.trim(),
-      outcome: visitOutcome.trim() || '—',
-      notes: visitNotes.trim(),
-      hasPreviousRecord: true,
-      linkedLeadId: lead.id,
-      requiresFollowUp: false,
-    });
-    updateLead(lead.id, { lastContactDate: visitDate });
-    setShowVisitForm(false);
-    setActiveTab('visits');
-  };
-
-  const handleCompleteFollowUp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!completingFollowUpId || !followUpResultText.trim()) return;
-    updateFollowUpResult(completingFollowUpId, 'completed', followUpResultText.trim());
-    setCompletingFollowUpId(null);
-    setFollowUpResultText('');
-  };
-
-  const handleReassign = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAgentId) return;
-    reassignLead(lead.id, newAgentId);
-    setShowReassignForm(false);
-  };
-
-  const handleStatusChange = (newStatus: LeadStatus) => {
-    updateLead(lead.id, { status: newStatus });
-  };
-
   return (
-    <div className="fixed inset-0 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-        {/* Modal Header */}
-        <div className="bg-slate-900 dark:bg-slate-950 text-white p-4 sm:p-6 flex items-start justify-between gap-4 border-b border-slate-800">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-sm">
-              {lead.name.charAt(0)}
+    <div
+      className="dialog-backdrop client-sheet-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="client-dialog client-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="client-profile-title"
+        ref={ref}
+      >
+        <div className="client-dialog-header">
+          <div className="client-identity">
+            <span className="client-avatar" aria-hidden="true">
+              {lead.name.trim().charAt(0)}
+            </span>
+            <div>
+              <span className="client-profile-kicker">
+                ملف العميل <span>·</span>{" "}
+                {canEditCustomer(effectiveUser, lead)
+                  ? "مساحة المتابعة"
+                  : "للمراجعة"}
+              </span>
+              <h2 id="client-profile-title">{lead.name}</h2>
+              <div className="client-identity-meta">
+                <span dir="ltr">{lead.phone}</span>
+                <span
+                  className={`status-pill ${lead.status === "booked" ? "is-success" : lead.status === "new" ? "is-new" : lead.status === "needs_followup" ? "is-warning" : ""}`}
+                >
+                  <i />
+                  {statusNames[lead.status]}
+                </span>
+              </div>
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-bold text-white truncate">{lead.name}</h2>
-                {lead.customerCategory && (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/30 text-amber-200 border border-amber-400/30">
-                    {t(`category.${lead.customerCategory}`) || lead.customerCategory}
-                  </span>
-                )}
-                {lead.companyNameRelationship && (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-500/30 text-blue-200 border border-blue-400/30">
-                    🏢 {lead.companyNameRelationship}
-                  </span>
-                )}
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                  {deptLabels[lead.department || 'decor']}
-                </span>
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/30 text-emerald-200 border border-emerald-400/30">
-                  {t(`status.${lead.status}`)}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-1 flex items-center gap-3 flex-wrap">
-                <span className="font-mono-numbers">هاتف: {lead.phone}</span>
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2 py-0.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded font-bold font-mono-numbers flex items-center gap-1"
-                >
-                  <MessageSquare className="w-3 h-3" />
-                  <span>واتس: {whatsappNum}</span>
-                </a>
-                <span>· الفرع: {lead.branchName}</span>
-                <span>· المسؤول: {lead.assignedAgentName || 'غير مخصص'}</span>
-              </p>
-
-              {/* Visits & Follow-ups counters */}
-              <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+          </div>
+          <button
+            className="icon-button client-close"
+            onClick={onClose}
+            aria-label="إغلاق ملف العميل"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <div className="client-action-bar">
+          {allowed("followup") && (
+            <button className="btn-primary" onClick={() => show("followup")}>
+              <Plus size={15} />
+              تحديد متابعة
+            </button>
+          )}
+          {canContactCustomer(effectiveUser, lead, followUps) && (
+            <a
+              className="btn-secondary"
+              href={`tel:${phoneNumber(lead.phone)}`}
+            >
+              <Phone size={15} />
+              اتصال
+            </a>
+          )}
+          {canContactCustomer(effectiveUser, lead, followUps) && (
+            <a
+              className="btn-secondary"
+              href={`https://wa.me/${phoneNumber(lead.whatsappPhone || lead.phone)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <MessageCircle size={15} />
+              واتساب
+            </a>
+          )}
+          {(["edit", "note", "visit", "booking", "reassign"].some((v) =>
+            allowed(v as Action),
+          ) ||
+            canContactCustomer(effectiveUser, lead, followUps)) && (
+            <button
+              className="btn-secondary client-more-toggle"
+              aria-expanded={more}
+              aria-controls="client-more-actions"
+              onClick={() => setMore(!more)}
+            >
+              <MoreHorizontal size={17} />
+              المزيد
+            </button>
+          )}
+          {more && (
+            <div className="client-more" id="client-more-actions">
+              {[
+                { id: "edit", label: "تعديل البيانات", Icon: Pencil },
+                { id: "visit", label: "تسجيل زيارة", Icon: MapPin },
+                { id: "note", label: "إضافة ملاحظة", Icon: FileText },
+                { id: "booking", label: "تسجيل تعاقد", Icon: ShoppingBag },
+                ...(canAssignCustomers(effectiveUser)
+                  ? [{ id: "reassign", label: "تغيير المسؤول", Icon: Users }]
+                  : []),
+              ]
+                .filter(({ id }) => allowed(id as Action))
+                .map(({ id, label, Icon }) => (
+                  <button
+                    className="btn-secondary"
+                    key={id}
+                    onClick={() => show(id as Action)}
+                  >
+                    <Icon size={14} />
+                    {label}
+                  </button>
+                ))}
+              {canContactCustomer(effectiveUser, lead, followUps) && (
                 <button
-                  type="button"
-                  onClick={() => setActiveTab('visits')}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 bg-fuchsia-500/20 text-fuchsia-200 border border-fuchsia-400/40 hover:bg-fuchsia-500/30 transition-colors cursor-pointer"
-                  title="عدد زيارات العميل"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setRating(true);
+                    setMore(false);
+                  }}
                 >
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>زار الفرع</span>
-                  <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-fuchsia-500 text-white font-mono-numbers flex items-center justify-center">
-                    {leadVisits.length}
-                  </span>
-                  <span>{leadVisits.length === 1 ? 'مرة' : 'مرات'}</span>
+                  <Star size={14} />
+                  طلب تقييم
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('followups')}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 bg-teal-500/20 text-teal-200 border border-teal-400/40 hover:bg-teal-500/30 transition-colors cursor-pointer"
-                  title="المتابعات المنفذة من إجمالي المتابعات"
-                >
-                  <PhoneCall className="w-3.5 h-3.5" />
-                  <span>فولو أب تم</span>
-                  <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-teal-500 text-white font-mono-numbers flex items-center justify-center">
-                    {completedFollowUps.length}
-                  </span>
-                  <span className="font-mono-numbers">من {leadFollowUps.length}</span>
-                </button>
-                {sortedVisitDates.length > 0 && (
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {sortedVisitDates.slice(0, 6).map((d, i) => (
-                      <span key={`${d}-${i}`} className="px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-200 border border-fuchsia-400/30 text-[10px] font-mono-numbers">
-                        {d}
-                      </span>
-                    ))}
-                    {sortedVisitDates.length > 6 && (
-                      <span className="text-[10px] text-fuchsia-300 font-bold">+{sortedVisitDates.length - 6}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* WhatsApp Message Dispatch Status & Confirmation */}
-              <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                {lead.whatsappMessageSent ? (
-                  <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-lg text-[11px] font-bold flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>تم إرسال الواتساب والتقييم (بواسطة: {lead.whatsappSentBy || 'الموظف'} {lead.whatsappSentAt ? `في ${new Date(lead.whatsappSentAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}` : ''})</span>
-                  </span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="client-scroll">
+          <div className="profile-summary">
+            <div>
+              <small>
+                <CalendarDays size={15} /> المتابعة القادمة
+              </small>
+              <span>
+                {next ? (
+                  <bdi>{next.scheduledAt.replace("T", " ").slice(0, 16)}</bdi>
                 ) : (
-                  <label className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 text-[11px] font-bold cursor-pointer transition-colors">
-                    <input
-                      type="checkbox"
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          updateLead(lead.id, {
-                            whatsappMessageSent: true,
-                            whatsappSentBy: effectiveUser.name,
-                            whatsappSentAt: new Date().toISOString(),
-                          });
-                          addTimelineEvent({
-                            leadId: lead.id,
-                            authorId: effectiveUser.id,
-                            authorName: effectiveUser.name,
-                            type: 'call',
-                            title: 'تأكيد إرسال الواتساب',
-                            details: `قام الموظف ${effectiveUser.name} بتوثيق إرسال رسالة التقييم للعميل عبر الواتساب.`,
-                          });
+                  "لم يُحدد موعد"
+                )}
+              </span>
+            </div>
+            <label>
+              <small>
+                <UserRound size={15} /> حالة العميل
+              </small>
+              {canEditCustomer(effectiveUser, lead) ? (
+                <select
+                  aria-label="تحديث حالة العميل"
+                  value={lead.status}
+                  onChange={(e) =>
+                    updateLead(lead.id, {
+                      status: e.target.value as LeadStatus,
+                    })
+                  }
+                >
+                  {Object.entries(statusNames).map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span>{statusNames[lead.status]}</span>
+              )}
+            </label>
+          </div>
+          <div className="client-context-strip">
+            <div>
+              <Building2 size={16} />
+              <span>
+                <small>الفرع</small>
+                {lead.branchName || "لم يحدد"}
+              </span>
+            </div>
+            <div>
+              <UserRound size={16} />
+              <span>
+                <small>الموظف المسؤول</small>
+                {lead.assignedAgentName || "لم يحدد"}
+              </span>
+            </div>
+            <div>
+              <ShoppingBag size={16} />
+              <span>
+                <small>القسم / المصدر</small>
+                {departmentNames[lead.department]} · {sourceNames[lead.source]}
+              </span>
+            </div>
+          </div>
+          {lead.notes && (
+            <div className="client-note-preview">
+              <FileText size={16} />
+              <div>
+                <h3>ملاحظات العميل</h3>
+                <p>{lead.notes}</p>
+              </div>
+            </div>
+          )}
+          {action && (
+            <form
+              className="profile-form"
+              ref={actionForm}
+              key={action}
+              onSubmit={submit}
+              noValidate
+            >
+              <div className="section-title">
+                <div>
+                  <h3>{actionTitles[action]}</h3>
+                </div>
+                <button
+                  type="button"
+                  className="btn-text"
+                  style={{ marginInlineStart: "auto" }}
+                  onClick={() => setAction(null)}
+                >
+                  إلغاء
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="field-grid">
+                {action === "edit" && (
+                  <>
+                    <label className="field">
+                      <span>
+                        اسم العميل <em>مطلوب</em>
+                      </span>
+                      <input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        autoComplete="name"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>
+                        رقم الهاتف <em>مطلوب</em>
+                      </span>
+                      <input
+                        type="tel"
+                        dir="ltr"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
+                {(action === "edit" || action === "booking") && (
+                  <label className="field">
+                    <span>القسم</span>
+                    <select
+                      value={department}
+                      onChange={(e) =>
+                        setDepartment(e.target.value as Department)
+                      }
+                    >
+                      {Object.entries(departmentNames).map(([id, label]) => (
+                        <option key={id} value={id}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {(action === "followup" || action === "visit") && (
+                  <>
+                    <label className="field">
+                      <span>
+                        {action === "followup"
+                          ? "موعد المتابعة"
+                          : "تاريخ الزيارة"}{" "}
+                        <em>مطلوب</em>
+                      </span>
+                      <input
+                        type="date"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>
+                        السبب <em>مطلوب</em>
+                      </span>
+                      <input
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder={
+                          action === "followup"
+                            ? "مثلاً: متابعة عرض سعر"
+                            : "مثلاً: معاينة عينات"
                         }
-                      }}
-                      className="rounded text-emerald-500 focus:ring-emerald-400 cursor-pointer"
+                      />
+                    </label>
+                  </>
+                )}
+                {action === "booking" && (
+                  <>
+                    <label className="field">
+                      <span>
+                        قيمة التعاقد بالجنيه <em>مطلوب</em>
+                      </span>
+                      <input
+                        type="number"
+                        min=".01"
+                        step=".01"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>حالة الدفع</span>
+                      <select
+                        value={payment}
+                        onChange={(e) =>
+                          setPayment(e.target.value as Booking["paymentStatus"])
+                        }
+                      >
+                        <option value="pending">لم يتم الدفع</option>
+                        <option value="deposit">تم استلام مقدم</option>
+                        <option value="full">تم الدفع بالكامل</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+                {["reassign", "followup", "booking", "visit"].includes(
+                  action || "",
+                ) && (
+                  <label className="field full-width">
+                    <span>
+                      الموظف المسؤول <em>مطلوب</em>
+                    </span>
+                    <select
+                      disabled={isSales(effectiveUser)}
+                      value={agent}
+                      onChange={(e) => setAgent(e.target.value)}
+                    >
+                      <option value="">اختَر موظفًا من نفس الفرع</option>
+                      {users
+                        .filter(
+                          (u) =>
+                            u.active &&
+                            u.branchId === lead.branchId &&
+                            ["sales_agent", "team_leader"].includes(u.role) &&
+                            canSeeBranch(effectiveUser, u.branchId, branches),
+                        )
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+                {action === "edit" && (
+                  <details className="optional-section full-width">
+                    <summary>
+                      <span>
+                        تفاصيل التواصل <em className="optional-tag">اختياري</em>
+                      </span>
+                    </summary>
+                    <div className="field-grid">
+                      <label className="field">
+                        <span>رقم الواتساب</span>
+                        <input
+                          type="tel"
+                          dir="ltr"
+                          value={whatsapp}
+                          onChange={(e) => setWhatsapp(e.target.value)}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>البريد الإلكتروني</span>
+                        <input
+                          type="email"
+                          dir="ltr"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                        />
+                      </label>
+                      <label className="field full-width">
+                        <span>ملاحظات</span>
+                        <textarea
+                          value={note}
+                          onChange={(e) => setNote(e.target.value)}
+                          rows={2}
+                        />
+                      </label>
+                    </div>
+                  </details>
+                )}
+                {!["edit", "reassign"].includes(action) && (
+                  <label className="field full-width">
+                    <span>
+                      {action === "visit" ? "نتيجة الزيارة" : "ملاحظات"}{" "}
+                      <em>{action === "note" ? "مطلوب" : "اختياري"}</em>
+                    </span>
+                    <textarea
+                      rows={2}
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
                     />
-                    <span>تأكيد إرسال رسالة الواتساب للعميل</span>
                   </label>
                 )}
               </div>
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Lead Info Strip & Quick Controls */}
-        <div className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div>
-            <div className="text-slate-400 dark:text-slate-400 font-medium">القسم المطلوب:</div>
-            <div className="font-bold text-slate-800 dark:text-slate-200 truncate mt-0.5">
-              {deptLabels[lead.department || 'decor']}
-            </div>
-          </div>
-          <div>
-            <div className="text-slate-400 dark:text-slate-400 font-medium">المصدر والفرع:</div>
-            <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-              {lead.source} · {lead.branchName}
-            </div>
-          </div>
-          <div>
-            <div className="text-slate-400 dark:text-slate-400 font-medium">التقييمات:</div>
-            <div className="flex items-center gap-2 mt-0.5 font-bold text-amber-500">
-              <span title="تقييم المكان">🏢 {lead.locationRating || 5}/5</span>
-              <span title="تقييم المعاملة">🤝 {lead.treatmentRating || 5}/5</span>
-              <span title="تقييم الأسعار">💰 {lead.priceRating || 4}/5</span>
-            </div>
-          </div>
-          <div>
-            <div className="text-slate-400 dark:text-slate-400 font-medium">تغيير الحالة السريع:</div>
-            <select
-              value={lead.status}
-              onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
-              className="mt-0.5 w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none"
-            >
-              <option value="new">طلب جديد</option>
-              <option value="uncontacted">لم يتم التواصل</option>
-              <option value="contacted">تم التواصل</option>
-              <option value="interested">مهتم</option>
-              <option value="prospect">عميل محتمل</option>
-              <option value="needs_followup">يحتاج متابعة</option>
-              <option value="not_interested">غير مهتم</option>
-              <option value="booked">تم التعاقد والبيع</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Quick Action Buttons */}
-        <div className="p-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 overflow-x-auto">
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer min-h-[36px]"
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>محادثة واتساب مباشرة</span>
-          </a>
-
-          <button
-            onClick={() => setShowRatingModal(true)}
-            className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer min-h-[36px]"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>رابط تقييم العميل المخصص</span>
-          </button>
-
-          <button
-            onClick={() => (showEditForm ? setShowEditForm(false) : openEditForm())}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer min-h-[36px]"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            <span>تعديل البيانات</span>
-          </button>
-
-          <button
-            onClick={() => (showVisitForm ? setShowVisitForm(false) : openVisitForm())}
-            className="px-3 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer min-h-[36px]"
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            <span>إضافة زيارة</span>
-          </button>
-
-          <button
-            onClick={() => setShowNoteForm(!showNoteForm)}
-            className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer min-h-[36px]"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            <span>تسجيل ملاحظة</span>
-          </button>
-
-          <button
-            onClick={() => (showFollowUpForm ? setShowFollowUpForm(false) : openFollowUpForm())}
-            className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/80 text-teal-700 dark:text-teal-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer min-h-[36px]"
-          >
-            <PhoneCall className="w-3.5 h-3.5" />
-            <span>فولو أب</span>
-          </button>
-
-          <button
-            onClick={() => setShowBookingForm(!showBookingForm)}
-            className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/80 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer min-h-[36px]"
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>إتمام تعاقد / بيع</span>
-          </button>
-
-          <button
-            onClick={() => setShowReassignForm(!showReassignForm)}
-            className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer min-h-[36px]"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>نقل لموظف آخر</span>
-          </button>
-        </div>
-
-        {/* Expandable Quick Forms */}
-        {showNoteForm && (
-          <form onSubmit={handleAddNote} className="p-4 bg-indigo-50/60 dark:bg-indigo-950/40 border-b border-indigo-100 dark:border-indigo-900 animate-in slide-in-from-top duration-150">
-            <label className="block text-xs font-bold text-indigo-900 dark:text-indigo-200 mb-1">تسجيل تفاصيل التفاعل والملاحظة:</label>
-            <textarea
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              placeholder="اكتب تفاصيل الاتصال أو العينات أو المقايسة المطلوبة..."
-              className="w-full p-2.5 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-100 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-              rows={2}
-            />
-            <div className="flex justify-end gap-2 mt-2">
-              <button
-                type="button"
-                onClick={() => setShowNoteForm(false)}
-                className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-semibold"
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  marginTop: 20,
+                }}
               >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold"
-              >
-                حفظ الملاحظة
-              </button>
-            </div>
-          </form>
-        )}
-
-        {showEditForm && (
-          <form onSubmit={handleSaveEdit} className="p-4 bg-indigo-50/60 dark:bg-indigo-950/40 border-b border-indigo-100 dark:border-indigo-900 animate-in slide-in-from-top duration-150 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-indigo-900 dark:text-indigo-200 mb-1">اسم العميل:</label>
-              <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} required className="w-full p-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-indigo-900 dark:text-indigo-200 mb-1">رقم الهاتف:</label>
-              <input type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} required className="w-full p-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono-numbers" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-indigo-900 dark:text-indigo-200 mb-1">رقم الواتساب:</label>
-              <input type="tel" value={editWhatsapp} onChange={(e) => setEditWhatsapp(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono-numbers" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-indigo-900 dark:text-indigo-200 mb-1">البريد الإلكتروني:</label>
-              <input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-indigo-900 dark:text-indigo-200 mb-1">الفرع:</label>
-              <select value={editBranchId} onChange={(e) => setEditBranchId(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500">
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-indigo-900 dark:text-indigo-200 mb-1">القسم:</label>
-              <select value={editDept} onChange={(e) => setEditDept(e.target.value as Department)} className="w-full p-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500">
-                {(Object.keys(deptLabels) as Department[]).map((d) => (
-                  <option key={d} value={d}>{deptLabels[d]}</option>
-                ))}
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-indigo-900 dark:text-indigo-200 mb-1">ملاحظات:</label>
-              <input type="text" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-            <div className="sm:col-span-2 lg:col-span-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowEditForm(false)}
-                className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-semibold"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold"
-              >
-                حفظ التعديلات
-              </button>
-            </div>
-          </form>
-        )}
-
-        {showVisitForm && (
-          <form onSubmit={handleAddVisit} className="p-4 bg-fuchsia-50/60 dark:bg-fuchsia-950/30 border-b border-fuchsia-100 dark:border-fuchsia-900 animate-in slide-in-from-top duration-150 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-fuchsia-900 dark:text-fuchsia-200 mb-1">تاريخ الزيارة:</label>
-              <input type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} required className="w-full p-2 bg-white dark:bg-slate-900 border border-fuchsia-200 dark:border-fuchsia-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-fuchsia-500 font-mono-numbers" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-fuchsia-900 dark:text-fuchsia-200 mb-1">الوقت:</label>
-              <input type="time" value={visitTime} onChange={(e) => setVisitTime(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-900 border border-fuchsia-200 dark:border-fuchsia-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-fuchsia-500 font-mono-numbers" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-fuchsia-900 dark:text-fuchsia-200 mb-1">سبب الزيارة:</label>
-              <input type="text" value={visitReason} onChange={(e) => setVisitReason(e.target.value)} required placeholder="معاينة عينات، استلام طلب، استفسار أسعار..." className="w-full p-2 bg-white dark:bg-slate-900 border border-fuchsia-200 dark:border-fuchsia-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-fuchsia-500" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-fuchsia-900 dark:text-fuchsia-200 mb-1">نتيجة الزيارة:</label>
-              <input type="text" value={visitOutcome} onChange={(e) => setVisitOutcome(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-900 border border-fuchsia-200 dark:border-fuchsia-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-fuchsia-500" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-fuchsia-900 dark:text-fuchsia-200 mb-1">ملاحظات:</label>
-              <input type="text" value={visitNotes} onChange={(e) => setVisitNotes(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-900 border border-fuchsia-200 dark:border-fuchsia-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-fuchsia-500" />
-            </div>
-            <div className="sm:col-span-2 lg:col-span-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowVisitForm(false)}
-                className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-semibold"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded text-xs font-semibold"
-              >
-                حفظ الزيارة
-              </button>
-            </div>
-          </form>
-        )}
-
-        {showFollowUpForm && (
-          <form onSubmit={handleAddFollowUp} className="p-4 bg-teal-50/60 dark:bg-teal-950/30 border-b border-teal-100 dark:border-teal-900 animate-in slide-in-from-top duration-150 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-teal-900 dark:text-teal-200 mb-1">موعد المتابعة:</label>
-              <input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} required className="w-full p-2 bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-teal-500 font-mono-numbers" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-teal-900 dark:text-teal-200 mb-1">نوع المتابعة:</label>
-              <select value={followUpType} onChange={(e) => setFollowUpType(e.target.value as typeof followUpType)} className="w-full p-2 bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-teal-500">
-                <option value="call">مكالمة</option>
-                <option value="whatsapp">واتساب</option>
-                <option value="branch_visit">زيارة للفرع</option>
-                <option value="email">بريد إلكتروني</option>
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-teal-900 dark:text-teal-200 mb-1">سبب المتابعة:</label>
-              <input type="text" value={followUpReason} onChange={(e) => setFollowUpReason(e.target.value)} required placeholder="متابعة عرض سعر، تأكيد طلب..." className="w-full p-2 bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-teal-500" />
-            </div>
-            <div className="sm:col-span-2 lg:col-span-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowFollowUpForm(false)}
-                className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-semibold"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs font-semibold"
-              >
-                حفظ الفولو أب
-              </button>
-            </div>
-          </form>
-        )}
-
-        {showBookingForm && (
-          <form onSubmit={handleAddBooking} className="p-4 bg-amber-50/60 dark:bg-amber-950/40 border-b border-amber-100 dark:border-amber-900 animate-in slide-in-from-top duration-150 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-200 mb-1">القسم المباع عليه:</label>
-              <select
-                value={selectedDept}
-                onChange={(e) => setSelectedDept(e.target.value as Department)}
-                required
-                className="w-full p-2 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-slate-800 dark:text-slate-200 rounded text-xs"
-              >
-                <option value="decor">🎨 قسم الديكورات والدهانات</option>
-                <option value="construction">🏗️ قسم الإنشائي والمقاولات</option>
-                <option value="garden">🌿 قسم البستان واللاندسكيب</option>
-                <option value="general">📦 قسم المتنوع والخدمات</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-200 mb-1">القيمة المالية (ج.م):</label>
-              <input
-                type="number"
-                value={bookingAmount}
-                onChange={(e) => setBookingAmount(Number(e.target.value))}
-                required
-                className="w-full p-2 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-slate-800 dark:text-slate-200 rounded text-xs font-mono-numbers"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-200 mb-1">حالة السداد:</label>
-              <select
-                value={paymentStatus}
-                onChange={(e) => setPaymentStatus(e.target.value as any)}
-                className="w-full p-2 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-slate-800 dark:text-slate-200 rounded text-xs"
-              >
-                <option value="deposit">سداد مقدم تعاقد</option>
-                <option value="full">سداد كامل</option>
-                <option value="pending">آجل / معلق</option>
-              </select>
-            </div>
-            <div className="sm:col-span-3">
-              <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-200 mb-1">ملاحظات العقد والبيع:</label>
-              <input
-                type="text"
-                value={bookingNotes}
-                onChange={(e) => setBookingNotes(e.target.value)}
-                placeholder="تفاصيل التوريد أو الموقع..."
-                className="w-full p-2 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-slate-800 dark:text-slate-200 rounded text-xs"
-              />
-            </div>
-            <div className="sm:col-span-3 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowBookingForm(false)}
-                className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-semibold"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold"
-              >
-                تأكيد البيع والتعاقد
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-4 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('timeline')}
-            className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer shrink-0 ${
-              activeTab === 'timeline'
-                ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            السجل الزمني للعميل ({leadTimeline.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('visits')}
-            className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer shrink-0 ${
-              activeTab === 'visits'
-                ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            الزيارات ({leadVisits.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('followups')}
-            className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer shrink-0 ${
-              activeTab === 'followups'
-                ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            الفولو أب ({completedFollowUps.length}/{leadFollowUps.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('bookings')}
-            className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer shrink-0 ${
-              activeTab === 'bookings'
-                ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            الحجوزات والتعاقدات ({leadBookings.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('invoices')}
-            className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer shrink-0 ${
-              activeTab === 'invoices'
-                ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            فواتير المشتريات ({leadInvoices.length})
-          </button>
-        </div>
-
-        {/* Tab Contents */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-          {activeTab === 'timeline' && (
-            <div className="space-y-3 relative before:absolute before:inset-0 before:right-3.5 dir-ltr:before:right-auto dir-ltr:before:left-3.5 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-800">
-              {leadTimeline.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-xs">لا يوجد سجل أحداث سابق للعميل</div>
-              ) : (
-                leadTimeline.map((ev) => (
-                  <div key={ev.id} className="relative flex items-start gap-3 group">
-                    <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950 border-2 border-indigo-600 dark:border-indigo-400 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-xs font-bold shrink-0 z-10">
-                      •
-                    </div>
-                    <div className="flex-1 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100/80 dark:hover:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3">
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                          <span>{ev.title}</span>
-                        </div>
-                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">{ev.details}</p>
-                      </div>
-
-                      <div className="text-[11px] bg-white dark:bg-slate-900 p-2.5 rounded-xl text-slate-700 dark:text-slate-300 shrink-0 font-medium border border-slate-200 dark:border-slate-700/70 text-right sm:text-left min-w-[200px]">
-                        <div className="font-bold text-slate-900 dark:text-slate-100">
-                          تمت المتابعة بواسطة: <strong className="text-indigo-600 dark:text-indigo-400">{ev.authorName}</strong>
-                        </div>
-                        <div className="text-[10px] text-slate-500 font-mono-numbers mt-0.5">
-                          بتاريخ: {new Date(ev.timestamp).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+                <button className="btn-primary" type="submit">
+                  حفظ{" "}
+                  {action === "followup"
+                    ? "المتابعة"
+                    : action === "booking"
+                      ? "التعاقد"
+                      : action === "visit"
+                        ? "الزيارة"
+                        : "التعديل"}
+                </button>
+                <span className="quiet-note" style={{ padding: 0 }}>
+                  الحقول المكتوب عليها «اختياري» تقدر تسيبها فاضية.
+                </span>
+              </div>
+            </form>
           )}
-
-          {activeTab === 'visits' && (
-            <div className="space-y-3">
-              {leadVisits.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-xs">لم تسجل معاينات لهذا العميل بعد</div>
-              ) : (
-                [...leadVisits].sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`)).map((v, idx, arr) => (
-                  <div key={v.id} className="p-4 rounded-xl border border-fuchsia-200 dark:border-fuchsia-900/70 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded-full bg-fuchsia-600 text-white text-[10px] font-mono-numbers">زيارة #{arr.length - idx}</span>
-                        <span>زيارة فرع {v.branchName}</span>
-                      </div>
-                      <p className="text-xs text-slate-600 dark:text-slate-300 mt-1"><strong className="text-slate-800 dark:text-slate-200">السبب:</strong> {v.reason}</p>
-                      <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5"><strong className="text-slate-800 dark:text-slate-200">النتيجة:</strong> {v.outcome}</p>
-                    </div>
-                    <div className="text-[11px] bg-slate-50 dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-right sm:text-left shrink-0">
-                      <div className="font-bold text-slate-900 dark:text-slate-100">تمت الزيارة بواسطة: {v.receivedByAgentName || 'الموظف'}</div>
-                      <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono-numbers mt-0.5">{v.date} الساعة {v.time}</div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+          {feedback && (
+            <p className="notice" role="status" style={{ margin: "16px 26px" }}>
+              {feedback}
+            </p>
           )}
-
-          {activeTab === 'followups' && (
-            <div className="space-y-3">
-              {leadFollowUps.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-xs">لا توجد متابعات لهذا العميل بعد</div>
-              ) : (
-                leadFollowUps.map((f) => {
-                  const statusStyles: Record<string, string> = {
-                    completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-                    overdue: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-                    due: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-                    upcoming: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
-                    cancelled: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
-                  };
-                  const statusLabels: Record<string, string> = {
-                    completed: 'تمت',
-                    overdue: 'متأخرة',
-                    due: 'مستحقة اليوم',
-                    upcoming: 'قادمة',
-                    cancelled: 'ملغاة',
-                  };
-                  const canComplete = f.status !== 'completed' && f.status !== 'cancelled';
-                  return (
-                    <div key={f.id} className="p-4 rounded-xl border border-teal-200 dark:border-teal-900/70 bg-white dark:bg-slate-900 shadow-xs space-y-2">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusStyles[f.status] || statusStyles.upcoming}`}>
-                              {statusLabels[f.status] || f.status}
-                            </span>
-                            <span>{f.reason}</span>
-                          </div>
-                          {f.outcomeResult && (
-                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1"><strong className="text-slate-800 dark:text-slate-200">النتيجة:</strong> {f.outcomeResult}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="text-[11px] bg-slate-50 dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-right sm:text-left">
-                            <div className="font-bold text-slate-900 dark:text-slate-100">{f.assignedAgentName || 'الموظف'}</div>
-                            <div className="text-[10px] text-teal-600 dark:text-teal-400 font-mono-numbers mt-0.5">
-                              {f.completedAt ? `تمت: ${f.completedAt.slice(0, 10)}` : `الموعد: ${f.scheduledAt.slice(0, 10)}`}
-                            </div>
-                          </div>
-                          {canComplete && completingFollowUpId !== f.id && (
-                            <button
-                              onClick={() => {
-                                setCompletingFollowUpId(f.id);
-                                setFollowUpResultText('');
-                              }}
-                              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>تم التنفيذ</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {completingFollowUpId === f.id && (
-                        <form onSubmit={handleCompleteFollowUp} className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                          <input
-                            type="text"
-                            autoFocus
-                            value={followUpResultText}
-                            onChange={(e) => setFollowUpResultText(e.target.value)}
-                            required
-                            placeholder="نتيجة المتابعة..."
-                            className="flex-1 p-2 bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 text-slate-800 dark:text-slate-200 rounded text-xs outline-none focus:ring-2 focus:ring-teal-500"
-                          />
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setCompletingFollowUpId(null)} className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-semibold">
-                              إلغاء
-                            </button>
-                            <button type="submit" className="px-4 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs font-semibold">
-                              حفظ النتيجة
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {activeTab === 'invoices' && (
-            <div className="space-y-3">
-              {leadInvoices.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-xs">لم يتم تسجيل فواتير مشتريات لهذا العميل بعد</div>
-              ) : (
-                leadInvoices.map((inv) => (
-                  <div key={inv.id} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs space-y-2">
-                    <div className="flex items-center justify-between text-xs font-bold">
-                      <span className="text-indigo-600 dark:text-indigo-400 font-mono">{inv.invoiceNumber} ({inv.date})</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-mono-numbers text-sm font-extrabold">
-                        {inv.totalAmount.toLocaleString()} ج.م
+          <div
+            className="client-tabs"
+            role="tablist"
+            aria-label="تفاصيل العميل"
+            onKeyDown={(event) => {
+              if (
+                !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+              )
+                return;
+              const tabs = Array.from(
+                event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                  '[role="tab"]',
+                ),
+              );
+              const current = tabs.indexOf(event.target as HTMLButtonElement);
+              if (current < 0) return;
+              event.preventDefault();
+              const rtl = document.documentElement.dir === "rtl";
+              const step =
+                event.key === "ArrowRight" ? (rtl ? -1 : 1) : rtl ? 1 : -1;
+              const target =
+                event.key === "Home"
+                  ? tabs[0]
+                  : event.key === "End"
+                    ? tabs[tabs.length - 1]
+                    : tabs[(current + step + tabs.length) % tabs.length];
+              target.focus();
+              target.click();
+            }}
+          >
+            {Object.entries(labels)
+              .filter(
+                ([id]) =>
+                  id === "timeline" ||
+                  hasPermission(
+                    effectiveUser,
+                    (
+                      {
+                        followups: "followups.view",
+                        visits: "visits.view",
+                        bookings: "bookings.view",
+                        invoices: "invoices.view",
+                      } as const
+                    )[id as "followups" | "visits" | "bookings" | "invoices"],
+                  ),
+              )
+              .map(([id, label]) => (
+                <button
+                  key={id}
+                  id={`client-tab-${id}`}
+                  role="tab"
+                  aria-selected={tab === id}
+                  tabIndex={tab === id ? 0 : -1}
+                  aria-controls="client-tab-panel"
+                  onClick={() => setTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+          </div>
+          <div
+            className="profile-content"
+            key={tab}
+            role="tabpanel"
+            id="client-tab-panel"
+            aria-labelledby={`client-tab-${tab}`}
+          >
+            {tab === "timeline" &&
+              (events.length ? (
+                <ol className="timeline">
+                  {events.map((e) => (
+                    <li key={e.id}>
+                      <span
+                        className={`timeline-dot event-${e.type}`}
+                        aria-hidden="true"
+                      >
+                        {e.type === "booking_created" ? (
+                          <ShoppingBag size={15} />
+                        ) : e.type === "followup_result" ? (
+                          <CheckCircle2 size={15} />
+                        ) : e.type === "followup_created" ? (
+                          <CalendarDays size={15} />
+                        ) : e.type === "note" ? (
+                          <FileText size={15} />
+                        ) : e.type === "visit" ? (
+                          <MapPin size={15} />
+                        ) : (
+                          <UserRound size={15} />
+                        )}
                       </span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {inv.items.map((item, idx) => (
-                        <span key={idx} className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-semibold">
-                          {item.categoryName}: <strong className="font-mono-numbers">{item.amount.toLocaleString()} ج.م</strong>
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
-                      <span>الفرع: {inv.branchName} · الموظف: {inv.agentName}</span>
-                      {inv.brokerName && <span className="text-amber-600 font-semibold">🤝 وسيط: {inv.brokerName}</span>}
-                    </div>
-                  </div>
+                      <div>
+                        <small>
+                          {new Intl.DateTimeFormat("ar-EG", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: "Africa/Cairo",
+                          }).format(new Date(e.timestamp))}
+                        </small>
+                        <h3>{e.title}</h3>
+                        <p>{e.details}</p>
+                        <small>{e.authorName}</small>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="empty-state">
+                  <Clock3 size={24} />
+                  <h3>لسه مفيش تعاملات مسجلة</h3>
+                  <p>تظهر هنا التعاملات المسجلة حسب صلاحياتك.</p>
+                </div>
+              ))}
+            {tab === "followups" &&
+              (leadFollowUps.length ? (
+                leadFollowUps.map((f) => (
+                  <article className="profile-record" key={f.id}>
+                    <span className="status-pill">
+                      {
+                        {
+                          due: "اليوم",
+                          overdue: "متأخرة",
+                          upcoming: "قادمة",
+                          completed: "مكتملة",
+                          cancelled: "ملغاة",
+                        }[followUpStatus(f)]
+                      }
+                    </span>
+                    <h3>{f.reason}</h3>
+                    <p>
+                      {f.scheduledAt.replace("T", " ")} · {f.assignedAgentName}
+                    </p>
+                    {f.outcomeResult && <p>النتيجة: {f.outcomeResult}</p>}
+                  </article>
                 ))
-              )}
-            </div>
-          )}
+              ) : (
+                <div className="empty-state">
+                  <h3>مفيش متابعة مسجلة</h3>
+                  {allowed("followup") && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => show("followup")}
+                    >
+                      تحديد أول متابعة
+                    </button>
+                  )}
+                </div>
+              ))}
+            {tab === "visits" &&
+              (leadVisits.length ? (
+                leadVisits.map((v) => (
+                  <article className="profile-record" key={v.id}>
+                    <small>
+                      {v.date} · {v.time}
+                    </small>
+                    <h3>{v.reason}</h3>
+                    <p>{v.outcome}</p>
+                    <p>{v.notes}</p>
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <h3>مفيش زيارات مسجلة</h3>
+                  {allowed("visit") && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => show("visit")}
+                    >
+                      تسجيل زيارة
+                    </button>
+                  )}
+                </div>
+              ))}
+            {tab === "bookings" &&
+              (leadBookings.length ? (
+                leadBookings.map((b) => (
+                  <article className="profile-record" key={b.id}>
+                    <span className="status-pill">
+                      {b.bookingStatus === "cancelled"
+                        ? "ملغى"
+                        : b.paymentStatus === "full"
+                          ? "مدفوع بالكامل"
+                          : b.paymentStatus === "deposit"
+                            ? "تم استلام مقدم"
+                            : "في انتظار الدفع"}
+                    </span>
+                    <h3>{b.courseName}</h3>
+                    <p>
+                      {formatMoney(b.amount)} ج.م · {b.bookingDate}
+                    </p>
+                    <p>{b.notes}</p>
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <h3>مفيش تعاقدات مسجلة</h3>
+                  {allowed("booking") && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => show("booking")}
+                    >
+                      تسجيل تعاقد
+                    </button>
+                  )}
+                </div>
+              ))}
+            {tab === "invoices" &&
+              (invoices.length ? (
+                invoices.map((i) => (
+                  <article className="profile-record" key={i.id}>
+                    <span className="status-pill">
+                      {
+                        {
+                          draft: "مسودة",
+                          paid: "مدفوعة",
+                          partial: "مدفوعة جزئيًا",
+                          cancelled: "ملغاة",
+                        }[i.status]
+                      }
+                    </span>
+                    <h3>{i.invoiceNumber}</h3>
+                    <p>
+                      {formatMoney(i.totalAmount)} ج.م · {i.date}
+                    </p>
+                    {i.items.map((item, index) => (
+                      <p key={index}>
+                        {item.categoryName}: {formatMoney(item.amount)} ج.م
+                      </p>
+                    ))}
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <h3>مفيش فواتير مرتبطة بالعميل</h3>
+                  <p>الفواتير المتاحة لك والمرتبطة بهذا العميل تظهر هنا.</p>
+                </div>
+              ))}
+          </div>
         </div>
-
-        {/* Modal Footer */}
-        <div className="bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-4 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-          >
-            إغلاق
+        <div className="profile-footer">
+          <span>
+            <span className="local-data-dot" /> بيانات الجهاز الحالي · المزامنة
+            غير مؤكدة
+          </span>
+          <button className="btn-text" onClick={onClose}>
+            رجوع للعملاء
+            <ArrowRight size={14} />
           </button>
         </div>
+        <CustomerRatingModal
+          lead={lead}
+          isOpen={rating}
+          onClose={() => setRating(false)}
+        />
       </div>
-
-      {/* Customer Rating Simulation Modal */}
-      <CustomerRatingModal
-        lead={lead}
-        isOpen={showRatingModal}
-        onClose={() => setShowRatingModal(false)}
-      />
     </div>
   );
-};
+}

@@ -1,400 +1,715 @@
-import React, { useState } from 'react';
-import { useCRM } from '../context/CRMContext';
-import { useLanguage } from '../context/LanguageContext';
-import { Branch } from '../types/crm';
-import { BranchDetailsModal } from '../components/common/BranchDetailsModal';
+import { useState } from "react";
 import {
+  ArrowUpLeft,
+  ArrowLeft,
+  Plus,
   Users,
-  Building2,
   PhoneCall,
   ShoppingBag,
-  TrendingUp,
-  AlertTriangle,
-  Compass,
-  CheckCircle2,
-  Clock,
-  UserCheck,
-  ArrowUpRight,
-  ExternalLink,
-  ChevronLeft,
-} from 'lucide-react';
-
-interface DashboardPageProps {
+  FileText,
+  Building2,
+  SlidersHorizontal,
+  CalendarDays,
+  Check,
+  Clock3,
+  CircleAlert,
+  ChevronDown,
+} from "lucide-react";
+import { useCRM } from "../context/CRMContext";
+import {
+  canAccessPage,
+  canCreateCustomer,
+  isSales,
+  scopeLabel,
+} from "../lib/access";
+import {
+  hasPermission,
+  isDirector,
+  positionNames,
+  specialties,
+} from "../lib/permissions";
+import {
+  departmentNames,
+  followUpStatus,
+  formatMoney,
+} from "../lib/presentation";
+import { BranchDetailsModal } from "../components/common/BranchDetailsModal";
+import type { Branch } from "../types/crm";
+interface Props {
   setActiveTab: (tab: string) => void;
-  onOpenLead: (leadId: string) => void;
+  onOpenLead: (id: string) => void;
 }
-
-export const DashboardPage: React.FC<DashboardPageProps> = ({ setActiveTab, onOpenLead }) => {
-  const { effectiveUser, leads, visits, followUps, bookings, branches, users } = useCRM();
-  const { t } = useLanguage();
-
+const departmentColors: Record<string, string> = {
+  construction: "var(--department-construction)",
+  decor: "var(--department-decor)",
+  garden: "var(--department-garden)",
+  general: "var(--department-general)",
+};
+export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
+  const {
+    effectiveUser: u,
+    leads: scopeLeads,
+    followUps: scopeTasks,
+    bookings: scopeBookings,
+    branches: scopeBranches,
+    purchaseInvoices: scopeInvoices,
+  } = useCRM();
+  const [branchFilter, setBranchFilter] = useState("all");
+  const [sort, setSort] = useState("amount");
+  const [showAllBranches, setShowAllBranches] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
-  const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
-
-  const handleOpenBranch = (branch: Branch) => {
-    setSelectedBranch(branch);
-    setIsBranchModalOpen(true);
-  };
-
-  const role = effectiveUser.role;
-
-  // Role Scoped Filters
-  const scopedLeads = leads.filter((l) => {
-    if (role === 'admin') return true;
-    if (role === 'branch_manager' || role === 'supervisor') return l.branchId === effectiveUser.branchId;
-    if (role === 'team_leader') return l.branchId === effectiveUser.branchId && l.teamId === effectiveUser.teamId;
-    return l.assignedAgentId === effectiveUser.id;
-  });
-
-  const scopedFollowUps = followUps.filter((f) => {
-    if (role === 'admin') return true;
-    if (role === 'branch_manager' || role === 'supervisor') return f.branchId === effectiveUser.branchId;
-    if (role === 'team_leader') return f.branchId === effectiveUser.branchId;
-    return f.assignedAgentId === effectiveUser.id;
-  });
-
-  const scopedBookings = bookings.filter((b) => {
-    if (role === 'admin') return true;
-    if (role === 'branch_manager' || role === 'supervisor') return b.branchId === effectiveUser.branchId;
-    if (role === 'team_leader') return b.branchId === effectiveUser.branchId;
-    return b.agentId === effectiveUser.id;
-  });
-
-  const scopedVisits = visits.filter((v) => {
-    if (role === 'admin') return true;
-    if (role === 'branch_manager' || role === 'supervisor') return v.branchId === effectiveUser.branchId;
-    return v.receivedByAgentId === effectiveUser.id;
-  });
-
-  // Key Metrics
-  const totalLeadsCount = scopedLeads.length;
-  const bookedCount = scopedLeads.filter((l) => l.status === 'booked').length;
-  const conversionRate = totalLeadsCount > 0 ? Math.round((bookedCount / totalLeadsCount) * 100) : 0;
-
-  const dueTodayCount = scopedFollowUps.filter((f) => f.status === 'due').length;
-  const overdueCount = scopedFollowUps.filter((f) => f.status === 'overdue').length;
-
-  const totalRevenue = scopedBookings.reduce((sum, b) => sum + b.amount, 0);
-
+  const sales = isSales(u),
+    has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
+  const validSort =
+    (sort === "amount" && has("bookings.view")) ||
+    (sort === "late" && has("followups.view")) ||
+    (sort === "missing" && has("customers.view"));
+  const activeSort = validSort
+    ? sort
+    : has("bookings.view")
+      ? "amount"
+      : has("followups.view")
+        ? "late"
+        : has("customers.view")
+          ? "missing"
+          : "amount";
+  const inScope = (branch?: string) =>
+    branchFilter === "all" || branch === branchFilter;
+  const branches = scopeBranches.filter((b) => inScope(b.id));
+  const leads = scopeLeads.filter((l) => inScope(l.branchId));
+  const followUps = scopeTasks.filter((f) => inScope(f.branchId));
+  const active = scopeBookings.filter(
+    (b) => inScope(b.branchId) && b.bookingStatus !== "cancelled",
+  );
+  const invoices = scopeInvoices.filter((i) => inScope(i.branchId));
+  const due = followUps.filter((f) => followUpStatus(f) === "due");
+  const overdue = followUps.filter((f) => followUpStatus(f) === "overdue");
+  const tasks = followUps
+    .filter((f) => !["completed", "cancelled"].includes(followUpStatus(f)))
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+  const taskLeadIds = new Set(tasks.map((f) => f.leadId));
+  const total = active.reduce((sum, b) => sum + b.amount, 0);
+  const pendingInvoices = invoices.filter((i) =>
+    ["draft", "partial"].includes(i.status),
+  );
+  const departments = Object.entries(departmentNames).map(([id, name]) => ({
+    id,
+    name,
+    amount: active
+      .filter((b) => b.department === id)
+      .reduce((s, b) => s + b.amount, 0),
+    count: active.filter((b) => b.department === id).length,
+  }));
+  const branchRows = branches
+    .filter((b) => b.active)
+    .map((b) => {
+      const contracts = active.filter((c) => c.branchId === b.id);
+      return {
+        ...b,
+        count: leads.filter((l) => l.branchId === b.id).length,
+        late: overdue.filter((f) => f.branchId === b.id).length,
+        missing: leads.filter(
+          (l) =>
+            l.branchId === b.id &&
+            !["booked", "not_interested"].includes(l.status) &&
+            !taskLeadIds.has(l.id),
+        ).length,
+        amount: contracts.reduce((s, c) => s + c.amount, 0),
+        contracts: contracts.length,
+        pending: pendingInvoices.filter((i) => i.branchId === b.id).length,
+      };
+    })
+    .sort((a, b) =>
+      activeSort === "late"
+        ? b.late - a.late
+        : activeSort === "missing"
+          ? b.missing - a.missing
+          : b.amount - a.amount,
+    );
+  const visibleBranches = branchRows.slice(0, showAllBranches ? undefined : 5);
+  const maxAmount = Math.max(...branchRows.map((b) => b.amount), 1);
+  const hasBranchSummary =
+    !sales && (has("branches.view") || has("staff.view"));
+  const date = new Intl.DateTimeFormat("ar-EG", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "Africa/Cairo",
+  }).format(new Date());
+  const title = sales
+    ? "يومك في الفرع"
+    : isDirector(u)
+      ? "نظرة على المؤسسة"
+      : u.role === "branch_manager"
+        ? "أداء الفرع وفريقك"
+        : "نطاق الإشراف";
+  const metric = (
+    page: string,
+    label: string,
+    value: number,
+    note: string,
+    Icon: typeof Users,
+    tone = "neutral",
+  ) =>
+    canAccessPage(u, page) && (
+      <button
+        className={`metric studio-metric tone-${tone}`}
+        key={page}
+        onClick={() => setActiveTab(page)}
+      >
+        <span className="metric-top">
+          <span>{label}</span>
+          <span className="metric-icon">
+            <Icon size={19} />
+          </span>
+        </span>
+        <strong className="metric-value" dir="ltr">
+          {value.toLocaleString("en-GB")}
+        </strong>
+        <span className="metric-bottom">
+          <span className="metric-note">{note}</span>
+          <ArrowUpLeft size={16} />
+        </span>
+      </button>
+    );
+  const attention = has("followups.view");
   return (
-    <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-150">
-      {/* Welcome Banner */}
-      <div className="bg-white dark:bg-[#0c1017] text-slate-900 dark:text-[#dfe2ee] p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="design-dashboard">
+      <div className="studio-heading">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-[#d9b438]/15 text-[#b8951d] dark:text-[#d9b438] border border-[#d9b438]/30 font-mono">
-              {t(`role.${role}`)}
+          <span className="eyebrow">
+            {positionNames[u.role]}
+            {u.role === "supervisor"
+              ? ` · ${specialties[u.specialty || "sales"]}`
+              : ""}
+          </span>
+          <h1>
+            {title}
+            <span className="heading-stop" aria-hidden="true">
+              .
             </span>
-            <span className="text-xs text-slate-500 dark:text-[#8d9197]">· {effectiveUser.branchName || 'كافة فروع المؤسسة'}</span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-bold mt-1 text-slate-900 dark:text-[#dfe2ee] tracking-tight">
-            مرحباً بك، م. {effectiveUser.name} 👋
           </h1>
-          <p className="text-xs text-slate-600 dark:text-[#8d9197] mt-1 max-w-2xl leading-relaxed">
-            {role === 'admin' && 'لوحة القيادة المركزية لمتابعة محفظة الأعمال وأداء جميع الفروع والفرق والتحليلات النقدية.'}
-            {role === 'branch_manager' && 'لوحة متابعة الفرع: السجلات التنفيذية، أداء الموظفين، والتحصيلات المستحقة.'}
-            {role === 'supervisor' && 'لوحة الإشراف والتنفيذ لمتابعة جودة الصفحات والعقود.'}
-            {role === 'team_leader' && 'لوحة قائد الفريق: توزيع العملاء الميداني والمتابعات التنفيذية اليومية.'}
-            {role === 'sales_agent' && 'مساحة العمل اليومية: متابعة المبيعات المسجلة وتحديث حالات العملاء.'}
+          <p>
+            {sales
+              ? "كل عميل، وموعده، وخطوتك الجاية."
+              : "أداء الفروع وأولويات المتابعة في مساحة واحدة."}
           </p>
         </div>
-
-        <div className="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
-          <button
-            onClick={() => setActiveTab('add_client')}
-            className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-800 hover:bg-slate-700 dark:bg-[#1a212e] dark:hover:bg-[#252f42] text-white border border-slate-600/30 dark:border-white/10 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 min-h-[42px]"
-          >
-            <span>+ إضافة سجل جديد</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('record_visit')}
-            className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#151a24] dark:hover:bg-[#1e2533] text-slate-800 dark:text-[#dfe2ee] rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-white/10 cursor-pointer flex items-center justify-center gap-1.5 min-h-[42px]"
-          >
-            <span>تسجيل زيارة فرع</span>
-          </button>
+        <div className="studio-heading-tools">
+          <span className="studio-date">
+            <CalendarDays size={15} />
+            {date}
+          </span>
+          {canCreateCustomer(u) ? (
+            <button
+              className="btn-primary"
+              onClick={() => setActiveTab("add_client")}
+            >
+              <Plus size={18} />
+              عميل جديد
+            </button>
+          ) : isDirector(u) ? (
+            <button
+              className="btn-secondary"
+              onClick={() => setActiveTab("permissions")}
+            >
+              <SlidersHorizontal size={16} />
+              الصلاحيات
+            </button>
+          ) : null}
         </div>
       </div>
-
-      {/* KPI Interactive Stat Cards (Clickable to open details) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Card 1: Total Leads */}
-        <button
-          onClick={() => setActiveTab('clients')}
-          className="glass-card p-3.5 sm:p-5 rounded-2xl transition-all text-right dir-ltr:text-left cursor-pointer group flex items-center justify-between min-h-[100px] min-w-0"
-          title="انقر لعرض تفاصيل العملاء"
-        >
-          <div className="min-w-0 flex-1 pl-2">
-            <div className="fit-title font-semibold text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-[#7295b3] transition-colors flex items-center gap-1 truncate">
-              <span>إجمالي العملاء</span>
-              <ChevronLeft className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity dir-ltr:rotate-180 shrink-0" />
-            </div>
-            <div className="fit-value font-bold text-slate-900 dark:text-slate-100 mt-1 font-mono-numbers">
-              {totalLeadsCount}
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">المسجلين في النطاق</div>
-          </div>
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-[#7295b3] flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
-            <Users className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-        </button>
-
-        {/* Card 2: Overdue Followups */}
-        <button
-          onClick={() => setActiveTab('overdue_followups')}
-          className="glass-card p-3.5 sm:p-5 rounded-2xl transition-all text-right dir-ltr:text-left cursor-pointer group flex items-center justify-between min-h-[100px] min-w-0"
-          title="انقر لعرض المتابعات المتأخرة"
-        >
-          <div className="min-w-0 flex-1 pl-2">
-            <div className="fit-title font-semibold text-slate-500 dark:text-slate-400 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors flex items-center gap-1 truncate">
-              <span>المتابعات المستحقة</span>
-              <ChevronLeft className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity dir-ltr:rotate-180 shrink-0" />
-            </div>
-            <div className="fit-value font-bold text-red-600 dark:text-red-500 mt-1 font-mono-numbers">
-              {overdueCount}
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 font-medium truncate">
-              {dueTodayCount} مستحقة اليوم
-            </div>
-          </div>
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
-            <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-        </button>
-
-        {/* Card 3: Bookings */}
-        <button
-          onClick={() => setActiveTab('bookings')}
-          className="glass-card p-3.5 sm:p-5 rounded-2xl transition-all text-right dir-ltr:text-left cursor-pointer group flex items-center justify-between min-h-[100px] min-w-0"
-          title="انقر لعرض الحجوزات المؤكدة"
-        >
-          <div className="min-w-0 flex-1 pl-2">
-            <div className="fit-title font-semibold text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors flex items-center gap-1 truncate">
-              <span>الحجوزات المؤكدة</span>
-              <ChevronLeft className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity dir-ltr:rotate-180 shrink-0" />
-            </div>
-            <div className="fit-value font-bold text-emerald-600 dark:text-emerald-400 mt-1 font-mono-numbers">
-              {bookedCount}
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold mt-0.5 truncate">
-              نسبة التحويل {conversionRate}%
-            </div>
-          </div>
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
-            <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-        </button>
-
-        {/* Card 4: Total Sales Value */}
-        <button
-          onClick={() => setActiveTab('reports')}
-          className="glass-card p-3.5 sm:p-5 rounded-2xl transition-all text-right dir-ltr:text-left cursor-pointer group flex items-center justify-between min-h-[100px] min-w-0"
-          title="انقر لعرض التقارير المالية والإحصائيات"
-        >
-          <div className="min-w-0 flex-1 pl-2">
-            <div className="fit-title font-semibold text-slate-500 dark:text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors flex items-center gap-1 truncate">
-              <span>إجمالي المبيعات (ج.م)</span>
-              <ChevronLeft className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity dir-ltr:rotate-180 shrink-0" />
-            </div>
-            <div className="fit-value font-bold text-slate-900 dark:text-slate-100 mt-1 font-mono-numbers">
-              {totalRevenue.toLocaleString('ar-EG')}
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{scopedBookings.length} عملية حجز</div>
-          </div>
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
-            <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-        </button>
+      <div className="scope-strip">
+        <span>
+          <Building2 size={16} />
+          {scopeLabel(u)}
+        </span>
+        <span className="scope-period">جميع الفترات</span>
+        {scopeBranches.length > 1 && (
+          <label className="scope-select">
+            <span className="sr-only">تصفية بيانات الرئيسية بالفرع</span>
+            <select
+              aria-label="تصفية بيانات الرئيسية بالفرع"
+              value={branchFilter}
+              onChange={(e) => {
+                setBranchFilter(e.target.value);
+                setShowAllBranches(false);
+              }}
+            >
+              <option value="all">كل الفروع المتاحة</option>
+              {scopeBranches
+                .filter((b) => b.active)
+                .map((b) => (
+                  <option value={b.id} key={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+            </select>
+            <ChevronDown size={15} />
+          </label>
+        )}
       </div>
-
-      {/* Main Grid Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left / Main Column: Urgent Action Required */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Overdue & Urgent Follow-ups Widget */}
-          <div className="bg-white dark:bg-[#0c1017] rounded-2xl border border-slate-200 dark:border-white/10 shadow-xs overflow-hidden">
-            <div className="p-4 bg-slate-50 dark:bg-[#121620] border-b border-slate-200 dark:border-white/10 flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">المتابعات التي تحتاج إجراء عاجل</h3>
-              </div>
-              <button
-                onClick={() => setActiveTab('followups')}
-                className="text-xs text-slate-700 dark:text-[#7295b3] font-bold hover:underline cursor-pointer"
-              >
-                عرض كافة المتابعات ({scopedFollowUps.length})
-              </button>
+      <div
+        className={`studio-overview ${!attention ? "without-attention" : ""}`}
+      >
+        <section className="performance-hero" aria-label="ملخص الأداء">
+          <div className="hero-copy">
+            <span className="hero-kicker">
+              <span />{" "}
+              {has("bookings.view")
+                ? "قيمة التعاقدات المسجلة"
+                : has("customers.view")
+                  ? "العملاء في نطاقك"
+                  : "ملخص نطاق العمل"}
+            </span>
+            <div className="hero-amount">
+              <strong dir="ltr">
+                {has("bookings.view")
+                  ? formatMoney(total)
+                  : has("customers.view")
+                    ? leads.length
+                    : branches.filter((b) => b.active).length}
+              </strong>
+              <span>
+                {has("bookings.view")
+                  ? "جنيه مصري"
+                  : has("customers.view")
+                    ? "عميل مسجل"
+                    : "فرع متاح"}
+              </span>
             </div>
-
-            <div className="divide-y divide-slate-100 dark:divide-white/5">
-              {scopedFollowUps.filter((f) => f.status === 'overdue' || f.status === 'due').length === 0 ? (
-                <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">
-                  ✨ لا توجد متابعات متأخرة أو مستحقة حالياً. عمل ممتاز!
-                </div>
-              ) : (
-                scopedFollowUps
-                  .filter((f) => f.status === 'overdue' || f.status === 'due')
-                  .slice(0, 5)
-                  .map((f) => (
-                    <div
-                      key={f.id}
-                      className="p-4 hover:bg-slate-50/80 dark:hover:bg-white/5 transition-colors flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+            <p>
+              {has("bookings.view")
+                ? `${active.length} تعاقد غير ملغى · قيمة الاتفاقات قبل فصل التحصيل`
+                : "المؤشرات المتاحة وفق اختصاصك وفروعك."}
+            </p>
+            {canAccessPage(u, "reports") && (
+              <button
+                className="hero-link"
+                onClick={() => setActiveTab("reports")}
+              >
+                قراءة التقارير
+                <ArrowUpLeft size={18} />
+              </button>
+            )}
+          </div>
+          <div className="hero-mark" aria-hidden="true">
+            <div />
+            <div />
+            <span>البحيري</span>
+          </div>
+          <span className="hero-footnote">
+            {branchFilter === "all" ? "داخل نطاق عملك" : branches[0]?.name}
+          </span>
+        </section>
+        {attention && (
+          <section
+            className={`attention-card ${overdue.length ? "needs-attention" : ""}`}
+            aria-label="ملخص المتابعات"
+          >
+            <div className="attention-top">
+              <span className="attention-tag">
+                <CircleAlert size={14} />
+                {overdue.length ? "يحتاج مراجعة" : "أولويات اليوم"}
+              </span>
+              <span className="attention-icon">
+                {overdue.length ? <Clock3 size={21} /> : <Check size={21} />}
+              </span>
+            </div>
+            <h2>
+              {sales
+                ? overdue.length
+                  ? "نبدأ بالمتابعات المتأخرة؟"
+                  : "مواعيدك، خطوة بخطوة."
+                : overdue.length
+                  ? "متابعات تحتاج مراجعتك."
+                  : "تابع التزام فريقك اليوم."}
+            </h2>
+            <p>
+              {sales
+                ? "شوف الموعد وسجّل نتيجة التواصل من ملف العميل."
+                : "راجع الموظف المسؤول والخطوة التالية لكل متابعة."}
+            </p>
+            <div className="attention-numbers">
+              <div>
+                <strong>{overdue.length}</strong>
+                <span>متأخرة</span>
+              </div>
+              <div>
+                <strong>{due.length}</strong>
+                <span>مستحقة اليوم</span>
+              </div>
+            </div>
+            <button
+              className="attention-link"
+              onClick={() =>
+                setActiveTab(
+                  overdue.length ? "overdue_followups" : "due_followups",
+                )
+              }
+            >
+              {sales ? "عرض متابعاتي" : "مراجعة المتابعات"}
+              <ArrowLeft size={17} />
+            </button>
+          </section>
+        )}
+      </div>
+      <div className="metric-grid studio-metrics">
+        {metric(
+          "clients",
+          sales ? "عملاؤك" : "العملاء المسجلون",
+          leads.length,
+          "داخل نطاق العمل",
+          Users,
+        )}
+        {metric(
+          "bookings",
+          "التعاقدات",
+          active.length,
+          "باستبعاد التعاقدات الملغاة",
+          ShoppingBag,
+        )}
+        {metric(
+          "followups",
+          sales ? "متابعات اليوم" : "متابعات متأخرة",
+          sales ? due.length : overdue.length,
+          sales ? `${overdue.length} متابعة متأخرة` : "داخل الفروع المتاحة",
+          PhoneCall,
+          overdue.length ? "warning" : "neutral",
+        )}
+        {metric(
+          "invoices",
+          "فواتير معلّقة",
+          pendingInvoices.length,
+          "مسودات ومدفوعة جزئيًا",
+          FileText,
+        )}
+      </div>
+      <div
+        className={`studio-analysis-grid ${!hasBranchSummary ? "single-column" : ""}`}
+      >
+        {hasBranchSummary && (
+          <section className="panel branch-performance">
+            <div className="studio-panel-heading">
+              <div>
+                <span className="eyebrow">من الإجمالي للتفاصيل</span>
+                <h2>
+                  {isDirector(u) || u.role === "regional_manager"
+                    ? "مقارنة الفروع"
+                    : "ملخص نطاق العمل"}
+                </h2>
+                <p>راجع الأرقام، ثم افتح الفرع للتفاصيل.</p>
+              </div>
+              <select
+                className="studio-select"
+                aria-label="ترتيب الفروع"
+                value={activeSort}
+                onChange={(e) => setSort(e.target.value)}
+              >
+                {has("bookings.view") && (
+                  <option value="amount">قيمة التعاقدات</option>
+                )}
+                {has("followups.view") && (
+                  <option value="late">تأخر المتابعة</option>
+                )}
+                {has("customers.view") && (
+                  <option value="missing">بدون خطوة تالية</option>
+                )}
+                {!has("bookings.view") &&
+                  !has("followups.view") &&
+                  !has("customers.view") && (
+                    <option value="amount">الترتيب الحالي</option>
+                  )}
+              </select>
+            </div>
+            <div className="table-scroll branch-desktop">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>الفرع / المسؤول</th>
+                    {has("bookings.view") && <th>قيمة التعاقدات</th>}
+                    {has("followups.view") && <th>متأخرة</th>}
+                    {has("customers.view") && <th>بدون خطوة تالية</th>}
+                    {has("invoices.view") && <th>فواتير معلّقة</th>}
+                    <th>
+                      <span className="sr-only">تفاصيل الفرع</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleBranches.map((b) => (
+                    <tr key={b.id}>
+                      <td>
+                        <button
+                          className="branch-name"
+                          onClick={() => setSelectedBranch(b)}
+                        >
+                          {b.name}
+                        </button>
+                        <span className="table-secondary">
+                          {b.managerName || "مدير الفرع غير محدد"}
+                        </span>
+                      </td>
+                      {has("bookings.view") && (
+                        <td className="branch-value">
+                          <strong>
+                            <bdi>{formatMoney(b.amount)}</bdi>{" "}
+                            <small>ج.م</small>
+                          </strong>
+                          <div className="branch-volume" aria-hidden="true">
+                            <span
+                              style={{
+                                width: `${(b.amount / maxAmount) * 100}%`,
+                              }}
+                            />
+                          </div>
+                          {!b.contracts && (
+                            <span className="no-records">
+                              لا توجد تعاقدات مسجلة
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {has("followups.view") && (
+                        <td>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              f.status === 'overdue'
-                                ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-300'
-                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
-                            }`}
+                            className={`count-badge ${b.late ? "is-alert" : ""}`}
                           >
-                            {t(`followup.${f.status}`)}
+                            {b.late}
                           </span>
-                          <span className="font-bold text-slate-900 dark:text-slate-100 text-xs truncate">{f.leadName}</span>
-                          <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono-numbers">({f.leadPhone})</span>
-                        </div>
-                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 truncate">{f.reason}</p>
-                        <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                          الموعد المحدد: <span className="font-mono-numbers text-slate-700 dark:text-[#7295b3] font-semibold">{f.scheduledAt}</span> · المسؤول: {f.assignedAgentName || 'عام'}
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => onOpenLead(f.leadId)}
-                        className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 hover:bg-slate-700 dark:bg-[#1a212e] dark:hover:bg-[#252f42] text-white border border-slate-600/30 dark:border-white/10 rounded-xl text-xs font-semibold shrink-0 cursor-pointer min-h-[38px] flex items-center justify-center transition-colors shadow-xs"
-                      >
-                        فتح العميل
-                      </button>
-                    </div>
-                  ))
-              )}
+                        </td>
+                      )}
+                      {has("customers.view") && (
+                        <td>
+                          <span
+                            className={`count-badge ${b.missing ? "is-pending" : ""}`}
+                          >
+                            {b.missing}
+                          </span>
+                        </td>
+                      )}
+                      {has("invoices.view") && <td>{b.pending}</td>}
+                      <td>
+                        <button
+                          className="branch-open"
+                          onClick={() => setSelectedBranch(b)}
+                          aria-label={`عرض فرع ${b.name}`}
+                        >
+                          <ArrowUpLeft size={17} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-
-          {/* Recent Visits and Walk-in Inquiries */}
-          <div className="bg-white dark:bg-[#0c1017] rounded-2xl border border-slate-200 dark:border-white/10 shadow-xs overflow-hidden">
-            <div className="p-4 bg-slate-50 dark:bg-[#121620] border-b border-slate-200 dark:border-white/10 flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <Compass className="w-4 h-4 text-[#7295b3]" />
-                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">أحدث الزيارات والاستفسارات بمقرات الفروع</h3>
-              </div>
-              <button
-                onClick={() => setActiveTab('visits')}
-                className="text-xs text-slate-700 dark:text-[#7295b3] font-bold hover:underline cursor-pointer"
-              >
-                عرض سجل الزيارات ({scopedVisits.length})
-              </button>
-            </div>
-
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {scopedVisits.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">لم تسجل زيارات فروع حديثة</div>
-              ) : (
-                scopedVisits.slice(0, 4).map((v) => (
-                  <div key={v.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors flex items-center justify-between gap-4">
-                    <div>
-                      <div className="font-bold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-2 flex-wrap">
-                        <span>{v.visitorName}</span>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono-numbers">({v.phone || 'بدون رقم'})</span>
-                        <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">
-                          {v.branchName}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">{v.reason}</p>
-                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5">النتيجة: {v.outcome}</p>
-                    </div>
-
-                    <div className="text-right text-[11px] text-slate-400 dark:text-slate-500 shrink-0 font-mono-numbers">
-                      {v.date} {v.time}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Roles & Team Summaries */}
-        <div className="space-y-6">
-          {/* Branch Performance Grid (For Admin / Branch Manager) */}
-          {(role === 'admin' || role === 'branch_manager') && (
-            <div className="bg-white dark:bg-[#0c1017] rounded-2xl border border-slate-200 dark:border-white/10 p-5 shadow-xs">
-              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm mb-3 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-[#7295b3]" />
-                <span>أداء الفروع والمبيعات</span>
-              </h3>
-
-              <div className="space-y-3">
-                {branches.map((b) => {
-                  const bLeads = leads.filter((l) => l.branchId === b.id);
-                  const bBookings = bookings.filter((bk) => bk.branchId === b.id);
-                  const bRevenue = bBookings.reduce((sum, bk) => sum + bk.amount, 0);
-
-                  return (
+            <div className="branch-mobile-list">
+              {visibleBranches.map((b) => (
+                <article className="branch-mobile-card" key={b.id}>
+                  <div>
                     <button
-                      key={b.id}
-                      onClick={() => handleOpenBranch(b)}
-                      className="w-full text-right dir-ltr:text-left p-3 bg-slate-50 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 rounded-xl border border-slate-200 dark:border-white/10 transition-colors cursor-pointer group"
+                      className="branch-name"
+                      onClick={() => setSelectedBranch(b)}
                     >
-                      <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-[#7295b3]">
-                        <span>{b.name}</span>
-                        <span className="text-slate-700 dark:text-[#7295b3] font-mono-numbers">{bLeads.length} عميل</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                        <span>المدير: {b.managerName || 'غير معين'}</span>
-                        <span className="font-semibold text-emerald-700 dark:text-emerald-400 font-mono-numbers">
-                          {bRevenue.toLocaleString('ar-EG')} ج.م
-                        </span>
-                      </div>
+                      {b.name}
                     </button>
-                  );
-                })}
+                    <button
+                      className="branch-open"
+                      aria-label={`عرض فرع ${b.name}`}
+                      onClick={() => setSelectedBranch(b)}
+                    >
+                      <ArrowUpLeft size={17} />
+                    </button>
+                  </div>
+                  <p>{b.managerName || "مدير الفرع غير محدد"}</p>
+                  {has("bookings.view") && (
+                    <strong className="branch-mobile-amount">
+                      <bdi>{formatMoney(b.amount)}</bdi> <small>ج.م</small>
+                    </strong>
+                  )}
+                  <div className="branch-mobile-meta">
+                    {has("followups.view") && (
+                      <span>
+                        <i className={b.late ? "dot-alert" : "dot-neutral"} />
+                        {b.late} متأخرة
+                      </span>
+                    )}
+                    {has("customers.view") && (
+                      <span>{b.missing} بدون خطوة تالية</span>
+                    )}
+                    {has("invoices.view") && (
+                      <span>{b.pending} فاتورة معلّقة</span>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+            {!branchRows.length && (
+              <div className="empty-state">
+                <Building2 size={25} />
+                <h3>نطاق العمل لم يُحدد بعد</h3>
+                <p>حدد فروع الموظف من ملفه لعرض مؤشرات أدائه.</p>
               </div>
+            )}
+            <div className="studio-panel-footer">
+              <p>
+                قيمة التعاقدات لكل الفترات. غياب السجلات لا يكفي لتقييم أداء
+                الفرع.
+              </p>
+              {branchRows.length > 5 && (
+                <button
+                  className="btn-text"
+                  onClick={() => setShowAllBranches((v) => !v)}
+                >
+                  {showAllBranches
+                    ? "عرض مختصر"
+                    : `كل الفروع (${branchRows.length})`}
+                  <ChevronDown
+                    size={15}
+                    className={showAllBranches ? "is-rotated" : ""}
+                  />
+                </button>
+              )}
             </div>
-          )}
-
-          {/* Top Sales Agents Leaderboard */}
-          <div className="bg-white dark:bg-[#0c1017] rounded-2xl border border-slate-200 dark:border-white/10 p-5 shadow-xs">
-            <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm mb-3 flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-[#7295b3]" />
-              <span>أعلى مسؤول المبيعات إنجازاً</span>
-            </h3>
-
-            <div className="space-y-3">
-              {users
-                .filter((u) => u.role === 'sales_agent')
-                .map((ag) => {
-                  const agBookings = bookings.filter((b) => b.agentId === ag.id);
-                  const agRevenue = agBookings.reduce((sum, b) => sum + b.amount, 0);
-
-                  return (
-                    <div key={ag.id} className="flex items-center justify-between p-2.5 hover:bg-slate-50 dark:hover:bg-white/5 rounded-lg text-xs">
-                      <div>
-                        <div className="font-bold text-slate-800 dark:text-slate-200">{ag.name}</div>
-                        <div className="text-[11px] text-slate-400 dark:text-slate-500">{ag.branchName || 'فرع عام'}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-emerald-700 dark:text-emerald-400 font-mono-numbers">
-                          {agRevenue.toLocaleString('ar-EG')} ج.م
-                        </div>
-                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono-numbers">{agBookings.length} حجز</div>
-                      </div>
-                    </div>
-                  );
-                })}
+          </section>
+        )}
+        {has("bookings.view") && (
+          <section className="panel department-composition">
+            <div className="studio-panel-heading">
+              <div>
+                <span className="eyebrow">توزيع النشاط</span>
+                <h2>كل قسم، ونصيبه</h2>
+                <p>من إجمالي قيمة التعاقدات</p>
+              </div>
+              <ShoppingBag size={20} />
             </div>
-          </div>
-        </div>
+            <div className="composition-track" aria-hidden="true">
+              {departments.map((d) => (
+                <span
+                  key={d.id}
+                  style={{
+                    width: `${total ? (d.amount / total) * 100 : 0}%`,
+                    background: departmentColors[d.id],
+                  }}
+                />
+              ))}
+            </div>
+            <div className="studio-departments">
+              {departments.map((d) => (
+                <div className="studio-department" key={d.id}>
+                  <div
+                    className="department-dot"
+                    style={{ background: departmentColors[d.id] }}
+                  />
+                  <div>
+                    <h3>{d.name}</h3>
+                    <p>{d.count} تعاقد</p>
+                  </div>
+                  <div className="department-figure">
+                    <strong>
+                      <bdi>{formatMoney(d.amount)}</bdi>
+                    </strong>
+                    <small>
+                      {total ? `${Math.round((d.amount / total) * 100)}٪` : "—"}
+                    </small>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="department-note">
+              <span>ج.م</span>
+              <p>
+                القيم تشمل التعاقدات غير الملغاة؛ التحصيل يُراجع بشكل مستقل.
+              </p>
+            </div>
+          </section>
+        )}
       </div>
-
-      {/* Branch Details Modal */}
+      {has("followups.view") && (
+        <section className="panel studio-followups">
+          <div className="studio-panel-heading">
+            <div>
+              <span className="eyebrow">الخطوة القادمة</span>
+              <h2>
+                {sales ? "المتابعات الأقرب" : "المتابعات التي تحتاج مراجعة"}
+              </h2>
+              <p>
+                {sales
+                  ? "المتأخر أولًا، وبعده أقرب موعد."
+                  : "الموعد والمسؤول وآخر سبب مسجل للمتابعة."}
+              </p>
+            </div>
+            <button
+              className="btn-text"
+              onClick={() => setActiveTab("followups")}
+            >
+              كل المتابعات
+              <ArrowLeft size={16} />
+            </button>
+          </div>
+          <div className="studio-task-list">
+            {tasks.slice(0, 4).map((f) => {
+              const status = followUpStatus(f);
+              return (
+                <article className="studio-task" key={f.id}>
+                  <span className="task-symbol">
+                    <PhoneCall size={19} />
+                  </span>
+                  <div className="studio-task-copy">
+                    <h3>{f.leadName}</h3>
+                    <p>{f.reason}</p>
+                    <span>
+                      {f.assignedAgentName || "الموظف المسؤول"} ·{" "}
+                      <bdi>{f.scheduledAt.replace("T", " ").slice(0, 16)}</bdi>
+                    </span>
+                  </div>
+                  <span
+                    className={`status-pill ${status === "overdue" ? "is-new" : status === "due" ? "is-warning" : ""}`}
+                  >
+                    <i />
+                    {status === "overdue"
+                      ? "متأخرة"
+                      : status === "due"
+                        ? "اليوم"
+                        : "قادمة"}
+                  </span>
+                  {has("customers.view") &&
+                    scopeLeads.some((l) => l.id === f.leadId) && (
+                      <button
+                        className="btn-secondary"
+                        onClick={() => onOpenLead(f.leadId)}
+                      >
+                        ملف العميل
+                        <ArrowUpLeft size={16} />
+                      </button>
+                    )}
+                </article>
+              );
+            })}
+            {!tasks.length && (
+              <div className="empty-state">
+                <Check size={27} />
+                <h3>لا توجد متابعات معلّقة</h3>
+                <p>أي مواعيد جديدة داخل نطاقك هتظهر هنا.</p>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+      <footer className="studio-page-footer">
+        <span>
+          <span className="brand-dot" />
+          البحيري للدهانات والديكور
+        </span>
+        <span>تفاصيل وجودة تليق بذوقك</span>
+      </footer>
       <BranchDetailsModal
+        key={selectedBranch?.id}
         branch={selectedBranch}
-        isOpen={isBranchModalOpen}
-        onClose={() => setIsBranchModalOpen(false)}
+        isOpen={!!selectedBranch}
+        onClose={() => setSelectedBranch(null)}
         onOpenLead={onOpenLead}
-        onAddClientForBranch={() => setActiveTab('add_client')}
       />
     </div>
   );
-};
+}

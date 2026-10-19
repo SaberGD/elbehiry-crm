@@ -1,11 +1,11 @@
 export type UserRole =
-  | 'admin'
-  | 'general_manager'
-  | 'regional_manager'
-  | 'branch_manager'
-  | 'supervisor'
-  | 'team_leader'
-  | 'sales_agent';
+  | "admin"
+  | "general_manager"
+  | "regional_manager"
+  | "branch_manager"
+  | "supervisor"
+  | "team_leader"
+  | "sales_agent";
 
 export interface FinancialHistoryEntry {
   id: string;
@@ -74,7 +74,8 @@ export interface User {
   createdAt: string;
   salaryInfo?: FinancialRecord;
   permissions?: string[];
-  authUid?: string; // Firebase Auth uid once a login exists
+  specialty?: "sales" | "accounts" | "operations";
+  supervisedBranchIds?: string[];
 }
 
 export interface Company {
@@ -111,7 +112,12 @@ export interface Warehouse {
   active: boolean;
 }
 
-export type BranchType = 'main_hq' | 'showroom' | 'warehouse' | 'store' | 'project_site';
+export type BranchType =
+  | "main_hq"
+  | "showroom"
+  | "warehouse"
+  | "store"
+  | "project_site";
 
 export interface Branch {
   id: string;
@@ -142,7 +148,7 @@ export interface Team {
   memberIds: string[];
 }
 
-export type Department = 'construction' | 'decor' | 'garden' | 'general';
+export type Department = "construction" | "decor" | "garden" | "general";
 
 export interface ProductService {
   id: string;
@@ -158,38 +164,38 @@ export interface ProductService {
 export type Course = ProductService;
 
 export type LeadStatus =
-  | 'new'
-  | 'uncontacted'
-  | 'contacted'
-  | 'interested'
-  | 'prospect'
-  | 'needs_followup'
-  | 'not_interested'
-  | 'booked';
+  | "new"
+  | "uncontacted"
+  | "contacted"
+  | "interested"
+  | "prospect"
+  | "needs_followup"
+  | "not_interested"
+  | "booked";
 
-export type LeadClassification = 'A' | 'B' | 'C' | 'VIP';
+export type LeadClassification = "A" | "B" | "C" | "VIP";
 
 export type LeadSource =
-  | 'facebook'
-  | 'instagram'
-  | 'google'
-  | 'walk_in'
-  | 'referral'
-  | 'phone_inquiry'
-  | 'whatsapp'
-  | 'exhibition'
-  | 'other';
+  | "facebook"
+  | "instagram"
+  | "google"
+  | "walk_in"
+  | "referral"
+  | "phone_inquiry"
+  | "whatsapp"
+  | "exhibition"
+  | "other";
 
 export type CustomerCategory =
-  | 'individual'
-  | 'engineering_company'
-  | 'decor_company'
-  | 'contractor'
-  | 'engineer'
-  | 'painter'
-  | 'technician'
-  | 'broker_individual'
-  | 'broker_company';
+  | "individual"
+  | "engineering_company"
+  | "decor_company"
+  | "contractor"
+  | "engineer"
+  | "painter"
+  | "technician"
+  | "broker_individual"
+  | "broker_company";
 
 export interface Lead {
   id: string;
@@ -212,9 +218,9 @@ export interface Lead {
   department: Department;
   departmentName?: string;
   courseOfInterest?: string; // alias for department / service details
-  locationRating?: number;  // 1-5 rating for location
+  locationRating?: number; // 1-5 rating for location
   treatmentRating?: number; // 1-5 rating for staff treatment
-  priceRating?: number;     // 1-5 rating for pricing
+  priceRating?: number; // 1-5 rating for pricing
   lastContactDate?: string;
   nextFollowUpDate?: string;
   notes: string;
@@ -257,8 +263,18 @@ export interface Visit {
   followUpDate?: string;
 }
 
-export type FollowUpStatus = 'due' | 'upcoming' | 'completed' | 'overdue' | 'cancelled';
-export type FollowUpType = 'call' | 'whatsapp' | 'branch_visit' | 'email' | 'meeting';
+export type FollowUpStatus =
+  | "due"
+  | "upcoming"
+  | "completed"
+  | "overdue"
+  | "cancelled";
+export type FollowUpType =
+  | "call"
+  | "whatsapp"
+  | "branch_visit"
+  | "email"
+  | "meeting";
 
 export interface FollowUp {
   id: string;
@@ -278,8 +294,12 @@ export interface FollowUp {
   nextFollowUpDate?: string;
 }
 
-export type BookingStatus = 'confirmed' | 'pending_payment' | 'completed' | 'cancelled';
-export type PaymentStatus = 'full' | 'deposit' | 'pending' | 'refunded';
+export type BookingStatus =
+  | "confirmed"
+  | "pending_payment"
+  | "completed"
+  | "cancelled";
+export type PaymentStatus = "full" | "deposit" | "pending" | "refunded";
 
 export interface Booking {
   id: string;
@@ -303,18 +323,18 @@ export interface Booking {
 }
 
 export type TimelineEventType =
-  | 'created'
-  | 'visit'
-  | 'inquiry'
-  | 'call'
-  | 'note'
-  | 'status_change'
-  | 'followup_created'
-  | 'followup_result'
-  | 'agent_reassigned'
-  | 'branch_transferred'
-  | 'booking_created'
-  | 'admin_action';
+  | "created"
+  | "visit"
+  | "inquiry"
+  | "call"
+  | "note"
+  | "status_change"
+  | "followup_created"
+  | "followup_result"
+  | "agent_reassigned"
+  | "branch_transferred"
+  | "booking_created"
+  | "admin_action";
 
 export interface TimelineEvent {
   id: string;
@@ -341,7 +361,7 @@ export interface AuditLog {
 
 export interface DistributionRule {
   autoDistribute: boolean;
-  method: 'round_robin' | 'load_balanced' | 'manual';
+  method: "round_robin" | "load_balanced" | "manual";
   maxLeadsPerAgentDay: number;
 }
 
@@ -375,7 +395,7 @@ export interface PurchaseInvoice {
   brokerName?: string;
   items: InvoiceLineItem[];
   totalAmount: number;
-  status: 'draft' | 'paid' | 'partial' | 'cancelled';
+  status: "draft" | "paid" | "partial" | "cancelled";
   notes?: string;
   createdAt: string;
 }
@@ -383,7 +403,7 @@ export interface PurchaseInvoice {
 export interface BrokerEntity {
   id: string;
   name: string;
-  type: 'individual' | 'company' | 'engineering_company' | 'contractor';
+  type: "individual" | "company" | "engineering_company" | "contractor";
   phone: string;
   whatsappPhone?: string;
   isSameWhatsApp?: boolean;
@@ -401,7 +421,7 @@ export interface NotificationItem {
   id: string;
   title: string;
   message: string;
-  type: 'visit' | 'booking' | 'followup' | 'system';
+  type: "visit" | "booking" | "followup" | "system";
   targetRole?: UserRole;
   targetUserId?: string;
   targetBranchId?: string;

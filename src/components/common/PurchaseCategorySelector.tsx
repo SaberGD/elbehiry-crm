@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { useCRM } from '../../context/CRMContext';
-import { InvoiceLineItem } from '../../types/crm';
-import { Tag, Plus, Trash2, Calculator, Coins } from 'lucide-react';
+import { canManageCatalog } from "../../lib/access";
+import React, { useState } from "react";
+import { useCRM } from "../../context/CRMContext";
+import { InvoiceLineItem } from "../../types/crm";
+import { Tag, Plus, Trash2, Calculator, Coins } from "lucide-react";
 
 interface PurchaseCategorySelectorProps {
   items: InvoiceLineItem[];
@@ -11,18 +12,23 @@ interface PurchaseCategorySelectorProps {
   subtitle?: string;
 }
 
-export const PurchaseCategorySelector: React.FC<PurchaseCategorySelectorProps> = ({
+export const PurchaseCategorySelector: React.FC<
+  PurchaseCategorySelectorProps
+> = ({
   items,
   onChange,
   isOptional = true,
-  title = 'تحديد أقسام الشراء وأسعار المبيعات',
-  subtitle = 'اختر التصنيفات وادخل قيمة كل قسم بالجنيه المصري (ج.م / EGP)',
+  title = "تحديد أقسام الشراء وأسعار المبيعات",
+  subtitle = "اختر التصنيفات وادخل قيمة كل قسم بالجنيه المصري (ج.م / EGP)",
 }) => {
-  const { purchaseCategories, addPurchaseCategory } = useCRM();
+  const { effectiveUser, purchaseCategories, addPurchaseCategory } = useCRM();
   const [showAddCustomCat, setShowAddCustomCat] = useState(false);
-  const [customCatName, setCustomCatName] = useState('');
+  const [customCatName, setCustomCatName] = useState("");
 
-  const totalAmount = items.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+  const totalAmount = items.reduce(
+    (sum, i) => sum + (Number(i.amount) || 0),
+    0,
+  );
 
   const handleToggleCategory = (catId: string, catName: string) => {
     const existingIndex = items.findIndex((i) => i.categoryId === catId);
@@ -32,7 +38,10 @@ export const PurchaseCategorySelector: React.FC<PurchaseCategorySelectorProps> =
       onChange(updated);
     } else {
       // Add item with default amount 0
-      const updated = [...items, { categoryId: catId, categoryName: catName, amount: 0 }];
+      const updated = [
+        ...items,
+        { categoryId: catId, categoryName: catName, amount: 0 },
+      ];
       onChange(updated);
     }
   };
@@ -50,15 +59,18 @@ export const PurchaseCategorySelector: React.FC<PurchaseCategorySelectorProps> =
 
   const handleCreateCustomCategory = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customCatName.trim()) return;
+    if (!canManageCatalog(effectiveUser) || !customCatName.trim()) return;
     const newCat = addPurchaseCategory({
       name: customCatName.trim(),
       code: customCatName.trim().toUpperCase().slice(0, 5),
       active: true,
     });
     // Automatically select the new custom category
-    onChange([...items, { categoryId: newCat.id, categoryName: newCat.name, amount: 0 }]);
-    setCustomCatName('');
+    onChange([
+      ...items,
+      { categoryId: newCat.id, categoryName: newCat.name, amount: 0 },
+    ]);
+    setCustomCatName("");
     setShowAddCustomCat(false);
   };
 
@@ -75,24 +87,31 @@ export const PurchaseCategorySelector: React.FC<PurchaseCategorySelectorProps> =
               </span>
             )}
           </h4>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+            {subtitle}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowAddCustomCat(!showAddCustomCat)}
-            className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5 text-indigo-600" />
-            <span>إضافة تصنيف مخصص</span>
-          </button>
+          {canManageCatalog(effectiveUser) && (
+            <button
+              type="button"
+              onClick={() => setShowAddCustomCat(!showAddCustomCat)}
+              className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-indigo-600" />
+              <span>إضافة تصنيف مخصص</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Add Custom Category Drawer/Form */}
-      {showAddCustomCat && (
-        <form onSubmit={handleCreateCustomCategory} className="flex items-center gap-2 p-2 bg-indigo-50 dark:bg-indigo-950/50 rounded-xl border border-indigo-200 dark:border-indigo-800 animate-in fade-in">
+      {canManageCatalog(effectiveUser) && showAddCustomCat && (
+        <form
+          onSubmit={handleCreateCustomCategory}
+          className="flex items-center gap-2 p-2 bg-indigo-50 dark:bg-indigo-950/50 rounded-xl border border-indigo-200 dark:border-indigo-800 animate-in fade-in"
+        >
           <input
             type="text"
             required
@@ -116,25 +135,31 @@ export const PurchaseCategorySelector: React.FC<PurchaseCategorySelectorProps> =
           اختر التصنيفات المراد تفعيلها:
         </label>
         <div className="flex flex-wrap gap-2">
-          {purchaseCategories.map((cat) => {
-            const isSelected = items.some((i) => i.categoryId === cat.id);
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => handleToggleCategory(cat.id, cat.name)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
-                  isSelected
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-500'
-                }`}
-              >
-                <Tag className="w-3.5 h-3.5" />
-                <span>{cat.name}</span>
-                {isSelected && <span className="text-[10px] bg-emerald-700 px-1.5 py-0.2 rounded-md">مُفعل</span>}
-              </button>
-            );
-          })}
+          {purchaseCategories
+            .filter((c) => c.active)
+            .map((cat) => {
+              const isSelected = items.some((i) => i.categoryId === cat.id);
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleToggleCategory(cat.id, cat.name)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    isSelected
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                      : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-500"
+                  }`}
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>{cat.name}</span>
+                  {isSelected && (
+                    <span className="text-[10px] bg-emerald-700 px-1.5 py-0.2 rounded-md">
+                      مُفعل
+                    </span>
+                  )}
+                </button>
+              );
+            })}
         </div>
       </div>
 
@@ -151,10 +176,14 @@ export const PurchaseCategorySelector: React.FC<PurchaseCategorySelectorProps> =
                 className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl space-y-1"
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{item.categoryName}</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {item.categoryName}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => handleToggleCategory(item.categoryId, item.categoryName)}
+                    onClick={() =>
+                      handleToggleCategory(item.categoryId, item.categoryName)
+                    }
                     className="text-slate-400 hover:text-rose-500 transition-colors p-1"
                     title="حذف التصنيف"
                   >
@@ -165,9 +194,14 @@ export const PurchaseCategorySelector: React.FC<PurchaseCategorySelectorProps> =
                   <input
                     type="number"
                     min="0"
-                    step="100"
-                    value={item.amount || ''}
-                    onChange={(e) => handleAmountChange(item.categoryId, parseFloat(e.target.value) || 0)}
+                    step="0.01"
+                    value={item.amount || ""}
+                    onChange={(e) =>
+                      handleAmountChange(
+                        item.categoryId,
+                        parseFloat(e.target.value) || 0,
+                      )
+                    }
                     placeholder="0.00"
                     className="w-full pl-12 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono-numbers font-bold text-xs rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
@@ -191,7 +225,7 @@ export const PurchaseCategorySelector: React.FC<PurchaseCategorySelectorProps> =
         </div>
         <div className="flex items-center gap-1 text-sm font-black font-mono-numbers text-emerald-700 dark:text-emerald-300">
           <Coins className="w-4 h-4 text-emerald-500" />
-          <span>{totalAmount.toLocaleString('ar-EG')}</span>
+          <span>{totalAmount.toLocaleString("ar-EG")}</span>
           <span className="text-xs font-normal">جنيه مصري (EGP)</span>
         </div>
       </div>
