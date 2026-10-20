@@ -91,13 +91,13 @@ const FIREBASE_PROJECT_ID = 'albehairy-group';
  * only let a user read their own profile, and Firestore itself rejects forged
  * or expired tokens. Anyone who merely signed up (no profile) is refused.
  */
-/** @return array{0: ?string, 1: string} uid (or null) and a short reason */
+/** @return array{0: ?string, 1: string, 2: ?string} uid (or null), a short reason, and the caller's role */
 function verify_active_staff(string $idToken): array {
     $parts = explode('.', $idToken);
-    if (count($parts) !== 3) return [null, 'bad_token'];
+    if (count($parts) !== 3) return [null, 'bad_token', null];
     $payload = json_decode((string) base64_decode(strtr($parts[1], '-_', '+/')), true);
     $uid = is_array($payload) ? (string) ($payload['user_id'] ?? $payload['sub'] ?? '') : '';
-    if ($uid === '' || !preg_match('/^[A-Za-z0-9_\-]{6,128}$/', $uid)) return [null, 'bad_token'];
+    if ($uid === '' || !preg_match('/^[A-Za-z0-9_\-]{6,128}$/', $uid)) return [null, 'bad_token', null];
     $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
         . '/databases/' . rawurlencode('(default)') . '/documents/authProfiles/' . rawurlencode($uid);
     $ch = curl_init($url);
@@ -109,9 +109,59 @@ function verify_active_staff(string $idToken): array {
     $raw = curl_exec($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    if ($status !== 200 || !is_string($raw)) return [null, 'profile_http_' . $status];
+    if ($status !== 200 || !is_string($raw)) return [null, 'profile_http_' . $status, null];
     $doc = json_decode($raw, true);
-    return ($doc['fields']['active']['booleanValue'] ?? false) === true ? [$uid, 'ok'] : [null, 'profile_inactive'];
+    return ($doc['fields']['active']['booleanValue'] ?? false) === true
+        ? [$uid, 'ok', (string) ($doc['fields']['role']['stringValue'] ?? '')]
+        : [null, 'profile_inactive', null];
+}
+
+
+/** One line per model call (tokens only, no content) so the developer can estimate cost. */
+function usage_file(): string {
+    return dirname(__DIR__, 2) . '/crm-ai-usage.jsonl';
+}
+
+function log_usage(string $mode, string $model, array $data, string $uid): void {
+    $u = $data['usageMetadata'] ?? null;
+    if (!is_array($u)) return;
+    $audio = 0;
+    foreach (($u['promptTokensDetails'] ?? []) as $d) if (($d['modality'] ?? '') === 'AUDIO') $audio += (int) ($d['tokenCount'] ?? 0);
+    $line = json_encode([
+        't' => time(), 'mode' => $mode, 'model' => $model, 'user' => substr(sha1($uid), 0, 8),
+        'in' => (int) ($u['promptTokenCount'] ?? 0), 'out' => (int) ($u['candidatesTokenCount'] ?? 0),
+        'think' => (int) ($u['thoughtsTokenCount'] ?? 0), 'audio' => $audio,
+    ]) . "\n";
+    $f = usage_file();
+    if (is_file($f) && filesize($f) > 5 * 1024 * 1024) {
+        $keep = array_slice(file($f, FILE_IGNORE_NEW_LINES) ?: [], -20000);
+        @file_put_contents($f, implode("\n", $keep) . "\n", LOCK_EX);
+    }
+    @file_put_contents($f, $line, FILE_APPEND | LOCK_EX);
+}
+
+function usage_report(): array {
+    $f = usage_file();
+    $since = time() - 30 * 86400;
+    $byMode = [];
+    $byDay = [];
+    $users = [];
+    if (is_file($f)) {
+        foreach (file($f, FILE_IGNORE_NEW_LINES) ?: [] as $l) {
+            $r = json_decode($l, true);
+            if (!is_array($r) || ($r['t'] ?? 0) < $since) continue;
+            $m = (string) ($r['mode'] ?? 'unknown');
+            $d = date('Y-m-d', (int) $r['t']);
+            foreach ([[&$byMode, $m], [&$byDay, $d]] as [&$bucket, $key]) {
+                $bucket[$key] ??= ['calls' => 0, 'in' => 0, 'out' => 0, 'think' => 0, 'audio' => 0];
+                $bucket[$key]['calls']++;
+                foreach (['in', 'out', 'think', 'audio'] as $k) $bucket[$key][$k] += (int) ($r[$k] ?? 0);
+            }
+            $users[$r['user'] ?? '?'] = true;
+        }
+    }
+    ksort($byDay);
+    return ['days' => 30, 'byMode' => $byMode, 'byDay' => $byDay, 'activeUsers' => count($users)];
 }
 
 function rate_limit(string $uid): void {
@@ -142,12 +192,23 @@ function gemini(array $cfg, array $parts, array $generation = [], ?string $syste
             'generationConfig' => array_merge(['temperature' => 0], $generation),
         ])
     );
+    if ($status === 200) log_usage($GLOBALS['AI_MODE'] ?? 'unknown', $model, $data, $GLOBALS['AI_UID'] ?? '');
     if ($status !== 200) fail(502, 'ai_unavailable', gemini_error($status, $data));
     $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
     return is_string($text) ? trim($text) : '';
 }
 
 [$cfg, $configHint] = load_secrets();
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['usage'])) {
+    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if (!preg_match('/^Bearer\s+(.+)$/i', $auth, $mm)) fail(401, 'unauthorized');
+    [$uidU, $whyU, $roleU] = verify_active_staff($mm[1]);
+    if ($uidU === null) fail(401, 'unauthorized', $whyU);
+    if ($roleU !== 'admin') fail(403, 'developer_only');
+    echo json_encode(usage_report());
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $out = ['configured' => $cfg !== null, 'hint' => $configHint];
@@ -172,7 +233,7 @@ if ($cfg === null) fail(503, 'not_configured');
 
 $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 if (!preg_match('/^Bearer\s+(.+)$/i', $auth, $m)) fail(401, 'unauthorized');
-[$uid, $why] = verify_active_staff($m[1]);
+[$uid, $why, $callerRole] = verify_active_staff($m[1]);
 if ($uid === null) fail(401, 'unauthorized', $why);
 rate_limit($uid);
 
@@ -181,6 +242,8 @@ if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== false) {
     $json = json_decode((string) file_get_contents('php://input'), true);
 }
 $mode = $json['mode'] ?? ($_POST['mode'] ?? '');
+$GLOBALS['AI_MODE'] = (string) $mode;
+$GLOBALS['AI_UID'] = (string) $uid;
 
 if ($mode === 'transcribe') {
     $file = $_FILES['audio'] ?? null;
@@ -266,6 +329,7 @@ if ($mode === 'agent') {
             'generationConfig' => ['temperature' => 0.2],
         ], fn($v) => $v !== null)
     );
+    if ($status === 200) log_usage('agent', $model, $data, $uid);
     $content = $data['candidates'][0]['content'] ?? null;
     if ($status !== 200 || !is_array($content) || !isset($content['parts'])) fail(502, 'ai_unavailable', $status !== 200 ? gemini_error($status, $data) : 'empty_reply');
     $content['parts'] = normalize_parts($content['parts']);
