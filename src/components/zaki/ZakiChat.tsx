@@ -59,7 +59,8 @@ export function ZakiChat() {
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const end = useRef<HTMLDivElement>(null);
-  const first = currentUser.name.replace(/^م\.\s*/, "").split(" ")[0];
+  const titles = new Set(["م", "م.", "eng", "eng.", "dr", "dr.", "د", "د.", "أ", "أ.", "المهندس", "الدكتور", "الحاج", "الأستاذ"]);
+  const first = currentUser.name.split(" ").find((w) => !titles.has(w.toLowerCase())) ?? currentUser.name;
 
   useEffect(() => {
     aiStatus().then((s) => setAvailable(s === "server"));
@@ -90,8 +91,12 @@ export function ZakiChat() {
         onStep: (name) => setSteps((s) => [...s, toolLabels[name] ?? name]),
       });
       setTurns((t) => [...t, { role: "assistant", text: answer, used: [...new Set(used.map((u) => toolLabels[u] ?? u))] }]);
-    } catch {
-      setTurns((t) => [...t, { role: "assistant", text: "حصلت مشكلة وأنا بجهّز الرد. جرّب تسألني تاني بعد شوية." }]);
+    } catch (e) {
+      const code = e instanceof Error ? e.message.slice(0, 160) : "";
+      setTurns((t) => [
+        ...t,
+        { role: "assistant", text: `حصلت مشكلة وأنا بجهّز الرد. جرّب تسألني تاني بعد شوية.${code ? `\n(${code})` : ""}` },
+      ]);
     } finally {
       setBusy(false);
     }

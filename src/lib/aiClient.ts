@@ -33,7 +33,7 @@ async function call(init: RequestInit): Promise<any> {
     headers: { ...(init.headers || {}), ...(await authHeader()) },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error([data?.error || `HTTP ${res.status}`, data?.detail].filter(Boolean).join(": "));
   return data;
 }
 
