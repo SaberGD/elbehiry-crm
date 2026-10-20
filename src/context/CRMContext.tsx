@@ -4,6 +4,7 @@ import {
   type PermissionMatrix,
 } from "../lib/permissions";
 import { createWorkspace } from "../lib/workspace";
+import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
 import {
   demoUsers,
   demoLeads,
@@ -97,6 +98,7 @@ export interface CRMContextType {
   currentUser: User;
   logout: () => Promise<void>;
   loadDemoData: () => void;
+  clearOrganizationData: () => void;
   removeDemoData: () => void;
   createLoginForUser: (
     userId: string,
@@ -251,28 +253,28 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [users, setUsers] = useState<User[]>(() =>
-    loadStorage<User[]>("users", initialUsers).map(normalizeUser),
+    loadStorage<User[]>("users", []).map(normalizeUser),
   );
   const [companies, setCompanies] = useState<Company[]>(() =>
-    loadStorage("companies", initialCompanies),
+    loadStorage<Company[]>("companies", []),
   );
   const [governorates, setGovernorates] = useState<Governorate[]>(() =>
-    loadStorage("governorates", initialGovernorates),
+    loadStorage<Governorate[]>("governorates", []),
   );
   const [warehouses, setWarehouses] = useState<Warehouse[]>(() =>
-    loadStorage("warehouses", initialWarehouses),
+    loadStorage<Warehouse[]>("warehouses", []),
   );
   const [branches, setBranches] = useState<Branch[]>(() =>
-    loadStorage("branches", initialBranches),
+    loadStorage<Branch[]>("branches", []),
   );
   const [teams, setTeams] = useState<Team[]>(() =>
-    loadStorage("teams", initialTeams),
+    loadStorage<Team[]>("teams", []),
   );
   const [departmentEntities, setDepartmentEntities] = useState<
     DepartmentEntity[]
-  >(() => loadStorage("departments", initialDepartments));
+  >(() => loadStorage<DepartmentEntity[]>("departments", []));
   const [jobPositions, setJobPositions] = useState<JobPosition[]>(() =>
-    loadStorage("job_positions", initialJobPositions),
+    loadStorage<JobPosition[]>("job_positions", []),
   );
   const [purchaseCategories, setPurchaseCategories] = useState<
     PurchaseCategory[]
@@ -287,7 +289,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     loadStorage("notifications", []),
   );
   const [courses, setCourses] = useState<Course[]>(() =>
-    loadStorage("courses", initialCourses),
+    loadStorage<Course[]>("courses", []),
   );
   const [notBoughtRecords, setNotBoughtRecords] = useState<NotBoughtRecord[]>(
     () => loadStorage("not_bought", []),
@@ -384,6 +386,19 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       active: p.active,
     });
   }, [profile, users]);
+
+  // Top management gets the full list of Egyptian governorates (idempotent: ids are fixed, existing ones are kept).
+  useEffect(() => {
+    if (currentUser.role !== "admin" && currentUser.role !== "general_manager") return;
+    const missing = egyptGovernorates.filter(
+      (e) => !governorates.some((g) => g.id === e.id || findEgyptGovernorate(g.name)?.key === e.key),
+    );
+    if (!missing.length) return;
+    setGovernorates((prev) => [
+      ...prev,
+      ...missing.map((e) => ({ id: e.id, name: `محافظة ${e.name}`, code: e.key.toUpperCase(), region: e.region, phone: "", active: true })),
+    ]);
+  }, [currentUser.role, governorates]);
 
   const [viewAsUser, setViewAsUser] = useState<User | null>(null);
 
@@ -1112,6 +1127,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     return prev.filter((i) => !ids.has(i.id));
   };
   const loadDemoData = () => {
+    // The sample org structure comes along, so the sample staff and customers have branches to belong to.
+    setCompanies((p) => addMissing(p, initialCompanies));
+    setWarehouses((p) => addMissing(p, initialWarehouses));
+    setBranches((p) => addMissing(p, initialBranches));
+    setTeams((p) => addMissing(p, initialTeams));
+    setDepartmentEntities((p) => addMissing(p, initialDepartments));
+    setJobPositions((p) => addMissing(p, initialJobPositions));
     setUsers((p) => addMissing(p, demoUsers.map(normalizeUser)));
     setLeads((p) => addMissing(p, demoLeads));
     setVisits((p) => addMissing(p, demoVisits));
@@ -1124,6 +1146,12 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     logAudit("تحميل بيانات تجريبية", "إعدادات", "demo", "تحميل موظفين وبيانات تجريبية لكل الأدوار");
   };
   const removeDemoData = () => {
+    setCompanies((p) => dropDemo(p, initialCompanies));
+    setWarehouses((p) => dropDemo(p, initialWarehouses));
+    setBranches((p) => dropDemo(p, initialBranches));
+    setTeams((p) => dropDemo(p, initialTeams));
+    setDepartmentEntities((p) => dropDemo(p, initialDepartments));
+    setJobPositions((p) => dropDemo(p, initialJobPositions));
     setUsers((p) => dropDemo(p, demoUsers));
     setLeads((p) => dropDemo(p, demoLeads));
     setVisits((p) => dropDemo(p, demoVisits));
@@ -1134,6 +1162,20 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setBrokers((p) => dropDemo(p, demoBrokers));
     setNotBoughtRecords((p) => dropDemo(p, demoNotBought));
     logAudit("حذف البيانات التجريبية", "إعدادات", "demo", "حذف الموظفين والبيانات التجريبية");
+  };
+
+  /** Developer-only: empties branches, companies, warehouses, teams, departments and job titles so the real structure can be entered from scratch. */
+  const clearOrganizationData = () => {
+    setCompanies([]);
+    setWarehouses([]);
+    setBranches([]);
+    setTeams([]);
+    setDepartmentEntities([]);
+    setJobPositions([]);
+    // The sample staff go too; anyone with a real login (or the signed-in developer) stays.
+    const sample = new Set(initialUsers.map((u) => u.id));
+    setUsers((prev) => prev.filter((u) => u.id === currentUser.id || u.authUid || !sample.has(u.id)));
+    logAudit("تفريغ الهيكل الإداري", "إعدادات", "org", "تفريغ الفروع والشركات والمخازن والفرق والأقسام والمسميات");
   };
 
   // Data lives in Firestore, so a reset only clears this browser's session/cache.
@@ -1409,6 +1451,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         currentUser,
         logout,
         loadDemoData,
+        clearOrganizationData,
         removeDemoData,
         createLoginForUser,
         viewAsUser,

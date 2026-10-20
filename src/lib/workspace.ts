@@ -1,6 +1,6 @@
 import { hasPermission, isDirector, withPermissions } from "./permissions";
 import type { CRMContextType } from "../context/CRMContext";
-import type { User } from "../types/crm";
+import type { User, UserRole } from "../types/crm";
 import * as access from "./access";
 
 export function createWorkspace(raw: CRMContextType) {
@@ -260,9 +260,9 @@ export function createWorkspace(raw: CRMContextType) {
     ),
     // Preview is an explicit prototype feature for the original admin, separate from work data.
     previewUsers:
-      raw.currentUser.role === "admin"
+      raw.currentUser.role === "admin" || raw.currentUser.role === "general_manager"
         ? raw.users
-            .filter((u) => u.active)
+            .filter((u) => u.active && (raw.currentUser.role === "admin" || (u.role !== "admin" && u.role !== "general_manager")))
             .map((u) => ({
               ...u,
               permissions: undefined,
@@ -303,12 +303,20 @@ export function createWorkspace(raw: CRMContextType) {
       return raw.createLoginForUser(id, loginId, password, info);
     }) as CRMContextType["createLoginForUser"],
     setViewAsUser: ((user) => {
-      require(raw.currentUser.role === "admin");
-      const actual = user
-        ? raw.users.find((u) => u.id === user.id && u.active)
-        : null;
-      if (user && !actual) return deny();
-      raw.setViewAsUser(actual || null);
+      const me = raw.currentUser.role;
+      require(me === "admin" || me === "general_manager");
+      if (!user) return raw.setViewAsUser(null);
+      // A previewed role is a virtual user: nobody is impersonated, it only changes what the screen shows.
+      if (user.id.startsWith("preview:")) {
+        const roles: UserRole[] = ["general_manager", "regional_manager", "branch_manager", "supervisor", "sales_agent"];
+        require(roles.includes(user.role) && (me === "admin" || user.role !== "general_manager"));
+        require(!user.branchId || raw.branches.some((b) => b.id === user.branchId));
+        return raw.setViewAsUser({ ...user, active: true, permissions: undefined });
+      }
+      const actual = raw.users.find((u) => u.id === user.id && u.active);
+      if (!actual) return deny();
+      require(me === "admin" || (actual.role !== "admin" && actual.role !== "general_manager"));
+      raw.setViewAsUser({ ...actual, permissions: undefined });
     }) as CRMContextType["setViewAsUser"],
     addLead: ((data) => {
       require(access.canCreateCustomer(actor));
@@ -510,7 +518,7 @@ export function createWorkspace(raw: CRMContextType) {
     addBranch: ((data) => {
       require(access.canManageOrganization(actor));
       require(
-        !!data.companyId &&
+        !data.companyId ||
           raw.companies.some((c) => c.id === data.companyId && c.active),
       );
       require(
@@ -580,6 +588,10 @@ export function createWorkspace(raw: CRMContextType) {
       require(access.canManageOrganization(actor));
       raw.updateDistributionRule(data);
     }) as CRMContextType["updateDistributionRule"],
+    clearOrganizationData: (() => {
+      require(raw.currentUser.role === "admin");
+      raw.clearOrganizationData();
+    }) as CRMContextType["clearOrganizationData"],
     resetAllData: (() => {
       require(actor.role === "admin");
       raw.resetAllData();

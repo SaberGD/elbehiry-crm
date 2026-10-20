@@ -268,6 +268,11 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
           رجوع
         </button>
       </div>
+      {availableBranches.length === 0 && (
+        <p className="notice warning" role="alert">
+          لسه مفيش أي فرع مسجّل. أضف الفرع الأول من «إدارة المؤسسة ← الهيكل الإداري»، وأضف موظفين من «الموظفون»، وبعدها سجّل عملاءك.
+        </p>
+      )}
       <form className="panel" onSubmit={submit} noValidate>
         <section className="form-section">
           <div className="section-title">

@@ -7,7 +7,7 @@ export function ViewAsBar() {
     <div className="preview-bar">
       <span>
         <Eye size={15} />
-        معاينة مساحة عمل: {viewAsUser.name}
+        أنت بتشوف النظام كـ: {viewAsUser.name}
       </span>
       <button onClick={() => setViewAsUser(null)}>
         إنهاء المعاينة

@@ -238,9 +238,9 @@ button:disabled {
   min-height: 285px;
   position: relative;
   overflow: hidden;
-  background: #252c2b;
-  color: #f5efe6;
-  border: 1px solid #343b36;
+  background: #14203b;
+  color: #f1f4fb;
+  border: 1px solid #23325a;
   border-radius: var(--panel-radius);
   padding: 30px 34px;
   isolation: isolate;
@@ -249,8 +249,8 @@ button:disabled {
   justify-content: space-between;
 }
 .dark .performance-hero {
-  background: #283537;
-  border-color: #425252;
+  background: #17264a;
+  border-color: #2d3f6e;
 }
 .hero-copy {
   position: relative;
@@ -261,7 +261,7 @@ button:disabled {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #e4dcd0;
+  color: #dfe5f4;
 }
 .hero-kicker > span {
   width: 7px;
@@ -298,7 +298,7 @@ button:disabled {
   align-items: center;
   gap: 18px;
   font-size: 13px;
-  color: #f4e9d7;
+  color: #eaf0fb;
   margin-top: 23px;
   min-height: 32px;
 }
@@ -352,26 +352,26 @@ button:disabled {
 .attention-card {
   border-radius: var(--panel-radius);
   padding: 23px 25px 0;
-  background: #ece9df;
-  color: #353d34;
-  border: 1px solid #dddccf;
+  background: #e6ebf6;
+  color: #1c2a47;
+  border: 1px solid #d3dbec;
   display: flex;
   flex-direction: column;
 }
 .dark .attention-card {
-  background: #252f2a;
-  color: #dce4d9;
-  border-color: #3c4d40;
+  background: #182340;
+  color: #dbe3f5;
+  border-color: #2b3a62;
 }
 .attention-card.needs-attention {
-  background: #f5e9db;
-  color: #684a2d;
-  border-color: #ead7bf;
+  background: #fbece9;
+  color: #7a2a24;
+  border-color: #efcdc7;
 }
 .dark .attention-card.needs-attention {
-  background: #332e25;
-  color: #e8caa6;
-  border-color: #51442f;
+  background: #3a1d28;
+  color: #f1c4c0;
+  border-color: #5e2a36;
 }
 .attention-top {
   display: flex;
@@ -865,7 +865,7 @@ button:disabled {
   place-items: center;
   width: 61px;
   height: 68px;
-  background: #eee9df;
+  background: #e8ecf4;
   border: 1px solid #e3dacb;
   border-radius: 17px;
   font-size: 28px;

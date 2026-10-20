@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
 import { useTheme } from "../../context/ThemeContext";
+import type { UserRole } from "../../types/crm";
 import { roleNames } from "../../lib/presentation";
 
 interface Props {
@@ -59,6 +60,7 @@ export function Navbar({
     currentUser,
     logout,
     setViewAsUser,
+    viewAsUser,
     previewUsers: users,
     leads,
     branches,
@@ -69,6 +71,39 @@ export function Navbar({
   const searchRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDetailsElement>(null);
   const [pwdOpen, setPwdOpen] = useState(false);
+  const [viewBranch, setViewBranch] = useState("");
+  const previewRoles: UserRole[] = ["general_manager", "regional_manager", "branch_manager", "supervisor", "sales_agent"];
+  const previewRoleLabels: Record<string, string> = {
+    general_manager: "مدير عام المؤسسة",
+    regional_manager: "مشرف عام (كل الفروع)",
+    branch_manager: "مدير فرع",
+    supervisor: "مشرف مختص",
+    sales_agent: "موظف بفرع",
+  };
+  const viewValue = !viewAsUser ? "me" : viewAsUser.id.startsWith("preview:") ? `role:${viewAsUser.role}` : `user:${viewAsUser.id}`;
+  const applyView = (value: string, branchChoice: string) => {
+    if (value === "me") setViewAsUser(null);
+    else if (value.startsWith("user:")) setViewAsUser(users.find((u) => u.id === value.slice(5)) || null);
+    else {
+      const role = value.slice(5) as UserRole;
+      const needsBranch = !["general_manager", "regional_manager"].includes(role);
+      const branch = needsBranch ? branchChoice || branches[0]?.id || "" : "";
+      setViewBranch(branch);
+      setViewAsUser({
+        id: `preview:${role}:${branch}`,
+        name: `${previewRoleLabels[role]} (معاينة)`,
+        email: "",
+        phone: "",
+        createdAt: "",
+        role,
+        branchId: branch || undefined,
+        active: true,
+        specialty: "sales",
+        supervisedBranchIds: role === "supervisor" && branch ? [branch] : undefined,
+      });
+    }
+    if (accountRef.current && value !== "me" && !value.startsWith("role:")) accountRef.current.open = false;
+  };
   const matches = query.trim()
     ? leads
         .filter(
@@ -204,30 +239,50 @@ export function Navbar({
           <div className="account-panel">
             <strong>{effectiveUser.name}</strong>
             <p>{roleNames[effectiveUser.role]}</p>
-            {currentUser.role === "admin" && (
-              <label>
-                معاينة مساحة عمل موظف
-                <select
-                  aria-label="معاينة مساحة عمل موظف"
-                  value={effectiveUser.id}
-                  onChange={(e) => {
-                    setViewAsUser(
-                      e.target.value === currentUser.id
-                        ? null
-                        : users.find((u) => u.id === e.target.value) || null,
-                    );
-                    if (accountRef.current) accountRef.current.open = false;
-                  }}
-                >
-                  {users
-                    .filter((u) => u.active)
-                    .map((u) => (
-                      <option value={u.id} key={u.id}>
-                        {u.name} — {roleNames[u.role]}
-                      </option>
-                    ))}
-                </select>
-              </label>
+            {(currentUser.role === "admin" || currentUser.role === "general_manager") && (
+              <div className="view-as">
+                <label>
+                  شوف النظام كـ
+                  <select
+                    aria-label="شوف النظام كـ"
+                    value={viewValue}
+                    onChange={(e) => applyView(e.target.value, viewBranch)}
+                  >
+                    <option value="me">حسابي ({roleNames[currentUser.role]})</option>
+                    <optgroup label="دور وظيفي">
+                      {previewRoles
+                        .filter((r) => currentUser.role === "admin" || r !== "general_manager")
+                        .map((r) => (
+                          <option key={r} value={`role:${r}`}>
+                            {previewRoleLabels[r]}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="موظف بعينه">
+                      {users
+                        .filter((u) => u.id !== currentUser.id)
+                        .map((u) => (
+                          <option value={`user:${u.id}`} key={u.id}>
+                            {u.name} — {roleNames[u.role]}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                </label>
+                {viewValue.startsWith("role:") && viewValue !== "role:general_manager" && viewValue !== "role:regional_manager" && (
+                  <label>
+                    في فرع
+                    <select aria-label="الفرع" value={viewBranch} onChange={(e) => applyView(viewValue, e.target.value)}>
+                      {branches.length === 0 && <option value="">لا توجد فروع بعد</option>}
+                      {branches.map((b) => (
+                        <option value={b.id} key={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             )}
             <p className="account-note">
               <UserRound size={14} />

@@ -43,6 +43,7 @@ export const StaffUsersPage: React.FC = () => {
     governorates,
     departmentEntities,
     jobPositions,
+    updateJobPosition,
     addUser,
     updateUser,
     toggleUserActive,
@@ -135,7 +136,7 @@ export const StaffUsersPage: React.FC = () => {
     setSpecialty("sales");
     setSupervisedBranchIds([]);
     setCompanyId(companies[0]?.id || "");
-    setGovernorateId(governorates[0]?.id || "");
+    setGovernorateId(branches[0]?.governorateId || "");
     setBranchId(branches[0]?.id || "");
     setTeamId("");
     setDepartmentId("");
@@ -154,7 +155,7 @@ export const StaffUsersPage: React.FC = () => {
     setSpecialty(u.specialty || "sales");
     setSupervisedBranchIds(u.supervisedBranchIds || []);
     setCompanyId(u.companyId || companies[0]?.id || "");
-    setGovernorateId(u.governorateId || governorates[0]?.id || "");
+    setGovernorateId(u.governorateId || branches.find((b) => b.id === u.branchId)?.governorateId || "");
     setBranchId(u.branchId || branches[0]?.id || "");
     setTeamId(u.teamId || "");
     setDepartmentId(u.departmentId || "");
@@ -168,7 +169,7 @@ export const StaffUsersPage: React.FC = () => {
     e.preventDefault();
 
     const companyObj = companies.find((c) => c.id === companyId);
-    const govObj = governorates.find((g) => g.id === governorateId);
+    const govObj = governorates.find((g) => g.id === (branches.find((b) => b.id === branchId)?.governorateId || governorateId));
     const branchObj = branches.find((b) => b.id === branchId);
     const teamObj = teams.find((t) => t.id === teamId);
     const deptObj = departmentEntities.find((d) => d.id === departmentId);
@@ -268,7 +269,7 @@ export const StaffUsersPage: React.FC = () => {
     if (!newDeptName) return;
     addDepartmentEntity({
       name: newDeptName,
-      code: newDeptCode || `DEPT-${Date.now().toString().slice(-4)}`,
+      code: `DEPT-${Date.now().toString(36).toUpperCase().slice(-4)}`,
       description: newDeptDesc,
       active: true,
     });
@@ -280,16 +281,21 @@ export const StaffUsersPage: React.FC = () => {
 
   const handleAddJob = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newJobTitle || !newJobDeptId) return;
-    const deptObj = departmentEntities.find((d) => d.id === newJobDeptId);
-    addJobPosition({
+    const deptId = newJobDeptId || departmentEntities[0]?.id || "";
+    if (!newJobTitle || !deptId) return;
+    const deptObj = departmentEntities.find((d) => d.id === deptId);
+    const created = addJobPosition({
       title: newJobTitle,
-      departmentId: newJobDeptId,
+      departmentId: deptId,
       departmentName: deptObj?.name,
       active: true,
     });
     setNewJobTitle("");
     setShowJobModal(false);
+    if (showAddModal || editingUser) {
+      setDepartmentId(deptId);
+      setJobPositionId(created.id);
+    }
   };
 
   const filteredUsers = users.filter((u) => {
@@ -324,11 +330,10 @@ export const StaffUsersPage: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
             <UserCheck2 className="w-6 h-6 text-[#dc424b]" />
-            <span>إدارة أطقم العمل والهيكل المؤسسي (EL.BEHERY)</span>
+            <span>الموظفون والأقسام والمسميات الوظيفية</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            إدارة الموظفين، الأدوار القيادية، الأقسام والوظائف، المسميات،
-            والمسيرات المالية والعمولات
+            إضافة الموظفين وتحديد أدوارهم وفروعهم وأقسامهم ومسمياتهم الوظيفية
           </p>
         </div>
 
@@ -533,7 +538,7 @@ export const StaffUsersPage: React.FC = () => {
                             <button
                               onClick={() => openEditEmployeeModal(u)}
                               className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                              title="تعديل الموظف والمسير المالي"
+                              title="تعديل بيانات الموظف"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
@@ -605,9 +610,6 @@ export const StaffUsersPage: React.FC = () => {
                       <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
                         {d.name}
                       </span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-mono">
-                        {d.code}
-                      </span>
                     </div>
                     {d.description && (
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -639,8 +641,13 @@ export const StaffUsersPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              {jobPositions
-                .filter((j) => j.active && j.departmentId === departmentId)
+              {jobPositions.length === 0 && (
+                <p className="quiet-note">
+                  مفيش مسميات وظيفية لسه. اضغط «إضافة مسمى وظيفي» وابدأ بأول مسمى (مثال: مسؤول مبيعات، مدير فرع، مهندس موقع).
+                </p>
+              )}
+              {[...jobPositions]
+                .sort((a, b) => (a.departmentName || "").localeCompare(b.departmentName || "", "ar"))
                 .map((j) => (
                   <div
                     key={j.id}
@@ -654,6 +661,15 @@ export const StaffUsersPage: React.FC = () => {
                         القسم: {j.departmentName || "عام"}
                       </span>
                     </div>
+                    {canManageOrganization(effectiveUser) && (
+                      <button
+                        type="button"
+                        onClick={() => updateJobPosition(j.id, { active: !j.active })}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 cursor-pointer"
+                      >
+                        {j.active ? "تعطيل" : "تفعيل"}
+                      </button>
+                    )}
                   </div>
                 ))}
             </div>
@@ -672,7 +688,7 @@ export const StaffUsersPage: React.FC = () => {
                   : "إنشاء حساب موظف جديد"}
               </span>
               <span className="text-xs font-normal text-slate-400">
-                مؤسسة EL.BEHERY
+                مؤسسة البحيري
               </span>
             </h3>
 
@@ -811,22 +827,6 @@ export const StaffUsersPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                      المحافطة / الإقليم *
-                    </label>
-                    <select
-                      value={governorateId}
-                      onChange={(e) => setGovernorateId(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-                    >
-                      {governorates.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -864,11 +864,12 @@ export const StaffUsersPage: React.FC = () => {
                       value={departmentId}
                       onChange={(e) => {
                         setDepartmentId(e.target.value);
-                        setJobPositionId("");
+                        const keep = jobPositions.find((j) => j.id === jobPositionId);
+                        if (keep && e.target.value && keep.departmentId !== e.target.value) setJobPositionId("");
                       }}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                     >
-                      <option value="">اختر القسم</option>
+                      <option value="">كل الأقسام</option>
                       {departmentEntities.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name}
@@ -885,20 +886,38 @@ export const StaffUsersPage: React.FC = () => {
                     </label>
                     <select
                       value={jobPositionId}
-                      onChange={(e) => setJobPositionId(e.target.value)}
+                      onChange={(e) => {
+                        setJobPositionId(e.target.value);
+                        const pos = jobPositions.find((j) => j.id === e.target.value);
+                        if (pos) setDepartmentId(pos.departmentId);
+                      }}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                     >
-                      <option value="">اختر الوظيفة</option>
-                      {jobPositions
-                        .filter(
-                          (j) => j.active && j.departmentId === departmentId,
-                        )
-                        .map((j) => (
-                          <option key={j.id} value={j.id}>
-                            {j.title} ({j.departmentName || "عام"})
-                          </option>
-                        ))}
+                      <option value="">{jobPositions.some((j) => j.active) ? "اختر الوظيفة" : "لا توجد مسميات بعد"}</option>
+                      {departmentEntities
+                        .filter((d) => !departmentId || d.id === departmentId)
+                        .map((d) => {
+                          const list = jobPositions.filter((j) => j.active && j.departmentId === d.id);
+                          return list.length ? (
+                            <optgroup key={d.id} label={d.name}>
+                              {list.map((j) => (
+                                <option key={j.id} value={j.id}>
+                                  {j.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null;
+                        })}
                     </select>
+                    {canManageOrganization(effectiveUser) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowJobModal(true)}
+                        className="mt-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 cursor-pointer"
+                      >
+                        + مسمى وظيفي جديد
+                      </button>
+                    )}
                   </div>
 
                   <div>
@@ -1035,19 +1054,6 @@ export const StaffUsersPage: React.FC = () => {
 
               <div>
                 <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  كود القسم
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: DECOR"
-                  value={newDeptCode}
-                  onChange={(e) => setNewDeptCode(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono uppercase"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                   الوصف والمهام
                 </label>
                 <textarea
@@ -1104,8 +1110,11 @@ export const StaffUsersPage: React.FC = () => {
                 <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                   القسم التابع له *
                 </label>
+                {departmentEntities.length === 0 && (
+                  <p className="quiet-note">لازم تضيف قسم الأول من تبويب «هيكل الأقسام والوظائف».</p>
+                )}
                 <select
-                  value={newJobDeptId}
+                  value={newJobDeptId || departmentEntities[0]?.id || ""}
                   onChange={(e) => setNewJobDeptId(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                 >

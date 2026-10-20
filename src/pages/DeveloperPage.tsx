@@ -60,7 +60,7 @@ function Num({ label, value, onChange, step = 1, hint }: { label: string; value:
 
 /** Developer-only tools: real AI token usage, a what-if cost calculator, and service health. */
 export function DeveloperPage() {
-  const { currentUser, users: staff } = useCRM();
+  const { currentUser, users: staff, clearOrganizationData } = useCRM();
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -186,6 +186,30 @@ export function DeveloperPage() {
         <p style={{ margin: "0 6px 8px" }}>
           <Dot ok={adminOk} /> إعادة تعيين كلمات المرور (<code>api/admin.php</code>): {adminOk === null ? "جاري الفحص…" : adminOk ? "شغّال" : "مش مفعّل (ملف Firebase Admin ناقص)"}
         </p>
+      </section>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <div>
+            <h2>تفريغ الهيكل والموظفين التجريبيين</h2>
+            <p>
+              بيمسح الفروع والمقرات والشركات والمخازن والفرق والأقسام والمسميات الوظيفية والموظفين التجريبيين من قاعدة البيانات عشان تضيف الحقيقي من الأول. المحافظات والمدن
+              بتفضل، وأي موظف ليه حساب دخول فعلي بيفضل.
+            </p>
+          </div>
+          <button
+            className="btn-secondary"
+            style={{ color: "#c8232b", borderColor: "#c8232b" }}
+            onClick={() => {
+              if (window.confirm("هتمسح كل الفروع والشركات والمخازن والفرق والأقسام والمسميات والموظفين التجريبيين. متأكد؟")) {
+                clearOrganizationData();
+                window.alert("تم التفريغ. ابدأ بإضافة الشركة ثم الفروع من صفحة الهيكل الإداري.");
+              }
+            }}
+          >
+            تفريغ الهيكل
+          </button>
+        </div>
       </section>
 
       <section className="panel" style={{ marginTop: 20 }}>
