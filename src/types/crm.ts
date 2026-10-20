@@ -7,28 +7,6 @@ export type UserRole =
   | "team_leader"
   | "sales_agent";
 
-export interface FinancialHistoryEntry {
-  id: string;
-  updatedAt: string;
-  updatedBy: string;
-  updatedByName: string;
-  baseSalary: number;
-  commissionRate: number; // percentage e.g. 5
-  bonus: number;
-  deductions: number;
-  effectiveDate: string;
-  notes?: string;
-}
-
-export interface FinancialRecord {
-  baseSalary: number;
-  commissionRate: number;
-  bonus: number;
-  deductions: number;
-  effectiveDate: string;
-  history?: FinancialHistoryEntry[];
-}
-
 export interface JobPosition {
   id: string;
   title: string;
@@ -72,7 +50,6 @@ export interface User {
   directManagerName?: string;
   active: boolean;
   createdAt: string;
-  salaryInfo?: FinancialRecord;
   permissions?: string[];
   specialty?: "sales" | "accounts" | "operations";
   supervisedBranchIds?: string[];
@@ -235,6 +212,8 @@ export interface Lead {
   hasSubmittedRating?: boolean;
   customerRatingStars?: number;
   customerRatingComment?: string;
+  brokerId?: string; // broker who referred this customer
+  brokerName?: string;
 }
 
 export interface Visit {
@@ -418,9 +397,7 @@ export interface BrokerEntity {
   whatsappPhone?: string;
   isSameWhatsApp?: boolean;
   email?: string;
-  taxNumber?: string;
   address?: string;
-  commissionRate: number; // e.g. 5%
   totalReferrals: number;
   totalVolume: number;
   active: boolean;

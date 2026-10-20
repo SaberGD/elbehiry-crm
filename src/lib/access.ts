@@ -19,7 +19,6 @@ export const isSales = (u: User) =>
 export const canCreateCustomer = (u: User) => has(u, "customers.create");
 export const canManageOrganization = (u: User) => has(u, "organization.manage");
 export const canManageCatalog = (u: User) => has(u, "catalog.manage");
-export const canViewPayroll = (u: User) => has(u, "payroll.view");
 export const canManageStaff = (u: User) => has(u, "staff.manage");
 export const canManageTeams = (u: User) => has(u, "teams.manage");
 export const canAssignCustomers = (u: User) => has(u, "customers.assign");
@@ -49,11 +48,7 @@ export function visibleStaff(
           canSeeBranch(user, u.branchId, branches)) ||
         u.id === user.id,
     )
-    .map((u) =>
-      canViewPayroll(user)
-        ? u
-        : { ...u, salaryInfo: undefined, permissions: undefined },
-    );
+    .map((u) => ({ ...u, permissions: undefined }));
 }
 export function visibleLeads(
   user: User,
@@ -174,6 +169,8 @@ export function canAccessPage(u: User, page: string) {
   if (["dashboard", "analytics_dashboard", "settings"].includes(page))
     return true;
   if (page === "permissions") return isDirector(u);
+  if (page === "overview")
+    return has(u, "bookings.view") && has(u, "customers.view");
   const key: Record<string, Parameters<typeof has>[1]> = {
     clients: "customers.view",
     add_client: "customers.create",

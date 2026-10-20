@@ -32,6 +32,7 @@ import { AuditLogPage } from "./pages/AuditLogPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { BrokersPage } from "./pages/BrokersPage";
+import { OverviewPage } from "./pages/OverviewPage";
 import { Lead } from "./types/crm";
 
 const AppContent: React.FC = () => {
@@ -147,6 +148,10 @@ const AppContent: React.FC = () => {
             {activeTab === "invoices" && <InvoicesPage />}
 
             {activeTab === "brokers" && <BrokersPage />}
+
+            {activeTab === "overview" && (
+              <OverviewPage onOpenLead={handleOpenLead} />
+            )}
 
             {activeTab === "users" && <StaffUsersPage />}
 

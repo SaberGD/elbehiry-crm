@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const BrokersPage: React.FC = () => {
-  const { brokers, purchaseInvoices, leads, addBroker, updateBroker, effectiveUser } = useCRM();
+  const { brokers, purchaseInvoices, leads, bookings, addBroker, updateBroker, effectiveUser } = useCRM();
   const { t } = useLanguage();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,15 +39,23 @@ export const BrokersPage: React.FC = () => {
   const [whatsappPhone, setWhatsappPhone] = useState('');
   const [isSameWhatsApp, setIsSameWhatsApp] = useState(true);
   const [email, setEmail] = useState('');
-  const [taxNumber, setTaxNumber] = useState('');
   const [address, setAddress] = useState('');
-  const [commissionRate, setCommissionRate] = useState(5);
   const [notes, setNotes] = useState('');
 
   // Calculations for referral analytics
-  const totalVolumeAllBrokers = brokers.reduce((sum, b) => sum + b.totalVolume, 0);
-  const totalReferralsAllBrokers = brokers.reduce((sum, b) => sum + b.totalReferrals, 0);
-  const totalCommissionEstAllBrokers = brokers.reduce((sum, b) => sum + (b.totalVolume * (b.commissionRate / 100)), 0);
+  // Customers brought by each broker and their total purchases (cancelled excluded)
+  const statsFor = (brokerId: string) => {
+    const mine = leads.filter((l) => l.brokerId === brokerId);
+    const ids = new Set(mine.map((l) => l.id));
+    return {
+      customers: mine.length,
+      volume: bookings
+        .filter((b) => ids.has(b.leadId) && b.bookingStatus !== 'cancelled')
+        .reduce((sum, b) => sum + b.amount, 0),
+    };
+  };
+  const totalVolumeAllBrokers = brokers.reduce((sum, b) => sum + statsFor(b.id).volume, 0);
+  const totalReferralsAllBrokers = brokers.reduce((sum, b) => sum + statsFor(b.id).customers, 0);
 
   // Filtered Brokers
   const filteredBrokers = brokers.filter((b) => {
@@ -69,9 +77,7 @@ export const BrokersPage: React.FC = () => {
     setWhatsappPhone('');
     setIsSameWhatsApp(true);
     setEmail('');
-    setTaxNumber('');
     setAddress('');
-    setCommissionRate(5);
     setNotes('');
     setIsModalOpen(true);
   };
@@ -84,9 +90,7 @@ export const BrokersPage: React.FC = () => {
     setWhatsappPhone(b.whatsappPhone || b.phone);
     setIsSameWhatsApp(b.isSameWhatsApp ?? true);
     setEmail(b.email || '');
-    setTaxNumber(b.taxNumber || '');
     setAddress(b.address || '');
-    setCommissionRate(b.commissionRate);
     setNotes(b.notes || '');
     setIsModalOpen(true);
   };
@@ -111,9 +115,7 @@ export const BrokersPage: React.FC = () => {
         whatsappPhone: finalWhatsapp,
         isSameWhatsApp,
         email,
-        taxNumber,
         address,
-        commissionRate,
         notes,
       });
     } else {
@@ -124,9 +126,7 @@ export const BrokersPage: React.FC = () => {
         whatsappPhone: finalWhatsapp,
         isSameWhatsApp,
         email,
-        taxNumber,
         address,
-        commissionRate,
         active: true,
         notes,
       });
@@ -185,21 +185,11 @@ export const BrokersPage: React.FC = () => {
 
         <div className="glass-card p-4 rounded-2xl shadow-xs">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-            <span>حجم المبيعات والتوريدات (EGP)</span>
+            <span>إجمالي مشتريات عملاء الوسطاء</span>
             <DollarSign className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 font-mono-numbers">
             {totalVolumeAllBrokers.toLocaleString()} ج.م
-          </div>
-        </div>
-
-        <div className="glass-card p-4 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-            <span>تقدير مستحقات العمولات</span>
-            <Percent className="w-4 h-4 text-[#c8232b]" />
-          </div>
-          <div className="text-xl font-bold text-[#c8232b] dark:text-[#c8232b] mt-1 font-mono-numbers">
-            {totalCommissionEstAllBrokers.toLocaleString()} ج.م
           </div>
         </div>
       </div>
@@ -249,9 +239,6 @@ export const BrokersPage: React.FC = () => {
                   </span>
                 </div>
 
-                <span className="px-2.5 py-1 rounded-xl bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-extrabold text-xs border border-purple-200 dark:border-purple-800">
-                  {b.commissionRate}% عمولة
-                </span>
               </div>
 
               <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 mt-3">
@@ -259,23 +246,18 @@ export const BrokersPage: React.FC = () => {
                   <Phone className="w-3.5 h-3.5 text-slate-400" />
                   <span className="font-mono-numbers">{b.phone}</span>
                 </div>
-                {b.taxNumber && (
-                  <div className="text-[11px] text-slate-500">
-                    الملف الضريبي: <span className="font-mono">{b.taxNumber}</span>
-                  </div>
-                )}
                 {b.notes && <p className="text-[11px] text-slate-400 italic mt-1 line-clamp-2">{b.notes}</p>}
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2 text-center text-xs">
                 <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl">
                   <div className="text-slate-400 text-[10px]">الترشيحات</div>
-                  <div className="font-bold text-slate-800 dark:text-slate-200 font-mono-numbers">{b.totalReferrals} عميل</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-200 font-mono-numbers">{statsFor(b.id).customers} عميل</div>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl">
                   <div className="text-slate-400 text-[10px]">حجم المبيعات</div>
                   <div className="font-bold text-emerald-600 dark:text-emerald-400 font-mono-numbers">
-                    {b.totalVolume.toLocaleString()} ج.م
+                    {statsFor(b.id).volume.toLocaleString()} ج.م
                   </div>
                 </div>
               </div>
@@ -334,19 +316,6 @@ export const BrokersPage: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">نسبة العمولة % *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.5"
-                    required
-                    value={commissionRate}
-                    onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono-numbers"
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -391,17 +360,6 @@ export const BrokersPage: React.FC = () => {
                     }`}
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">السجل / الرقم الضريبي</label>
-                <input
-                  type="text"
-                  value={taxNumber}
-                  onChange={(e) => setTaxNumber(e.target.value)}
-                  placeholder="100-200-300"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono"
-                />
               </div>
 
               <div>

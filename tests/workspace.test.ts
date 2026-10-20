@@ -141,7 +141,6 @@ test("employee data, totals, search and staff directory stay within ownership an
     view.users.map((u) => u.id),
     [employee.id],
   );
-  assert.ok(view.users.every((u) => !u.salaryInfo));
   assert.ok(
     view
       .findDuplicateLeadsByPhone("010")
@@ -180,7 +179,6 @@ test("branch manager cannot edit directors, see other branches, promote staff or
       (u) => u.id === manager.id || u.branchId === manager.branchId,
     ),
   );
-  assert.ok(view.users.every((u) => !u.salaryInfo));
   assert.throws(() => view.updateUser(employee.id, { role: "admin" }));
   assert.throws(() => view.updateUser(employee.id, { specialty: "accounts" }));
   assert.throws(() => view.updateUser(director.id, { name: "forbidden" }));
@@ -208,7 +206,6 @@ test("supervisors are limited to assigned branches and specialization", () => {
   ).view;
   assert.ok(general.leads.every((l) => l.branchId === employee.branchId));
   assert.equal(general.permissionMatrix, undefined);
-  assert.ok(general.users.every((u) => !u.salaryInfo));
   const accounts = fixture(
     makeUser("supervisor", {
       specialty: "accounts",
@@ -278,7 +275,6 @@ test("hidden foreign invoices, staff salaries, and customer actions remain denie
       receivedByAgentId: other.id,
     } as never),
   );
-  assert.throws(() => view.updateUserSalaryInfo(employee.id, {} as never));
   assert.throws(() =>
     view.updatePurchaseInvoiceStatus("foreign-invoice", "paid"),
   );

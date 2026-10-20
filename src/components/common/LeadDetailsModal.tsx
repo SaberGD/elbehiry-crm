@@ -74,6 +74,7 @@ export function LeadDetailsModal({
     followUps,
     bookings,
     purchaseInvoices,
+    brokers,
     updateLead,
     addFollowUp,
     addBooking,
@@ -102,6 +103,7 @@ export function LeadDetailsModal({
   const [agent, setAgent] = useState("");
   const [feedback, setFeedback] = useState("");
   const [outcomeOpen, setOutcomeOpen] = useState(false);
+  const [brokerSel, setBrokerSel] = useState("");
   const allowed = (value: Action) =>
     !!lead &&
     (value === "edit" || value === "note"
@@ -151,6 +153,7 @@ export function LeadDetailsModal({
       setEmail(lead.email || "");
       setWhatsapp(lead.whatsappPhone || lead.phone);
       setDepartment(lead.department);
+      setBrokerSel(lead.brokerId || "");
       setDate(today());
       setNote(initialAction === "edit" ? lead.notes : "");
       setReason("");
@@ -208,6 +211,8 @@ export function LeadDetailsModal({
         whatsappPhone: whatsapp.trim() || phone.trim(),
         isSameWhatsApp: !whatsapp.trim() || whatsapp.trim() === phone.trim(),
         notes: note.trim(),
+        brokerId: brokerSel || undefined,
+        brokerName: brokers.find((b) => b.id === brokerSel)?.name,
       });
     }
     if (action === "note") {
@@ -702,6 +707,22 @@ export function LeadDetailsModal({
                       </span>
                     </summary>
                     <div className="field-grid">
+                      <label className="field">
+                        <span>الوسيط اللي جاب العميل</span>
+                        <select
+                          value={brokerSel}
+                          onChange={(e) => setBrokerSel(e.target.value)}
+                        >
+                          <option value="">بدون وسيط</option>
+                          {brokers
+                            .filter((b) => b.active)
+                            .map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
                       <label className="field">
                         <span>رقم الواتساب</span>
                         <input

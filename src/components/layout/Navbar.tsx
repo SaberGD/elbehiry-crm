@@ -37,6 +37,7 @@ const titles: Record<string, string> = {
   bookings: "الحجوزات والتعاقدات",
   invoices: "الفواتير",
   brokers: "الوسطاء والشركاء",
+  overview: "كبار العملاء والوسطاء",
   reports: "التقارير",
   users: "الموظفون",
   branches: "الهيكل الإداري",

@@ -2,7 +2,6 @@ import { authErrorMessage } from "../context/AuthContext";
 import {
   canManageStaff,
   canEditStaff,
-  canViewPayroll,
   canManageOrganization,
   assignableRoles,
 } from "../lib/access";
@@ -16,16 +15,14 @@ import {
 import React, { useState } from "react";
 import { useCRM } from "../context/CRMContext";
 import { useLanguage } from "../context/LanguageContext";
-import { UserRole, User, FinancialRecord } from "../types/crm";
+import { UserRole, User } from "../types/crm";
 import {
   UserCheck2,
   Plus,
   Search,
   Building2,
-  DollarSign,
   Briefcase,
   Layers,
-  History,
   Lock,
   Edit2,
   ChevronRight,
@@ -48,13 +45,12 @@ export const StaffUsersPage: React.FC = () => {
     createLoginForUser,
     addDepartmentEntity,
     addJobPosition,
-    updateUserSalaryInfo,
   } = useCRM();
 
   const { t } = useLanguage();
 
   const [activeTab, setActiveTab] = useState<
-    "employees" | "departments" | "financials"
+    "employees" | "departments"
   >("employees");
 
   // Search and Filters
@@ -69,8 +65,6 @@ export const StaffUsersPage: React.FC = () => {
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [viewingSalaryHistoryUser, setViewingSalaryHistoryUser] =
-    useState<User | null>(null);
 
   // Form states for Add/Edit Employee
   const [name, setName] = useState("");
@@ -88,15 +82,6 @@ export const StaffUsersPage: React.FC = () => {
   const [jobPositionId, setJobPositionId] = useState("");
   const [directManagerId, setDirectManagerId] = useState("");
 
-  // Financial fields inside employee form
-  const [baseSalary, setBaseSalary] = useState<number>(0);
-  const [commissionRate, setCommissionRate] = useState<number>(0);
-  const [bonus, setBonus] = useState<number>(0);
-  const [deductions, setDeductions] = useState<number>(0);
-  const [effectiveDate, setEffectiveDate] = useState<string>(
-    new Date().toISOString().split("T")[0],
-  );
-  const [salaryNotes, setSalaryNotes] = useState("");
 
   // Department & Job Position modal state
   const [showDeptModal, setShowDeptModal] = useState(false);
@@ -110,7 +95,6 @@ export const StaffUsersPage: React.FC = () => {
     departmentEntities[0]?.id || "",
   );
 
-  const isAuthorizedForFinancials = canViewPayroll(effectiveUser);
 
   const openAddEmployeeModal = () => {
     setEditingUser(null);
@@ -128,12 +112,6 @@ export const StaffUsersPage: React.FC = () => {
     setDepartmentId("");
     setJobPositionId("");
     setDirectManagerId("");
-    setBaseSalary(5000);
-    setCommissionRate(3);
-    setBonus(0);
-    setDeductions(0);
-    setEffectiveDate(new Date().toISOString().split("T")[0]);
-    setSalaryNotes("اعتماد مالي مبدئي عند إنشاء الحساب");
     setShowAddModal(true);
   };
 
@@ -153,24 +131,6 @@ export const StaffUsersPage: React.FC = () => {
     setDepartmentId(u.departmentId || "");
     setJobPositionId(u.jobPositionId || "");
     setDirectManagerId(u.directManagerId || "");
-
-    if (u.salaryInfo) {
-      setBaseSalary(u.salaryInfo.baseSalary || 0);
-      setCommissionRate(u.salaryInfo.commissionRate || 0);
-      setBonus(u.salaryInfo.bonus || 0);
-      setDeductions(u.salaryInfo.deductions || 0);
-      setEffectiveDate(
-        u.salaryInfo.effectiveDate || new Date().toISOString().split("T")[0],
-      );
-      setSalaryNotes("تعديل البيانات الحالية");
-    } else {
-      setBaseSalary(0);
-      setCommissionRate(0);
-      setBonus(0);
-      setDeductions(0);
-      setEffectiveDate(new Date().toISOString().split("T")[0]);
-      setSalaryNotes("");
-    }
 
     setShowAddModal(true);
   };
@@ -221,16 +181,6 @@ export const StaffUsersPage: React.FC = () => {
         directManagerName: managerObj?.name,
       });
 
-      if (isAuthorizedForFinancials && baseSalary >= 0) {
-        updateUserSalaryInfo(editingUser.id, {
-          baseSalary,
-          commissionRate,
-          bonus,
-          deductions,
-          effectiveDate,
-          notes: salaryNotes,
-        });
-      }
     } else {
       const newUser = addUser({
         name,
@@ -265,16 +215,6 @@ export const StaffUsersPage: React.FC = () => {
       });
       loginTargetId = newUser.id;
 
-      if (isAuthorizedForFinancials && newUser && baseSalary >= 0) {
-        updateUserSalaryInfo(newUser.id, {
-          baseSalary,
-          commissionRate,
-          bonus,
-          deductions,
-          effectiveDate,
-          notes: salaryNotes,
-        });
-      }
     }
 
     if (loginPassword && loginTargetId) {
@@ -402,19 +342,6 @@ export const StaffUsersPage: React.FC = () => {
           <span>هيكل الأقسام والوظائف ({departmentEntities.length})</span>
         </button>
 
-        {isAuthorizedForFinancials && (
-          <button
-            onClick={() => setActiveTab("financials")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === "financials"
-                ? "bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm"
-                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-            }`}
-          >
-            <DollarSign className="w-4 h-4 text-[#dc424b]" />
-            <span>المسيرات المالية والعمولات</span>
-          </button>
-        )}
       </div>
 
       {/* TAB 1: EMPLOYEES LIST */}
@@ -596,15 +523,6 @@ export const StaffUsersPage: React.FC = () => {
                             </button>
                           )}
 
-                          {isAuthorizedForFinancials && u.salaryInfo && (
-                            <button
-                              onClick={() => setViewingSalaryHistoryUser(u)}
-                              className="p-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 rounded-lg cursor-pointer"
-                              title="سجل التغيرات المالية والعمولات"
-                            >
-                              <History className="w-3.5 h-3.5" />
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -700,93 +618,6 @@ export const StaffUsersPage: React.FC = () => {
                   </div>
                 ))}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: FINANCIAL OVERVIEW */}
-      {activeTab === "financials" && isAuthorizedForFinancials && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <div>
-              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <span>المسيرات المالية والمرتبات ونسب العمولات للموظفين</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                سجل المخصصات المالية المعتمدة للرواتب الأساسية، المكافآت
-                والحوافز، ونسب العمولات المباشرة
-              </p>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-right dir-ltr:text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="p-3.5">الموظف</th>
-                  <th className="p-3.5">الدور والفرع</th>
-                  <th className="p-3.5">الراتب الأساسي (ج.م)</th>
-                  <th className="p-3.5">نسبة العمولات %</th>
-                  <th className="p-3.5">الحوافز والمكافآت (ج.م)</th>
-                  <th className="p-3.5">الخصومات (ج.م)</th>
-                  <th className="p-3.5">تاريخ الاستحقاق</th>
-                  <th className="p-3.5 text-center">الإجراء</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredUsers.map((u) => {
-                  const sal = u.salaryInfo;
-                  return (
-                    <tr
-                      key={u.id}
-                      className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                    >
-                      <td className="p-3.5 font-bold text-slate-900 dark:text-slate-100">
-                        {u.name}
-                      </td>
-                      <td className="p-3.5 text-slate-600 dark:text-slate-400">
-                        {positionNames[u.role]} —{" "}
-                        <span className="font-semibold">
-                          {u.branchName || "عام"}
-                        </span>
-                      </td>
-                      <td className="p-3.5 font-bold font-mono text-slate-900 dark:text-slate-100">
-                        {sal?.baseSalary
-                          ? `${sal.baseSalary.toLocaleString()} ج.م`
-                          : "غير محدد"}
-                      </td>
-                      <td className="p-3.5 font-bold font-mono text-indigo-600 dark:text-indigo-400">
-                        {sal?.commissionRate ? `${sal.commissionRate}%` : "0%"}
-                      </td>
-                      <td className="p-3.5 font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                        {sal?.bonus
-                          ? `${sal.bonus.toLocaleString()} ج.م`
-                          : "0 ج.م"}
-                      </td>
-                      <td className="p-3.5 font-bold font-mono text-red-600 dark:text-red-400">
-                        {sal?.deductions
-                          ? `${sal.deductions.toLocaleString()} ج.م`
-                          : "0 ج.م"}
-                      </td>
-                      <td className="p-3.5 font-mono text-slate-500 text-[11px]">
-                        {sal?.effectiveDate || "—"}
-                      </td>
-                      <td className="p-3.5 text-center">
-                        {canEditStaff(effectiveUser, u, branches) && (
-                          <button
-                            onClick={() => openEditEmployeeModal(u)}
-                            className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 rounded-lg font-semibold text-xs transition-colors cursor-pointer"
-                          >
-                            تعديل المسير المالي
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         </div>
       )}
@@ -1060,103 +891,6 @@ export const StaffUsersPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Financial Section */}
-              {isAuthorizedForFinancials && (
-                <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <h4 className="font-bold text-emerald-700 dark:text-emerald-400 text-xs flex items-center gap-1.5">
-                    <DollarSign className="w-4 h-4" />
-                    <span>
-                      3. البيانات المالية والرواتب والعمولات (صلاحية خاصة)
-                    </span>
-                  </h4>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                        الراتب الأساسي (ج.م)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={baseSalary}
-                        onChange={(e) => setBaseSalary(Number(e.target.value))}
-                        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-bold font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                        نسبة العمولات %
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="100"
-                        value={commissionRate}
-                        onChange={(e) =>
-                          setCommissionRate(Number(e.target.value))
-                        }
-                        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-bold font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                        الحوافز والمكافآت (ج.م)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={bonus}
-                        onChange={(e) => setBonus(Number(e.target.value))}
-                        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                        الخصومات المعتمدة (ج.م)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={deductions}
-                        onChange={(e) => setDeductions(Number(e.target.value))}
-                        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                        تاريخ بداية السريان
-                      </label>
-                      <input
-                        type="date"
-                        value={effectiveDate}
-                        onChange={(e) => setEffectiveDate(e.target.value)}
-                        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                      ملاحظات التعديل المالي
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="مثال: زيادة استثنائية أو تعديل عمولات البيع..."
-                      value={salaryNotes}
-                      onChange={(e) => setSalaryNotes(e.target.value)}
-                      className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-                    />
-                  </div>
-                </div>
-              )}
-
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
                 <button
                   type="button"
@@ -1173,64 +907,6 @@ export const StaffUsersPage: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: VIEW SALARY HISTORY */}
-      {viewingSalaryHistoryUser && (
-        <div className="fixed inset-0 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-            <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
-              <History className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <span>
-                سجل التغييرات المالية: {viewingSalaryHistoryUser.name}
-              </span>
-            </h3>
-
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {viewingSalaryHistoryUser.salaryInfo?.history &&
-              viewingSalaryHistoryUser.salaryInfo.history.length > 0 ? (
-                viewingSalaryHistoryUser.salaryInfo.history.map((h) => (
-                  <div
-                    key={h.id}
-                    className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs space-y-1"
-                  >
-                    <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100">
-                      <span>الراتب: {h.baseSalary.toLocaleString()} ج.م</span>
-                      <span className="text-indigo-600 dark:text-indigo-400">
-                        العمولة: {h.commissionRate}%
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
-                      <span>بواسطة: {h.updatedByName}</span>
-                      <span>
-                        التاريخ:{" "}
-                        {new Date(h.updatedAt).toLocaleDateString("ar-EG")}
-                      </span>
-                    </div>
-                    {h.notes && (
-                      <p className="text-[11px] text-slate-600 dark:text-slate-300 italic">
-                        {h.notes}
-                      </p>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs text-slate-500 py-4 text-center">
-                  لا توجد سجلات تاريخية سابقة للمسير المالي.
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setViewingSalaryHistoryUser(null)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
-              >
-                إغلاق
-              </button>
-            </div>
           </div>
         </div>
       )}

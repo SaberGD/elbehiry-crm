@@ -13,6 +13,7 @@ import {
   demoTimeline,
   demoInvoices,
   demoBrokers,
+  demoNotBought,
 } from "../data/demoData";
 import { today, followUpStatus } from "../lib/presentation";
 import {
@@ -58,7 +59,6 @@ import {
   Warehouse,
   DepartmentEntity,
   JobPosition,
-  FinancialRecord,
   PurchaseCategory,
   BrokerEntity,
   PurchaseInvoice,
@@ -206,10 +206,6 @@ export interface CRMContextType {
   addUser: (user: Omit<User, "id" | "createdAt">) => User;
   updateUser: (id: string, updates: Partial<User>) => void;
   toggleUserActive: (id: string) => void;
-  updateUserSalaryInfo: (
-    userId: string,
-    salaryData: Omit<FinancialRecord, "history"> & { notes?: string },
-  ) => void;
   updateUserPermissions: (userId: string, permissions: string[]) => void;
   addBranch: (branch: Omit<Branch, "id">) => Branch;
   updateBranch: (id: string, updates: Partial<Branch>) => void;
@@ -1124,6 +1120,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setTimelineEvents((p) => addMissing(p, demoTimeline));
     setPurchaseInvoices((p) => addMissing(p, demoInvoices));
     setBrokers((p) => addMissing(p, demoBrokers));
+    setNotBoughtRecords((p) => addMissing(p, demoNotBought));
     logAudit("تحميل بيانات تجريبية", "إعدادات", "demo", "تحميل موظفين وبيانات تجريبية لكل الأدوار");
   };
   const removeDemoData = () => {
@@ -1135,6 +1132,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setTimelineEvents((p) => dropDemo(p, demoTimeline));
     setPurchaseInvoices((p) => dropDemo(p, demoInvoices));
     setBrokers((p) => dropDemo(p, demoBrokers));
+    setNotBoughtRecords((p) => dropDemo(p, demoNotBought));
     logAudit("حذف البيانات التجريبية", "إعدادات", "demo", "حذف الموظفين والبيانات التجريبية");
   };
 
@@ -1239,45 +1237,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       prev.map((p) => (p.id === id ? { ...p, ...updates } : p)),
     );
     logAudit("تحديث المسمى الوظيفي", "وظيفة", id, `تحديث المسمى الوظيفي ${id}`);
-  };
-
-  const updateUserSalaryInfo = (
-    userId: string,
-    salaryData: Omit<FinancialRecord, "history"> & { notes?: string },
-  ) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id !== userId) return u;
-        const currentRecord = u.salaryInfo;
-        const historyEntry = {
-          id: `fin-log-${Date.now()}`,
-          updatedAt: new Date().toISOString(),
-          updatedBy: effectiveUser.id,
-          updatedByName: effectiveUser.name,
-          baseSalary: salaryData.baseSalary,
-          commissionRate: salaryData.commissionRate,
-          bonus: salaryData.bonus,
-          deductions: salaryData.deductions,
-          effectiveDate: salaryData.effectiveDate,
-          notes: salaryData.notes,
-        };
-        const updatedSalaryInfo: FinancialRecord = {
-          baseSalary: salaryData.baseSalary,
-          commissionRate: salaryData.commissionRate,
-          bonus: salaryData.bonus,
-          deductions: salaryData.deductions,
-          effectiveDate: salaryData.effectiveDate,
-          history: [historyEntry, ...(currentRecord?.history || [])],
-        };
-        logAudit(
-          "تحديث بيانات الراتب/المالية",
-          "موظف",
-          u.id,
-          `تحديث البيانات المالية للموظف ${u.name}`,
-        );
-        return { ...u, salaryInfo: updatedSalaryInfo };
-      }),
-    );
   };
 
   const updateUserPermissions = (userId: string, permissions: string[]) => {
@@ -1516,7 +1475,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         addUser,
         updateUser,
         toggleUserActive,
-        updateUserSalaryInfo,
         updateUserPermissions,
         addBranch,
         updateBranch,

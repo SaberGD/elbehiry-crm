@@ -265,7 +265,6 @@ export function createWorkspace(raw: CRMContextType) {
             .filter((u) => u.active)
             .map((u) => ({
               ...u,
-              salaryInfo: undefined,
               permissions: undefined,
             }))
         : [],
@@ -468,7 +467,6 @@ export function createWorkspace(raw: CRMContextType) {
         access.isGlobalManager(actor) ||
           (!!data.branchId && branchIds.has(data.branchId)),
       );
-      require(!data.salaryInfo || access.canViewPayroll(actor));
       const branch = raw.branches.find((b) => b.id === data.branchId);
       const user = raw.addUser({
         ...data,
@@ -498,10 +496,7 @@ export function createWorkspace(raw: CRMContextType) {
         !("branchId" in data) ||
           (!!data.branchId && branchIds.has(data.branchId)),
       );
-      require(
-        !("permissions" in data) &&
-          (!("salaryInfo" in data) || access.canViewPayroll(actor)),
-      );
+      require(!("permissions" in data));
       raw.updateUser(id, data);
     }) as CRMContextType["updateUser"],
     toggleUserActive: ((id) => {
@@ -509,14 +504,6 @@ export function createWorkspace(raw: CRMContextType) {
       require(!!target && access.canEditStaff(actor, target, raw.branches));
       raw.toggleUserActive(id);
     }) as CRMContextType["toggleUserActive"],
-    updateUserSalaryInfo: ((id, data) => {
-      require(
-        access.canViewPayroll(actor) &&
-          access.canManageStaff(actor) &&
-          (staff.some((u) => u.id === id) || pendingStaff.has(id)),
-      );
-      raw.updateUserSalaryInfo(id, data);
-    }) as CRMContextType["updateUserSalaryInfo"],
     updateUserPermissions: ((...args) => {
       deny();
     }) as CRMContextType["updateUserPermissions"],

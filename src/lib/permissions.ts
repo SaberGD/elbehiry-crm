@@ -40,7 +40,6 @@ export const permissionDefinitions = [
   ["reports.view", "عرض تقارير نطاق العمل"],
   ["staff.view", "عرض الموظفين"],
   ["staff.manage", "إضافة وإدارة الموظفين الأقل صلاحية"],
-  ["payroll.view", "عرض الرواتب (التعديل مع صلاحية إدارة الموظفين)"],
   ["teams.view", "عرض فرق العمل"],
   ["teams.manage", "إدارة فرق العمل"],
   ["branches.view", "عرض الفروع والأقسام"],
@@ -99,7 +98,6 @@ export const defaultPermissionMatrix: PermissionMatrix = {
   director: [
     ...oversight,
     "staff.manage",
-    "payroll.view",
     "teams.manage",
     "organization.manage",
     "catalog.manage",
@@ -222,7 +220,6 @@ export const permissionDependencies: Partial<Record<Permission, Permission[]>> =
     "bookings.create": ["bookings.view", "customers.view"],
     "invoices.manage": ["invoices.view"],
     "staff.manage": ["staff.view"],
-    "payroll.view": ["staff.view"],
     "teams.manage": ["teams.view", "staff.view"],
     "organization.manage": ["branches.view"],
     "catalog.manage": ["invoices.view", "brokers.view"],

@@ -6,6 +6,7 @@ import {
   PhoneCall,
   ShoppingBag,
   BarChart3,
+  Award,
   Settings,
   Compass,
   FileText,
@@ -114,6 +115,7 @@ export function Sidebar({
           <p className="nav-group-label">المبيعات</p>
           {nav("bookings", "الحجوزات والتعاقدات", ShoppingBag)}
           {nav("invoices", "الفواتير", FileText)}
+          {nav("overview", "كبار العملاء والوسطاء", Award)}
           {nav("brokers", "الوسطاء والشركاء", UserRound)}
           {nav(
             "reports",

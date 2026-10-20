@@ -716,7 +716,7 @@ export const InvoicesPage: React.FC = () => {
                   <option value="">-- عميل مباشر (بدون وسيط) --</option>
                   {brokers.map((b) => (
                     <option key={b.id} value={b.id}>
-                      🤝 {b.name} ({b.commissionRate}% عمولة)
+                      🤝 {b.name}
                     </option>
                   ))}
                 </select>

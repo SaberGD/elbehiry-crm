@@ -163,7 +163,6 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
         name: brokerName.trim(),
         phone: brokerPhone.trim(),
         type: "individual",
-        commissionRate: 0,
         active: true,
         notes: "",
       });
@@ -178,6 +177,8 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       companyNameRelationship: linkedBroker
         ? `الوسيط المرتبط: ${linkedBroker.name}`
         : undefined,
+      brokerId: linkedBroker?.id,
+      brokerName: linkedBroker?.name,
       branchId,
       assignedAgentId: agentId,
       status: "new",
