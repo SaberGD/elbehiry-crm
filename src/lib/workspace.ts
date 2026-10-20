@@ -365,7 +365,7 @@ export function createWorkspace(raw: CRMContextType) {
           data.followUpAgentId || data.receivedByAgentId,
         );
       }
-      const accessibleMatch = data.linkedLeadId
+      const accessibleMatch = data.linkedLeadId || data.visitorType === "broker"
         ? undefined
         : leads.find(
             (l) =>
@@ -491,7 +491,8 @@ export function createWorkspace(raw: CRMContextType) {
       raw.updatePurchaseCategory(...args);
     }) as CRMContextType["updatePurchaseCategory"],
     addBroker: ((data) => {
-      require(access.canManageCatalog(actor));
+      // Registering a broker is part of taking a visit or a customer, so anyone who can register customers may do it.
+      require(access.canManageCatalog(actor) || access.canCreateCustomer(actor));
       return raw.addBroker(data);
     }) as CRMContextType["addBroker"],
     updateBroker: ((...args) => {

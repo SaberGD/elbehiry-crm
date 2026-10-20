@@ -682,7 +682,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const agent = users.find((u) => u.id === visitData.receivedByAgentId);
 
     // Auto check duplicate / existing lead
-    const existing = visitData.phone
+    const brokerOnly = visitData.visitorType === "broker";
+    const existing = !brokerOnly && visitData.phone
       ? findDuplicateLeadsByPhone(visitData.phone).filter(
           (l) =>
             l.branchId === visitData.branchId &&
@@ -690,12 +691,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
               l.assignedAgentId === effectiveUser.id),
         )
       : [];
-    let linkedLeadId =
-      visitData.linkedLeadId ||
-      (existing.length > 0 ? existing[0].id : undefined);
+    let linkedLeadId = brokerOnly
+      ? undefined
+      : visitData.linkedLeadId ||
+        (existing.length > 0 ? existing[0].id : undefined);
 
     // If no lead exists and phone exists, create lead automatically
-    if (!linkedLeadId && visitData.phone && visitData.visitorName) {
+    if (!brokerOnly && !linkedLeadId && visitData.phone && visitData.visitorName) {
       const createdLead = addLead({
         name: visitData.visitorName,
         phone: visitData.phone,
@@ -707,7 +709,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         assignedAgentName: agent?.name,
         status: visitData.requiresFollowUp ? "needs_followup" : "interested",
         classification: "B",
-        department: visitData.department || "decor",
+        department: visitData.interests?.[0] || visitData.department || "decor",
+        interests: visitData.interests,
+        brokerId: visitData.brokerId,
+        brokerName: visitData.brokerName,
         courseOfInterest: visitData.courseOfInterest,
         locationRating: visitData.locationRating,
         treatmentRating: visitData.treatmentRating,

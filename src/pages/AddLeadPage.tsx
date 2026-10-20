@@ -157,7 +157,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       brokerMode === "existing"
         ? brokers.find((b) => b.id === brokerId)
         : undefined;
-    if (brokerMode === "new" && canManageCatalog(effectiveUser))
+    if (brokerMode === "new" && canCreateCustomer(effectiveUser))
       linkedBroker = addBroker({
         name: brokerName.trim(),
         phone: brokerPhone.trim(),
@@ -452,7 +452,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
               >
                 <option value="none">بدون وسيط</option>
                 <option value="existing">وسيط مسجل عندنا</option>
-                {canManageCatalog(effectiveUser) && (
+                {canCreateCustomer(effectiveUser) && (
                   <option value="new">إضافة وسيط جديد</option>
                 )}
               </select>

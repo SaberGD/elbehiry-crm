@@ -218,8 +218,16 @@ export interface Lead {
   brokerName?: string;
 }
 
+export type VisitorType = "client" | "broker" | "both";
+
 export interface Visit {
   id: string;
+  /** Who came: a customer, a broker on their own, or a customer who came with a broker. */
+  visitorType?: VisitorType;
+  brokerId?: string;
+  brokerName?: string;
+  /** Interests chosen for a customer registered through this visit. */
+  interests?: Department[];
   visitorName: string;
   phone: string;
   whatsappPhone?: string;

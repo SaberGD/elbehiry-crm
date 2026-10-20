@@ -2259,3 +2259,17 @@
 .invoice-row .field { margin: 0; }
 .invoice-row .icon-button { margin-bottom: 2px; }
 @media (max-width: 640px) { .invoice-row { grid-template-columns: minmax(0, 1fr) auto; } .invoice-row .field:nth-child(2) { grid-column: 1; } }
+
+/* Visit form */
+.visitor-types { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-top: .5rem; }
+.visitor-types button { display: flex; flex-direction: column; align-items: center; gap: .25rem; padding: 1rem .6rem; border: 1.5px solid var(--line); border-radius: 16px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; text-align: center; transition: border-color .15s, background .15s; }
+.visitor-types button small { opacity: .65; }
+.visitor-types button.on { border-color: #c8232b; background: var(--brand-soft, #fbeceb); color: var(--brand-text, #a7252b); }
+.visitor-types button.on small { opacity: .85; }
+@media (max-width: 640px) { .visitor-types { grid-template-columns: 1fr; } .visitor-types button { flex-direction: row; justify-content: flex-start; } }
+.party-block { margin-top: 1.25rem; padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-soft); }
+.party-block h3 { margin: 0 0 .6rem; font-size: .95rem; }
+.party-block .tab-filter { margin-bottom: .8rem; }
+.picker-list { position: absolute; inset-inline: 0; top: 100%; z-index: 20; margin-top: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.18); overflow: hidden; }
+.picker-list button { display: flex; justify-content: space-between; gap: 1rem; width: 100%; padding: .65rem .9rem; background: none; border: none; color: inherit; font: inherit; cursor: pointer; text-align: start; }
+.picker-list button:hover { background: var(--surface-hover); }
