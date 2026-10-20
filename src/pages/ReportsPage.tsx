@@ -197,8 +197,8 @@ export function ReportsPage() {
               <tr>
                 <th>الفرع</th>
                 {has("customers.view") && <th>العملاء</th>}
-                {has("bookings.view") && <th>قيمة التعاقدات</th>}
-                {has("followups.view") && <th>المتابعات المتأخرة</th>}
+                {has("bookings.view") && <th>إجمالي المشتريات</th>}
+                {has("followups.view") && <th>متابعات متأخرة</th>}
                 {has("invoices.view") && <th>الفواتير</th>}
               </tr>
             </thead>

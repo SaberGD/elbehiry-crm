@@ -105,7 +105,7 @@ export function BranchDetailsModal({
                   },
                   {
                     allowed: has("bookings.view"),
-                    label: "قيمة التعاقدات",
+                    label: "إجمالي المشتريات",
                     value: `${formatMoney(contracts.reduce((s, c) => s + c.amount, 0))} ج.م`,
                   },
                   {

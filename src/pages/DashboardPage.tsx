@@ -262,7 +262,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
             <span className="hero-kicker">
               <span />{" "}
               {has("bookings.view")
-                ? "قيمة التعاقدات المسجلة"
+                ? "إجمالي المشتريات المسجلة"
                 : has("customers.view")
                   ? "العملاء في نطاقك"
                   : "ملخص نطاق العمل"}
@@ -338,7 +338,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
             <div className="attention-numbers">
               <div>
                 <strong>{overdue.length}</strong>
-                <span>متأخرة</span>
+                <span>متابعات متأخرة</span>
               </div>
               <div>
                 <strong>{due.length}</strong>
@@ -369,9 +369,9 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
         )}
         {metric(
           "bookings",
-          "التعاقدات",
+          "عمليات الشراء",
           active.length,
-          "باستبعاد التعاقدات الملغاة",
+          "باستبعاد الملغى",
           ShoppingBag,
         )}
         {metric(
@@ -412,7 +412,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                 onChange={(e) => setSort(e.target.value)}
               >
                 {has("bookings.view") && (
-                  <option value="amount">قيمة التعاقدات</option>
+                  <option value="amount">إجمالي المشتريات</option>
                 )}
                 {has("followups.view") && (
                   <option value="late">تأخر المتابعة</option>
@@ -432,8 +432,8 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                 <thead>
                   <tr>
                     <th>الفرع / المسؤول</th>
-                    {has("bookings.view") && <th>قيمة التعاقدات</th>}
-                    {has("followups.view") && <th>متأخرة</th>}
+                    {has("bookings.view") && <th>إجمالي المشتريات</th>}
+                    {has("followups.view") && <th>متابعات متأخرة</th>}
                     {has("customers.view") && <th>بدون خطوة تالية</th>}
                     {has("customers.view") && <th>لم يشتروا بعد</th>}
                     <th>
@@ -470,7 +470,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                           </div>
                           {!b.contracts && (
                             <span className="no-records">
-                              لا توجد تعاقدات مسجلة
+                              لا توجد مشتريات مسجلة
                             </span>
                           )}
                         </td>
@@ -536,7 +536,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                     {has("followups.view") && (
                       <span>
                         <i className={b.late ? "dot-alert" : "dot-neutral"} />
-                        {b.late} متأخرة
+                        {b.late} متابعة متأخرة
                       </span>
                     )}
                     {has("customers.view") && (
@@ -558,7 +558,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
             )}
             <div className="studio-panel-footer">
               <p>
-                قيمة التعاقدات لكل الفترات. غياب السجلات لا يكفي لتقييم أداء
+                إجمالي المشتريات لكل الفترات. غياب السجلات لا يكفي لتقييم أداء
                 الفرع.
               </p>
               {branchRows.length > 5 && (
@@ -584,7 +584,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
               <div>
                 <span className="eyebrow">توزيع النشاط</span>
                 <h2>كل قسم، ونصيبه</h2>
-                <p>من إجمالي قيمة التعاقدات</p>
+                <p>من إجمالي المشتريات</p>
               </div>
               <ShoppingBag size={20} />
             </div>
@@ -608,7 +608,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                   />
                   <div>
                     <h3>{d.name}</h3>
-                    <p>{d.count} تعاقد</p>
+                    <p>{d.count} عملية شراء</p>
                   </div>
                   <div className="department-figure">
                     <strong>

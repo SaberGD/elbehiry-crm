@@ -86,7 +86,7 @@ export function DepartmentDashboardPage({ setActiveTab, onOpenLead }: Props) {
                 <th>الفرع والمسؤول</th>
                 {has("customers.view") && <th>العملاء</th>}
                 {has("visits.view") && <th>الزيارات</th>}
-                {has("bookings.view") && <th>قيمة التعاقدات</th>}
+                {has("bookings.view") && <th>إجمالي المشتريات</th>}
                 <th>تفاصيل الفرع</th>
               </tr>
             </thead>
@@ -115,7 +115,7 @@ export function DepartmentDashboardPage({ setActiveTab, onOpenLead }: Props) {
                     <td>
                       {contracts.some((c) => c.branchId === b.id)
                         ? `${formatMoney(contracts.filter((c) => c.branchId === b.id).reduce((s, c) => s + c.amount, 0))} ج.م`
-                        : "لا توجد تعاقدات مسجلة"}
+                        : "لا توجد مشتريات مسجلة"}
                     </td>
                   )}
                   <td>
