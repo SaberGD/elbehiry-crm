@@ -2174,3 +2174,10 @@
 @media (prefers-reduced-motion: reduce) {
   .zaki-fab, .zaki-svg, .zaki-img, .zaki-eyes, .zaki-panel, .zaki-msg, .zaki-bubble, .zaki-wave-arm, .zaki-dots i { animation: none !important; }
 }
+
+.zaki-demo { margin: auto 0; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .5rem; text-align: start; }
+.zaki-demo small { opacity: .6; font-size: .76rem; }
+.zaki-demo-line { min-height: 3.4rem; font-size: 1.05rem; font-weight: 700; line-height: 1.7; }
+.zaki-caret { display: inline-block; width: 2px; height: 1.15em; margin-inline-start: 3px; vertical-align: text-bottom; background: #c8232b; animation: zaki-caret 1s steps(1) infinite; }
+@keyframes zaki-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .zaki-caret { animation: none !important; } }

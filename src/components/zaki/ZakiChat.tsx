@@ -127,13 +127,12 @@ export function ZakiChat() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
-  const [focused, setFocused] = useState(false);
   const [greet, setGreet] = useState(false);
   const [mood, setMood] = useState<ZakiMood>("idle");
   const [line, setLine] = useState(0);
   const [freshIdx, setFreshIdx] = useState(-1);
   const end = useRef<HTMLDivElement>(null);
-  const typed = useTypedExamples(open && !input && !focused && !busy);
+  const typed = useTypedExamples(open && turns.length === 0 && !busy);
   const titles = new Set(["م", "م.", "eng", "eng.", "dr", "dr.", "د", "د.", "أ", "أ.", "المهندس", "الدكتور", "الحاج", "الأستاذ"]);
   const first = currentUser.name.split(" ").find((w) => !titles.has(w.toLowerCase())) ?? currentUser.name;
 
@@ -264,12 +263,15 @@ export function ZakiChat() {
             </button>
           </div>
           <div className="zaki-body">
-            <div className="zaki-msg bot">
-              <p>
-                أهلًا {first}! أنا زكي. اسألني عن العملاء والوسطاء والمتابعات والمبيعات، بالكتابة أو بالصوت، وأنا أرد من بيانات النظام اللي
-                بتشوفها.
-              </p>
-            </div>
+            {turns.length === 0 && !busy && (
+              <div className="zaki-demo" aria-hidden="true">
+                <small>جرّب تسألني، مثلًا:</small>
+                <div className="zaki-demo-line">
+                  <span>{typed}</span>
+                  <i className="zaki-caret" />
+                </div>
+              </div>
+            )}
             {turns.map((t, i) => (
               <div key={i} className={`zaki-msg ${t.role === "user" ? "me" : "bot"}`}>
                 {t.role === "user" ? <p>{t.text}</p> : <BotAnswer text={t.text} fresh={i === freshIdx} />}
@@ -296,8 +298,7 @@ export function ZakiChat() {
               onChange={setInput}
               rows={1}
               hideImprove
-              placeholder={typed ? `${typed}▏` : "اكتب سؤالك أو اضغط تكلّم…"}
-              onFocusChange={setFocused}
+              placeholder="اكتب سؤالك أو اضغط تكلّم…"
               onSubmit={() => send(input)}
             />
             <button className="btn-primary zaki-send" onClick={() => send(input)} disabled={busy || !input.trim()} aria-label="إرسال">
