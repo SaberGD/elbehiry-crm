@@ -27,11 +27,27 @@ function fail(int $code, string $error): void {
     exit;
 }
 
-function load_secrets(): ?array {
-    $path = dirname(__DIR__, 3) . '/crm-ai-secrets.php';
-    if (!is_file($path)) return null;
-    $cfg = include $path;
-    return is_array($cfg) && !empty($cfg['gemini_key']) ? $cfg : null;
+/** Folders searched for crm-ai-secrets.php, all outside the web root. */
+function secret_paths(): array {
+    $paths = [];
+    foreach ([3, 4, 5] as $up) {
+        $paths[] = dirname(__DIR__, $up) . '/crm-ai-secrets.php';
+    }
+    $home = getenv('HOME');
+    if ($home) $paths[] = rtrim($home, '/') . '/crm-ai-secrets.php';
+    return array_values(array_unique($paths));
+}
+
+/** @return array{0: ?array, 1: string} config and a diagnostic hint */
+function load_secrets(): array {
+    foreach (secret_paths() as $path) {
+        if (!is_file($path)) continue;
+        $cfg = @include $path;
+        if (!is_array($cfg)) return [null, 'file_invalid'];
+        if (empty($cfg['gemini_key']) || !is_string($cfg['gemini_key'])) return [null, 'key_missing'];
+        return [$cfg, 'ok'];
+    }
+    return [null, 'file_not_found'];
 }
 
 function http_json(string $url, array $headers, array $body): array {
@@ -84,10 +100,10 @@ function gemini(array $cfg, array $parts, array $generation = []): string {
     return is_string($text) ? trim($text) : '';
 }
 
-$cfg = load_secrets();
+[$cfg, $configHint] = load_secrets();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    echo json_encode(['configured' => $cfg !== null]);
+    echo json_encode(['configured' => $cfg !== null, 'hint' => $configHint]);
     exit;
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail(405, 'method_not_allowed');
