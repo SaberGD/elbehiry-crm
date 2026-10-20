@@ -28,8 +28,8 @@ export function whatsappUrl(phone: string, text: string): string {
 
 const firstName = greetingName;
 
-export function requestMessage(lead: Pick<Lead, "name">, subjectLabel: string, link: string): string {
-  return `أهلًا ${firstName(lead.name)} 🌷\nشكرًا إنك زرتنا (${subjectLabel}) في البحيري للدهانات والديكور.\nرأيك يهمنا جدًا، ممكن تقيّم تجربتك في دقيقة واحدة؟ ولو عندك أي ملاحظة أو شكوى اكتبها لنا وهنتابعها فورًا:\n${link}`;
+export function requestMessage(lead: Pick<Lead, "name">, _subjectLabel: string, link: string): string {
+  return `أهلًا ${firstName(lead.name)} 🌷\nسعدنا بزيارتك للبحيري للدهانات والديكور.\nيشرفنا نعرف رأيك في تجربتك معانا، التقييم بياخد أقل من دقيقة. وأي ملاحظة أو شكوى هنتابعها بنفسنا في نفس اليوم:\n${link}`;
 }
 
 export function reminderMessage(lead: Pick<Lead, "name">, link: string): string {
