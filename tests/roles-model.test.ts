@@ -17,11 +17,11 @@ test("role names follow the business: owner, general sales manager, branch sales
   assert.equal(positionNames.branch_manager, "مدير مبيعات الفرع");
 });
 
-test("who creates whom: developer anyone, owner the two sales managers, general sales manager the branch managers", () => {
+test("who creates whom: developer anyone, owner the two sales managers, the general sales manager nobody", () => {
   const withManage = (x: User) => ({ ...x, permissions: ["staff.manage", "staff.view", "branches.view"] }) as User;
   assert.deepEqual(assignableRoles(u("dev", "admin")), ["admin", "general_manager", "regional_manager", "branch_manager"]);
   assert.deepEqual(assignableRoles(owner), ["regional_manager", "branch_manager"]);
-  assert.deepEqual(assignableRoles(withManage(gsm)), ["branch_manager"]);
+  assert.deepEqual(assignableRoles(withManage(gsm)), []); // the owner adds managers
 });
 
 test("a customer goes to the branch sales manager by default; the general sales manager can be picked anywhere", () => {

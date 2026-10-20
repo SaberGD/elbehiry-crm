@@ -92,7 +92,8 @@ export const StaffUsersPage: React.FC = () => {
   const [role, setRole] = useState<UserRole>("sales_agent");
   const [companyId, setCompanyId] = useState(companies[0]?.id || "");
   const [governorateId, setGovernorateId] = useState(governorates[0]?.id || "");
-  const [branchId, setBranchId] = useState(branches[0]?.id || "");
+  const [formBranchId, setBranchId] = useState(branches[0]?.id || "");
+  const branchId = formBranchId;
   const [teamId, setTeamId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [jobPositionId, setJobPositionId] = useState("");
@@ -174,6 +175,9 @@ export const StaffUsersPage: React.FC = () => {
   const handleEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // The owner and the general sales manager work across branches, so they are not placed in one.
+    const crossBranch = ["admin", "general_manager", "regional_manager"].includes(role);
+    const branchId = crossBranch ? "" : formBranchId;
     const companyObj = companies.find((c) => c.id === companyId);
     const govObj = governorates.find((g) => g.id === (branches.find((b) => b.id === branchId)?.governorateId || governorateId));
     const branchObj = branches.find((b) => b.id === branchId);
@@ -765,6 +769,11 @@ export const StaffUsersPage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {["admin", "general_manager", "regional_manager"].includes(role) ? (
+                    <p className="text-xs text-slate-600 dark:text-slate-400 sm:col-span-2 bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+                      الدور ده بيشتغل على كل الفروع، فمش محتاج فرع محدد.
+                    </p>
+                  ) : (
                   <div>
                     <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                       الفرع المباشر *
@@ -790,6 +799,7 @@ export const StaffUsersPage: React.FC = () => {
                       ))}
                     </select>
                   </div>
+                  )}
 
                   <div>
                     <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">

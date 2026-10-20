@@ -120,8 +120,6 @@ export const defaultPermissionMatrix: PermissionMatrix = {
     "followups.complete",
     "bookings.create",
     "invoices.manage",
-    "staff.manage",
-    "teams.manage",
     "customers.assign",
   ],
   specialist_sales: [

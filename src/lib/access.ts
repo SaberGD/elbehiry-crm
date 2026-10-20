@@ -179,7 +179,7 @@ export const assignableRoles = (u: User): UserRole[] =>
       : isDirector(u)
         ? ["regional_manager", "branch_manager"] // the owner creates the general sales manager and the branch sales managers
         : u.role === "regional_manager"
-          ? ["branch_manager"]
+          ? [] // the owner adds the sales managers; the general sales manager works with them
           : ["sales_agent"]; // later: a branch manager's own salespeople
 /** Older roles that still exist on saved accounts; they can be edited but no longer added. */
 const legacyRoles: UserRole[] = ["supervisor", "sales_agent", "team_leader"];
