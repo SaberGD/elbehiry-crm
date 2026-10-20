@@ -175,7 +175,7 @@ export const assignableRoles = (u: User): UserRole[] =>
   !canManageStaff(u)
     ? []
     : u.role === "admin"
-      ? positionRoles // the developer creates the owner, managers, and other developers
+      ? (["general_manager", "regional_manager", "branch_manager", "admin"] as UserRole[]) // the developer creates the owner first, then managers, and other developers
       : isDirector(u)
         ? ["regional_manager", "branch_manager"] // the owner creates the general sales manager and the branch sales managers
         : u.role === "regional_manager"

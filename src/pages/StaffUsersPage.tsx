@@ -139,7 +139,7 @@ export const StaffUsersPage: React.FC = () => {
     setEmail("");
     setLoginPassword("");
     setPhone("");
-    setRole("sales_agent");
+    setRole(assignableRoles(effectiveUser)[0] ?? "sales_agent");
     setSpecialty("sales");
     setSupervisedBranchIds([]);
     setCompanyId(companies[0]?.id || "");
@@ -758,7 +758,7 @@ export const StaffUsersPage: React.FC = () => {
                       onChange={(e) => setRole(e.target.value as UserRole)}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-semibold"
                     >
-                      {assignableRoles(effectiveUser).map((r) => (
+                      {[...new Set([...assignableRoles(effectiveUser), ...(editingUser ? [editingUser.role] : [])])].map((r) => (
                         <option key={r} value={r}>
                           {positionNames[r]}
                         </option>
