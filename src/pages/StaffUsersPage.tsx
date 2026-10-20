@@ -671,9 +671,9 @@ export const StaffUsersPage: React.FC = () => {
                       <input
                         type="password"
                         dir="ltr"
-                        minLength={6}
+                        minLength={8}
                         autoComplete="new-password"
-                        placeholder="6 أحرف على الأقل. رقم الدخول = رقم الموبايل. اتركها فارغة لعدم إنشاء حساب دخول"
+                        placeholder="8 أحرف على الأقل. اسم الدخول = رقم الموبايل. اتركها فارغة لعدم إنشاء حساب دخول"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
