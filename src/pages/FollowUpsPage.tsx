@@ -21,6 +21,7 @@ import { milestoneLabel } from "../lib/postSale";
 import { FilterBar, inDateRange } from "../components/common/FilterBar";
 import { ReviewCard } from "../components/reviews/ReviewCard";
 import { reviewPhase } from "../lib/reviews";
+import { lastOutcome } from "../lib/purchases";
 import { VoiceNoteField } from "../components/common/VoiceNoteField";
 import type { LeadQuickAction } from "../components/common/LeadDetailsModal";
 interface Props {
@@ -28,7 +29,7 @@ interface Props {
   initialTab?: "due" | "overdue";
 }
 export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
-  const { effectiveUser, leads, branches, followUps, updateFollowUpResult, reviewRequests, addReferralLead } =
+  const { effectiveUser, leads, branches, followUps, updateFollowUpResult, reviewRequests, addReferralLead, bookings, notBoughtRecords } =
     useCRM();
   // The one 48-hour nudge for review requests the customer has not answered.
   const dueReviews = reviewRequests.filter((r) => reviewPhase(r) === "reminder_due");
@@ -265,14 +266,21 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                       تسجيل النتيجة
                     </button>
                   )}
-                {canAccessPage(effectiveUser, "clients") && f.category !== "post_sale" && (
-                  <button
-                    className="btn-secondary"
-                    onClick={() => onOpenLead(f.leadId, "outcome")}
-                  >
-                    اشترى ولا لسه؟
-                  </button>
-                )}
+                {canAccessPage(effectiveUser, "clients") && f.category !== "post_sale" && (() => {
+                  const last = lastOutcome(f.leadId, bookings, notBoughtRecords);
+                  return last.kind === "bought" ? (
+                    <span className="last-bought" title={last.what}>
+                      آخر مرة اشترى: <bdi>{last.date}</bdi> · <bdi>{last.amount.toLocaleString("en-US")}</bdi> ج.م
+                    </span>
+                  ) : (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => onOpenLead(f.leadId, "outcome")}
+                    >
+                      اشترى ولا لسه؟
+                    </button>
+                  );
+                })()}
                 {canAccessPage(effectiveUser, "clients") && (
                   <button
                     className="btn-secondary"

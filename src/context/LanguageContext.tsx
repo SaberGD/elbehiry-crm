@@ -80,7 +80,7 @@ const translations: Record<Language, Record<string, string>> = {
     "status.prospect": "عميل محتمل",
     "status.needs_followup": "يحتاج متابعة",
     "status.not_interested": "غير مهتم",
-    "status.booked": "تم التعاقد والبيع",
+    "status.booked": "اشترى",
 
     // FollowUp Statuses
     "followup.due": "مستحقة اليوم",

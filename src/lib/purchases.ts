@@ -1,4 +1,4 @@
-import type { Booking, Department } from "../types/crm";
+import type { Booking, Department, NotBoughtRecord } from "../types/crm";
 
 /** The four main departments a purchase is split across. */
 export const departmentIds: Department[] = [
@@ -69,4 +69,27 @@ export function purchaseFromItems(items: { categoryId: string; categoryName: str
     courseId: entries.length === 1 ? `ps-${primary}` : "ps-multi",
     courseName: [...new Set(names)].join(" + "),
   };
+}
+
+export type LastOutcome =
+  | { kind: "bought"; date: string; amount: number; what: string }
+  | { kind: "ask" };
+
+/**
+ * What to show next to a customer about buying. If the latest thing recorded is a purchase, the
+ * question has already been answered, so show when they last bought. Otherwise (never bought, or a
+ * "not yet" after the last purchase) the question is still open.
+ */
+export function lastOutcome(
+  leadId: string,
+  bookings: Pick<Booking, "leadId" | "bookingStatus" | "bookingDate" | "createdAt" | "amount" | "courseName">[],
+  notBought: Pick<NotBoughtRecord, "leadId" | "createdAt">[],
+): LastOutcome {
+  const stamp = (d: string) => new Date(d).getTime() || 0;
+  const bought = bookings
+    .filter((b) => b.leadId === leadId && b.bookingStatus !== "cancelled")
+    .sort((a, b) => stamp(b.createdAt) - stamp(a.createdAt))[0];
+  if (!bought) return { kind: "ask" };
+  const later = notBought.some((n) => n.leadId === leadId && stamp(n.createdAt) > stamp(bought.createdAt));
+  return later ? { kind: "ask" } : { kind: "bought", date: bought.bookingDate, amount: bought.amount, what: bought.courseName };
 }

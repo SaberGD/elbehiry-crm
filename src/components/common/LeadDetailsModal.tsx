@@ -345,7 +345,7 @@ export function LeadDetailsModal({
     note: "تسجيل ملاحظة",
     followup: "تحديد متابعة",
     visit: "تسجيل زيارة",
-    booking: "تسجيل تعاقد",
+    booking: "تسجيل شراء",
     reassign: "تغيير الموظف المسؤول",
   };
   const leadReviews = reviewRequests.filter((r) => r.leadId === lead.id);
@@ -455,7 +455,7 @@ export function LeadDetailsModal({
                 { id: "edit", label: "تعديل البيانات", Icon: Pencil },
                 { id: "visit", label: "تسجيل زيارة", Icon: MapPin },
                 { id: "note", label: "إضافة ملاحظة", Icon: FileText },
-                { id: "booking", label: "تسجيل تعاقد", Icon: ShoppingBag },
+                { id: "booking", label: "تسجيل شراء", Icon: ShoppingBag },
                 ...(canAssignCustomers(effectiveUser)
                   ? [{ id: "reassign", label: "تغيير المسؤول", Icon: Users }]
                   : []),
@@ -463,7 +463,7 @@ export function LeadDetailsModal({
                 .filter(({ id }) => allowed(id as Action))
                 .map(({ id, label, Icon }) => (
                   <button
-                    className="btn-secondary"
+                    className={`btn-secondary${id === "booking" ? " btn-buy" : ""}`}
                     key={id}
                     onClick={() => show(id as Action)}
                   >
@@ -985,10 +985,10 @@ export function LeadDetailsModal({
                   <h3>مفيش تعاقدات مسجلة</h3>
                   {allowed("booking") && (
                     <button
-                      className="btn-secondary"
+                      className="btn-secondary btn-buy"
                       onClick={() => show("booking")}
                     >
-                      تسجيل تعاقد
+                      تسجيل شراء
                     </button>
                   )}
                 </div>

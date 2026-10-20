@@ -46,6 +46,12 @@
   --success-soft: #eaf4ee;
   --warning: #936314;
   --warning-soft: #faf2df;
+  --buy: #15803d;
+  --buy-soft: #e4f4e9;
+  --buy-ink: #14532d;
+  --wait: #f2b705;
+  --wait-soft: #fdf3d9;
+  --wait-ink: #5c3b00;
   --color-accent-soft: #c8232b;
   --color-accent-hover: #ad1c24;
 }
@@ -66,6 +72,12 @@
   --success-soft: #20362a;
   --warning: #e2bf7a;
   --warning-soft: #382f20;
+  --buy: #3fae6a;
+  --buy-soft: #1c3526;
+  --buy-ink: #bfe8cd;
+  --wait: #e0b020;
+  --wait-soft: #3a3118;
+  --wait-ink: #f6dd8f;
 }
 @layer base {
   html {
@@ -2132,8 +2144,10 @@
 .reason-chip.is-unknown[aria-pressed="true"] { background: #b45309; border-color: #b45309; }
 .outcome-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 1rem 0; }
 .outcome-choice button { padding: 1.1rem; border-radius: 14px; font-size: 1.05rem; font-weight: 700; cursor: pointer; border: 2px solid; background: transparent; }
-.outcome-choice .is-bought { border-color: #15803d; color: #15803d; }
-.outcome-choice .is-not-yet { border-color: #b45309; color: #b45309; }
+.outcome-choice .is-bought { border-color: var(--buy); background: var(--buy); color: #fff; }
+.outcome-choice .is-not-yet { border-color: var(--wait); background: var(--wait); color: #3b2600; }
+.btn-buy { background: var(--buy) !important; border-color: var(--buy) !important; color: #fff !important; }
+.last-bought { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--buy); background: var(--buy-soft); color: var(--buy-ink); font-size: 12.5px; font-weight: 600; }
 
 /* Zaki: floating assistant */
 .zaki-fab-wrap { position: fixed; left: 16px; bottom: 14px; z-index: 70; display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; }
@@ -2449,16 +2463,10 @@
   color: var(--muted);
   font-size: 10px;
 }
-.outcome-tile.is-bought[aria-pressed="true"] {
-  border-color: #15803d;
-  background: #e4f4e9;
-  color: #14532d;
-}
-.outcome-tile.is-not_yet[aria-pressed="true"] {
-  border-color: #b45309;
-  background: #fdf3d9;
-  color: #7c4a03;
-}
+.outcome-tile.is-bought { border-color: var(--buy); background: var(--buy-soft); color: var(--buy-ink); }
+.outcome-tile.is-not_yet { border-color: var(--wait); background: var(--wait-soft); color: var(--wait-ink); }
+.outcome-tile.is-bought[aria-pressed="true"] { background: var(--buy); color: #fff; }
+.outcome-tile.is-not_yet[aria-pressed="true"] { background: var(--wait); color: #3b2600; }
 .outcome-tile.is-inquiry[aria-pressed="true"] {
   border-color: #1d4ed8;
   background: #e6eefb;

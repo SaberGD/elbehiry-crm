@@ -14,7 +14,7 @@ export const statusNames: Record<Lead["status"], string> = {
   prospect: "فرصة بيع",
   needs_followup: "يحتاج متابعة",
   not_interested: "غير مهتم",
-  booked: "تم التعاقد",
+  booked: "اشترى",
 };
 export const followUpTypeNames: Record<string, string> = {
   call: "اتصال",
