@@ -2117,3 +2117,5 @@
   .zaki-fab { bottom: 84px; left: 14px; }
   .zaki-panel { left: 8px; right: 8px; bottom: 72px; width: auto; height: min(560px, calc(100vh - 96px)); }
 }
+
+.zaki-used { display: block; margin-top: .4rem; font-size: .68rem; opacity: .65; }

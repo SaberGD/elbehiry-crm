@@ -63,16 +63,55 @@ export async function refineText(
 export interface ChatTurn {
   role: "user" | "assistant";
   text: string;
+  used?: string[]; // tools Zaki looked at (display only)
 }
 
-/** Zaki, the manager's assistant: answers from the (role-scoped) system snapshot. */
-export async function askZaki(question: string, history: ChatTurn[], snapshot: unknown): Promise<string> {
-  const data = await call({
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode: "chat", question, history, snapshot }),
-  });
-  return String(data.answer || "").trim();
+type Content = { role: "user" | "model"; parts: Record<string, unknown>[] };
+const MAX_STEPS = 6;
+
+/**
+ * Zaki as an agent. The server runs the language model; whenever the model wants
+ * data it answers with tool calls. Those run HERE, in the browser, against the
+ * user's own live and role-scoped data, and the results go back for the next step.
+ * Nothing is sent that the model did not ask for.
+ */
+export async function runZaki(opts: {
+  question: string;
+  history: ChatTurn[];
+  tools: unknown[];
+  guide: string;
+  today: string;
+  viewer: string;
+  execute: (name: string, args: Record<string, unknown>) => unknown;
+  onStep?: (toolName: string) => void;
+}): Promise<{ answer: string; used: string[] }> {
+  const contents: Content[] = [
+    ...opts.history.slice(-8).map((t): Content => ({ role: t.role === "user" ? "user" : "model", parts: [{ text: t.text }] })),
+    { role: "user", parts: [{ text: opts.question }] },
+  ];
+  const used: string[] = [];
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const res = await call({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "agent", contents, tools: opts.tools, guide: opts.guide, today: opts.today, viewer: opts.viewer }),
+    });
+    contents.push(res.modelContent);
+    if (res.type === "final") return { answer: String(res.text || "").trim(), used };
+    const responses = (res.calls as { name: string; args: Record<string, unknown> }[]).map((c) => {
+      opts.onStep?.(c.name);
+      used.push(c.name);
+      let result: unknown;
+      try {
+        result = opts.execute(c.name, c.args || {});
+      } catch {
+        result = { error: "تعذر تنفيذ الأداة" };
+      }
+      return { functionResponse: { name: c.name, response: { result } } };
+    });
+    contents.push({ role: "user", parts: responses });
+  }
+  return { answer: "السؤال محتاج تدوير أكتر من اللي أقدر أعمله مرة واحدة. جرّب تقسمه لأسئلة أصغر.", used };
 }
 
 export interface WeeklyReport {

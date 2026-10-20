@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, X, Loader2 } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
-import { aiStatus, askZaki, type ChatTurn } from "../../lib/aiClient";
+import { aiStatus, runZaki, type ChatTurn } from "../../lib/aiClient";
+import { runTool, toolLabels, type ToolData } from "../../lib/zakiTools";
+import { zakiGuide, zakiTools } from "../../lib/zakiGuide";
+import { today } from "../../lib/presentation";
 import { VoiceNoteField } from "../common/VoiceNoteField";
-import { useSnapshotBuilder } from "./useSnapshot";
 
 const suggestions = [
   "ملخص الأسبوع",
@@ -46,8 +48,11 @@ function Rich({ text }: { text: string }) {
 
 /** Zaki: a floating assistant that answers questions about the data the user can see. */
 export function ZakiChat() {
-  const { currentUser } = useCRM();
-  const build = useSnapshotBuilder();
+  const { currentUser, leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches } = useCRM();
+  // Always the latest data: the ref is refreshed on every render, and Firestore keeps the state live.
+  const dataRef = useRef<ToolData | null>(null);
+  dataRef.current = { today: today(), leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches };
+  const [steps, setSteps] = useState<string[]>([]);
   const [available, setAvailable] = useState(false);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -72,9 +77,19 @@ export function ZakiChat() {
     const history = turns;
     setTurns((t) => [...t, { role: "user", text: q }]);
     setBusy(true);
+    setSteps([]);
     try {
-      const answer = await askZaki(q, history, build());
-      setTurns((t) => [...t, { role: "assistant", text: answer }]);
+      const { answer, used } = await runZaki({
+        question: q,
+        history,
+        tools: zakiTools,
+        guide: zakiGuide,
+        today: today(),
+        viewer: currentUser.name,
+        execute: (name, args) => runTool(name, args, dataRef.current!),
+        onStep: (name) => setSteps((s) => [...s, toolLabels[name] ?? name]),
+      });
+      setTurns((t) => [...t, { role: "assistant", text: answer, used: [...new Set(used.map((u) => toolLabels[u] ?? u))] }]);
     } catch {
       setTurns((t) => [...t, { role: "assistant", text: "حصلت مشكلة وأنا بجهّز الرد. جرّب تسألني تاني بعد شوية." }]);
     } finally {
@@ -121,12 +136,13 @@ export function ZakiChat() {
             {turns.map((t, i) => (
               <div key={i} className={`zaki-msg ${t.role === "user" ? "me" : "bot"}`}>
                 {t.role === "user" ? <p>{t.text}</p> : <Rich text={t.text} />}
+                {t.used && t.used.length > 0 && <small className="zaki-used">بص على: {t.used.join("، ")}</small>}
               </div>
             ))}
             {busy && (
               <div className="zaki-msg bot">
                 <p>
-                  <Loader2 size={14} className="spin" /> زكي بيفكّر…
+                  <Loader2 size={14} className="spin" /> {steps.length ? `${steps[steps.length - 1]}…` : "زكي بيفكّر…"}
                 </p>
               </div>
             )}
