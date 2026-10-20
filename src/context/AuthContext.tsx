@@ -7,12 +7,16 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserRole, User } from '../types/crm';
+import { toAuthEmail } from '../lib/loginId';
 
 /** Server-trusted access record, keyed by Firebase Auth uid. Only admins write it. */
 export interface AuthProfile {
@@ -23,6 +27,8 @@ export interface AuthProfile {
   role: UserRole;
   branchId?: string;
   active: boolean;
+  loginId?: string; // mobile number / username shown to the person
+  mustChangePassword?: boolean; // set after an admin reset
 }
 
 export type AuthStatus = 'loading' | 'signed_out' | 'no_profile' | 'inactive' | 'ready';
@@ -31,14 +37,15 @@ interface AuthContextType {
   status: AuthStatus;
   profile: AuthProfile | null;
   needsBootstrap: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /** `loginId` is a mobile number, a username, or (legacy) an e-mail. */
+  login: (loginId: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
-  bootstrapAdmin: (data: { name: string; email: string; password: string; phone: string }) => Promise<void>;
+  changePassword: (current: string, next: string) => Promise<void>;
+  bootstrapAdmin: (data: { name: string; loginId: string; password: string; phone: string }) => Promise<void>;
   /** Creates a Firebase login for a staff member without signing the current admin out. */
   createStaffLogin: (data: {
     userId: string;
-    email: string;
+    loginId: string;
     password: string;
     name: string;
     role: UserRole;
@@ -57,11 +64,13 @@ export function authErrorMessage(err: unknown): string {
     case 'auth/wrong-password':
     case 'auth/user-not-found':
     case 'auth/invalid-email':
-      return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
+      return 'رقم الموبايل أو كلمة المرور غير صحيحة';
     case 'auth/too-many-requests':
       return 'محاولات كثيرة، حاول مرة أخرى بعد قليل';
     case 'auth/email-already-in-use':
-      return 'هذا البريد مسجل بالفعل بحساب دخول';
+      return 'رقم الموبايل أو اسم المستخدم ده مسجّل بحساب دخول بالفعل';
+    case 'auth/requires-recent-login':
+      return 'سجّل الدخول من جديد ثم حاول تاني';
     case 'auth/weak-password':
       return 'كلمة المرور ضعيفة (6 أحرف على الأقل)';
     case 'auth/network-request-failed':
@@ -124,8 +133,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   else if (!profile.active) status = 'inactive';
   else status = 'ready';
 
-  const login = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email.trim(), password);
+  const login = async (loginId: string, password: string) => {
+    await signInWithEmailAndPassword(auth, toAuthEmail(loginId), password);
   };
 
   const logout = async () => {
@@ -139,20 +148,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await signOut(auth);
   };
 
-  const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(auth, email.trim());
+  const changePassword = async (current: string, next: string) => {
+    const u = auth.currentUser;
+    if (!u || !u.email) throw new Error('not signed in');
+    await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, current));
+    await updatePassword(u, next);
+    if (profile?.mustChangePassword) {
+      await updateDoc(doc(db, 'authProfiles', u.uid), { mustChangePassword: false });
+    }
   };
 
-  const bootstrapAdmin: AuthContextType['bootstrapAdmin'] = async ({ name, email, password, phone }) => {
+  const bootstrapAdmin: AuthContextType['bootstrapAdmin'] = async ({ name, loginId, password, phone }) => {
     setBusy(true);
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const email = toAuthEmail(loginId);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
       const uid = cred.user.uid;
       // Order matters: the rules let the very first admin create their own
       // profile, then the bootstrap marker locks that path for everyone else.
       await setDoc(doc(db, 'authProfiles', uid), {
         uid,
-        email: email.trim(),
+        email,
+        loginId,
         name,
         userId: uid,
         role: 'admin',
@@ -162,7 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const adminUser: User = {
         id: uid,
         name,
-        email: email.trim(),
+        email,
         phone,
         role: 'admin',
         active: true,
@@ -178,7 +195,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const createStaffLogin: AuthContextType['createStaffLogin'] = async ({
     userId,
-    email,
+    loginId,
     password,
     name,
     role,
@@ -189,12 +206,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ? getApp('staff-creator')
       : initializeApp(firebaseConfig, 'staff-creator');
     const secondaryAuth = getAuth(secondary);
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, email.trim(), password);
+    const email = toAuthEmail(loginId);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
     const uid = cred.user.uid;
     await signOut(secondaryAuth);
     await setDoc(doc(db, 'authProfiles', uid), {
       uid,
-      email: email.trim(),
+      email,
+      loginId,
       name,
       userId,
       role,
@@ -206,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ status, profile, needsBootstrap, login, logout, resetPassword, bootstrapAdmin, createStaffLogin }}
+      value={{ status, profile, needsBootstrap, login, logout, changePassword, bootstrapAdmin, createStaffLogin }}
     >
       {children}
     </AuthContext.Provider>

@@ -293,14 +293,14 @@ export function createWorkspace(raw: CRMContextType) {
       require(raw.currentUser.role === "admin");
       raw.removeDemoData();
     }) as CRMContextType["removeDemoData"],
-    createLoginForUser: ((id, email, password, info) => {
+    createLoginForUser: ((id, loginId, password, info) => {
       const target = staff.find((u) => u.id === id);
       require(
         (!!target && access.canEditStaff(actor, target, raw.branches)) ||
           pendingStaff.has(id),
       );
       require(access.canManageStaff(actor));
-      return raw.createLoginForUser(id, email, password, info);
+      return raw.createLoginForUser(id, loginId, password, info);
     }) as CRMContextType["createLoginForUser"],
     setViewAsUser: ((user) => {
       require(raw.currentUser.role === "admin");

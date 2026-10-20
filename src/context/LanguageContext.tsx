@@ -18,7 +18,7 @@ const translations: Record<Language, Record<string, string>> = {
     "app.exit_view_as": "إنهاء وضع المعاينة",
 
     // Roles
-    "role.admin": "مدير عام المؤسسة",
+    "role.admin": "مطوّر",
     "role.general_manager": "مدير عام المؤسسة",
     "role.regional_manager": "مشرف عام",
     "role.branch_manager": "مدير فرع",

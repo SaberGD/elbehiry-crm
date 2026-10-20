@@ -34,6 +34,13 @@ const base = {
 export const demoStaffExtras: User[] = [
   {
     ...base,
+    id: "usr-demo-manager",
+    name: "ماجد البحيري (مدير عام المؤسسة)",
+    email: "manager@demo.elbehiry",
+    role: "general_manager",
+  },
+  {
+    ...base,
     id: "usr-demo-regional",
     name: "هشام عادل (مشرف عام)",
     email: "regional@demo.elbehiry",

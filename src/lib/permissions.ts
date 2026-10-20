@@ -1,15 +1,18 @@
 import type { User, UserRole } from "../types/crm";
 
 // Existing stored role IDs are retained so saved prototype records remain compatible.
+// admin = المطوّر (فوق كل المناصب، كل الصلاحيات + أدوات المطورين)
+// general_manager = مدير عام المؤسسة (تحت المطوّر، ينشئه المطوّر)
 export const positionRoles: UserRole[] = [
   "admin",
+  "general_manager",
   "regional_manager",
   "supervisor",
   "branch_manager",
   "sales_agent",
 ];
 export const positionNames: Record<UserRole, string> = {
-  admin: "مدير عام المؤسسة",
+  admin: "مطوّر",
   general_manager: "مدير عام المؤسسة",
   regional_manager: "مشرف عام",
   supervisor: "مشرف مختص",
@@ -146,12 +149,7 @@ export const defaultPermissionMatrix: PermissionMatrix = {
 };
 export const normalizeUser = (user: User): User => ({
   ...user,
-  role:
-    user.role === "general_manager"
-      ? "admin"
-      : user.role === "team_leader"
-        ? "sales_agent"
-        : user.role,
+  role: user.role === "team_leader" ? "sales_agent" : user.role,
 });
 export function permissionProfile(user: User): PermissionProfile {
   switch (user.role) {
@@ -194,12 +192,16 @@ export const withPermissions = (
   ...normalizeUser(user),
   permissions: matrix[permissionProfile(user)],
 });
-// TEMPORARY: while the per-role permissions are being reviewed, the director
-// (admin) has every permission. Set to false (or delete) once the matrix is final.
+// The developer (role "admin") always has every permission.
+// TEMPORARY: while the per-role permissions are being reviewed, the general
+// manager also has every permission. Set to false (or delete) once the matrix is final.
 export const tempOverrides = { directorAllPermissions: true };
 
+export const isDeveloper = (user: User) => user.role === "admin";
+
 export const hasPermission = (user: User, permission: Permission): boolean =>
-  (tempOverrides.directorAllPermissions && user.role === "admin") ||
+  user.role === "admin" ||
+  (tempOverrides.directorAllPermissions && user.role === "general_manager") ||
   (
     user.permissions || defaultPermissionMatrix[permissionProfile(user)]
   ).includes(permission) &&

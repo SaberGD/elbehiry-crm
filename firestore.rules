@@ -36,6 +36,11 @@ service cloud.firestore {
       return isStaff() && role() in ['admin', 'general_manager', 'regional_manager', 'branch_manager'];
     }
 
+    // Only the developer ('admin') may create or change developer / general-manager accounts.
+    function mayGrant(r) {
+      return role() == 'admin' || !(r in ['admin', 'general_manager']);
+    }
+
     function isBranchManager() {
       return isStaff() && role() == 'branch_manager';
     }
@@ -65,17 +70,21 @@ service cloud.firestore {
     match /authProfiles/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isTop() || isBranchManager());
 
-      allow create: if isTop()
+      allow create: if (isTop() && mayGrant(request.resource.data.role))
         || branchManagerMayWrite(request.resource.data)
-        // First-run only: the very first account may make itself admin.
+        // First-run only: the very first account may make itself developer.
         || (signedIn() && request.auth.uid == uid
             && request.resource.data.role == 'admin'
             && request.resource.data.uid == uid
             && !exists(/databases/$(database)/documents/meta/bootstrap));
 
-      allow update: if isTop()
+      allow update: if (isTop() && mayGrant(request.resource.data.role) && mayGrant(resource.data.role))
         || (branchManagerMayWrite(request.resource.data) && isLowRole(resource.data.role)
-            && resource.data.branchId == myBranch());
+            && resource.data.branchId == myBranch())
+        // After an admin reset, the person may clear their own "must change password" flag.
+        || (signedIn() && request.auth.uid == uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword'])
+            && request.resource.data.mustChangePassword == false);
 
       allow delete: if isStaff() && role() == 'admin';
     }
@@ -83,8 +92,10 @@ service cloud.firestore {
     // ---------- people & structure ----------
     match /users/{docId} {
       allow read: if isStaff();
-      allow create, update: if isTop() || branchManagerMayWrite(request.resource.data);
-      allow delete: if isTop();
+      allow create: if (isTop() && mayGrant(request.resource.data.role)) || branchManagerMayWrite(request.resource.data);
+      allow update: if (isTop() && mayGrant(request.resource.data.role) && mayGrant(resource.data.role))
+        || branchManagerMayWrite(request.resource.data);
+      allow delete: if isTop() && mayGrant(resource.data.role);
     }
 
     match /branches/{docId} {

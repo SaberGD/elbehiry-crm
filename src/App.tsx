@@ -7,7 +7,12 @@ import { LanguageProvider } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CRMProvider, useCRM } from "./context/CRMContext";
-import { LoginPage, LoadingScreen, BlockedScreen } from "./pages/LoginPage";
+import {
+  LoginPage,
+  LoadingScreen,
+  BlockedScreen,
+  MustChangePasswordScreen,
+} from "./pages/LoginPage";
 import { ViewAsBar } from "./components/layout/ViewAsBar";
 import { Navbar } from "./components/layout/Navbar";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -33,6 +38,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { BrokersPage } from "./pages/BrokersPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { DeveloperPage } from "./pages/DeveloperPage";
 import { ZakiChat } from "./components/zaki/ZakiChat";
 import { Lead } from "./types/crm";
 
@@ -150,6 +156,10 @@ const AppContent: React.FC = () => {
 
             {activeTab === "brokers" && <BrokersPage />}
 
+            {activeTab === "developer" && canAccessPage(effectiveUser, "developer") && (
+              <DeveloperPage />
+            )}
+
             {activeTab === "overview" && (
               <OverviewPage onOpenLead={handleOpenLead} />
             )}
@@ -207,11 +217,12 @@ function WorkspaceShell() {
 }
 
 const AuthGate: React.FC = () => {
-  const { status } = useAuth();
+  const { status, profile } = useAuth();
   if (status === "loading") return <LoadingScreen />;
   if (status === "signed_out") return <LoginPage />;
   if (status === "no_profile" || status === "inactive")
     return <BlockedScreen kind={status} />;
+  if (profile?.mustChangePassword) return <MustChangePasswordScreen />;
   return (
     <CRMProvider>
       <WorkspaceShell />

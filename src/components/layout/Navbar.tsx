@@ -1,4 +1,5 @@
 import { InstallAppButton } from "../../pwa/PWAControls";
+import { ChangePasswordForm } from "../common/ChangePasswordForm";
 import { scopeLabel, canAccessPage } from "../../lib/access";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -11,6 +12,7 @@ import {
   UserRound,
   ArrowUpLeft,
   LogOut,
+  KeyRound,
 } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -24,6 +26,7 @@ interface Props {
 }
 const titles: Record<string, string> = {
   permissions: "مصفوفة الصلاحيات",
+  developer: "قسم المطورين",
   dashboard: "الرئيسية",
   analytics_dashboard: "نظرة عامة",
   dept_dashboard: "الأقسام والفروع",
@@ -65,6 +68,7 @@ export function Navbar({
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDetailsElement>(null);
+  const [pwdOpen, setPwdOpen] = useState(false);
   const matches = query.trim()
     ? leads
         .filter(
@@ -231,6 +235,17 @@ export function Navbar({
             </p>
             <button
               type="button"
+              className="password-button"
+              onClick={() => {
+                setPwdOpen(true);
+                if (accountRef.current) accountRef.current.open = false;
+              }}
+            >
+              <KeyRound size={14} />
+              تغيير كلمة المرور
+            </button>
+            <button
+              type="button"
               className="logout-button"
               onClick={() => logout()}
             >
@@ -240,6 +255,30 @@ export function Navbar({
           </div>
         </details>
       </div>
+      {pwdOpen && (
+        <div
+          className="dialog-backdrop"
+          style={{ zIndex: 90 }}
+          onClick={() => setPwdOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="تغيير كلمة المرور"
+            onClick={(e) => e.stopPropagation()}
+            dir="rtl"
+            style={{ width: "min(380px,100%)", background: "#181c24", color: "#dfe2ee", borderRadius: 16, padding: 24 }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <strong>تغيير كلمة المرور</strong>
+              <button className="icon-button" aria-label="إغلاق" onClick={() => setPwdOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <ChangePasswordForm />
+          </div>
+        </div>
+      )}
     </header>
   );
 }

@@ -2119,3 +2119,10 @@
 }
 
 .zaki-used { display: block; margin-top: .4rem; font-size: .68rem; opacity: .65; }
+
+.account-panel .password-button {
+  display: flex; align-items: center; gap: 0.4rem; width: 100%; margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem; border: 1px solid rgba(114,149,179,.45); border-radius: 0.6rem;
+  background: transparent; color: #7295b3; font-size: 0.75rem; font-weight: 700; cursor: pointer;
+}
+.account-panel .password-button:hover { background: rgba(114,149,179,.12); }

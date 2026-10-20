@@ -1,4 +1,5 @@
 import { authErrorMessage } from "../context/AuthContext";
+import { resetStaffPassword } from "../lib/adminClient";
 import {
   canManageStaff,
   canEditStaff,
@@ -27,6 +28,9 @@ import {
   Edit2,
   ChevronRight,
   ShieldCheck,
+  KeyRound,
+  Copy,
+  X,
 } from "lucide-react";
 
 export const StaffUsersPage: React.FC = () => {
@@ -43,6 +47,7 @@ export const StaffUsersPage: React.FC = () => {
     updateUser,
     toggleUserActive,
     createLoginForUser,
+    logAudit,
     addDepartmentEntity,
     addJobPosition,
   } = useCRM();
@@ -64,6 +69,10 @@ export const StaffUsersPage: React.FC = () => {
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetResult, setResetResult] = useState<{ password: string; loginId: string | null } | null>(null);
+  const [resetError, setResetError] = useState("");
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // Form states for Add/Edit Employee
@@ -95,6 +104,26 @@ export const StaffUsersPage: React.FC = () => {
     departmentEntities[0]?.id || "",
   );
 
+
+  const closeReset = () => {
+    setResetTarget(null);
+    setResetResult(null);
+    setResetError("");
+  };
+  const doReset = async () => {
+    if (!resetTarget) return;
+    setResetBusy(true);
+    setResetError("");
+    try {
+      const r = await resetStaffPassword(resetTarget.id);
+      setResetResult(r);
+      logAudit("إعادة تعيين كلمة المرور", "مستخدم", resetTarget.id, `تمت إعادة تعيين كلمة مرور ${resetTarget.name}`);
+    } catch (e) {
+      setResetError(e instanceof Error ? e.message : "تعذر إعادة التعيين");
+    } finally {
+      setResetBusy(false);
+    }
+  };
 
   const openAddEmployeeModal = () => {
     setEditingUser(null);
@@ -219,7 +248,7 @@ export const StaffUsersPage: React.FC = () => {
 
     if (loginPassword && loginTargetId) {
       try {
-        await createLoginForUser(loginTargetId, email, loginPassword, {
+        await createLoginForUser(loginTargetId, phone, loginPassword, {
           name,
           role,
           branchId: branchId || undefined,
@@ -479,7 +508,7 @@ export const StaffUsersPage: React.FC = () => {
 
                       <td className="p-3.5">
                         <span className="block font-mono text-slate-700 dark:text-slate-300 text-[11px]">
-                          {u.email}
+                          {u.email || u.phone}
                         </span>
                         <span className="block font-mono-numbers text-slate-500 text-[11px]">
                           {u.phone}
@@ -507,6 +536,16 @@ export const StaffUsersPage: React.FC = () => {
                               title="تعديل الموظف والمسير المالي"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {canEditStaff(effectiveUser, u, branches) && u.authUid && (
+                            <button
+                              onClick={() => setResetTarget(u)}
+                              className="p-1.5 bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 hover:bg-amber-100 rounded-lg cursor-pointer transition-colors"
+                              title="إعادة تعيين كلمة المرور (كلمة عشوائية)"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
                             </button>
                           )}
 
@@ -659,11 +698,10 @@ export const StaffUsersPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                      البريد الإلكتروني *
+                      البريد الإلكتروني <span className="font-normal text-slate-400">(اختياري)</span>
                     </label>
                     <input
                       type="email"
-                      required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
@@ -680,7 +718,7 @@ export const StaffUsersPage: React.FC = () => {
                         dir="ltr"
                         minLength={6}
                         autoComplete="new-password"
-                        placeholder="6 أحرف على الأقل (اتركها فارغة لعدم إنشاء حساب دخول)"
+                        placeholder="6 أحرف على الأقل. رقم الدخول = رقم الموبايل. اتركها فارغة لعدم إنشاء حساب دخول"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
@@ -907,6 +945,68 @@ export const StaffUsersPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RESET PASSWORD */}
+      {resetTarget && (
+        <div className="fixed inset-0 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 text-xs">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base flex items-center gap-2">
+                <KeyRound className="w-4 h-4" /> إعادة تعيين كلمة المرور
+              </h3>
+              <button onClick={closeReset} className="p-1 text-slate-500 cursor-pointer" aria-label="إغلاق">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {!resetResult ? (
+              <>
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                  هيتولّد لـ <b>{resetTarget.name}</b> كلمة مرور عشوائية جديدة وتظهر لك مرة واحدة بس. الموظف هيطلب منه النظام يختار كلمة خاصة بيه أول ما يدخل،
+                  وأي جلسة مفتوحة له هتتقفل.
+                </p>
+                {resetError && <p className="text-red-600 bg-red-50 dark:bg-red-950/40 rounded-lg p-2">{resetError}</p>}
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeReset} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl font-semibold cursor-pointer">
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={doReset}
+                    disabled={resetBusy}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    {resetBusy ? "جاري التوليد…" : "توليد كلمة مرور جديدة"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-slate-600 dark:text-slate-300">سلّم البيانات دي للموظف. مش هتظهر تاني.</p>
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-4 space-y-2 font-mono" dir="ltr">
+                  <div>
+                    <span className="text-slate-400">ID: </span>
+                    {resetResult.loginId || resetTarget.phone}
+                  </div>
+                  <div className="text-lg font-bold tracking-wider">
+                    <span className="text-slate-400 text-xs font-normal">Password: </span>
+                    {resetResult.password}
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(`${resetResult.loginId || resetTarget.phone}\n${resetResult.password}`)}
+                    className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> نسخ
+                  </button>
+                  <button onClick={closeReset} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold cursor-pointer">
+                    تم
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

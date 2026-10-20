@@ -40,6 +40,7 @@ export function visibleStaff(
   teams: Team[],
 ) {
   return users
+    .filter((u) => u.role !== "admin" || user.role === "admin") // developers are invisible to everyone else
     .filter(
       (u) =>
         isGlobalManager(user) ||
@@ -154,9 +155,11 @@ export const canCompleteFollowUp = (u: User, f: FollowUp) =>
 export const assignableRoles = (u: User): UserRole[] =>
   !canManageStaff(u)
     ? []
-    : isDirector(u)
-      ? positionRoles
-      : u.role === "regional_manager"
+    : u.role === "admin"
+      ? positionRoles // the developer creates managers, and other developers
+      : isDirector(u)
+        ? positionRoles.filter((r) => r !== "admin" && r !== "general_manager")
+        : u.role === "regional_manager"
         ? ["branch_manager", "sales_agent"]
         : ["sales_agent"];
 export const canEditStaff = (actor: User, target: User, branches: Branch[]) =>
@@ -169,6 +172,7 @@ export function canAccessPage(u: User, page: string) {
   if (["dashboard", "analytics_dashboard", "settings"].includes(page))
     return true;
   if (page === "permissions") return isDirector(u);
+  if (page === "developer") return u.role === "admin";
   if (page === "overview")
     return has(u, "bookings.view") && has(u, "customers.view");
   const key: Record<string, Parameters<typeof has>[1]> = {

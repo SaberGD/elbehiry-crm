@@ -7,6 +7,7 @@ import {
   ShoppingBag,
   BarChart3,
   Award,
+  Code2,
   Settings,
   Compass,
   FileText,
@@ -129,6 +130,7 @@ export function Sidebar({
             "audit",
             "dept_dashboard",
             "permissions",
+            "developer",
           ].some((page) => canAccessPage(effectiveUser, page)) && (
             <details
               className="nav-management"
@@ -140,6 +142,7 @@ export function Sidebar({
                   "audit",
                   "dept_dashboard",
                   "permissions",
+                  "developer",
                 ].includes(activeTab) || undefined
               }
             >
@@ -153,6 +156,7 @@ export function Sidebar({
               {nav("teams", "فرق العمل", Users)}
               {nav("audit", "سجل العمليات", ShieldCheck)}
               {nav("permissions", "مصفوفة الصلاحيات", ShieldCheck)}
+              {nav("developer", "قسم المطورين", Code2)}
             </details>
           )}
         </nav>

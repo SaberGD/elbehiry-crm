@@ -22,7 +22,8 @@ import {
   togglePermission,
 } from "../src/lib/permissions";
 const users = seed.initialUsers.map(normalizeUser);
-const director = users.find((u) => u.role === "admin")!;
+const developer = users.find((u) => u.role === "admin")!;
+const director = { ...developer, id: "test-director", role: "general_manager" as const };
 const employee = users.find((u) => u.role === "sales_agent")!;
 const manager = users.find(
   (u) => u.role === "branch_manager" && u.branchId === employee.branchId,
@@ -98,8 +99,8 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
   return { raw, calls, view: createWorkspace(raw) };
 }
 test("five positions migrate legacy director and team leader without changing saved IDs", () => {
-  assert.equal(positionRoles.length, 5);
-  assert.equal(normalizeUser(makeUser("general_manager")).role, "admin");
+  assert.equal(positionRoles.length, 6);
+  assert.equal(normalizeUser(makeUser("general_manager")).role, "general_manager");
   assert.equal(
     normalizeUser(makeUser("team_leader", { jobPositionTitle: "قائد تنفيذ" }))
       .jobPositionTitle,

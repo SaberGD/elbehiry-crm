@@ -100,7 +100,7 @@ export interface CRMContextType {
   removeDemoData: () => void;
   createLoginForUser: (
     userId: string,
-    email: string,
+    loginId: string,
     password: string,
     info: { name: string; role: User["role"]; branchId?: string },
   ) => Promise<void>;
@@ -1045,13 +1045,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   /** Creates a Firebase login for a staff record and links the two. */
   const createLoginForUser: CRMContextType["createLoginForUser"] = async (
     userId,
-    email,
+    loginId,
     password,
     info,
   ) => {
-    const authUid = await createStaffLogin({ userId, email, password, ...info });
+    const authUid = await createStaffLogin({ userId, loginId, password, ...info });
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, email, authUid } : u)),
+      prev.map((u) => (u.id === userId ? { ...u, authUid } : u)),
     );
     logAudit(
       "إنشاء حساب دخول",
