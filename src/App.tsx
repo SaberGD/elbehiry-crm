@@ -1,8 +1,7 @@
 import { PWAProvider } from "./pwa/PWAContext";
 import { PWAStatus } from "./pwa/PWAControls";
 import { canAccessPage } from "./lib/access";
-import { PermissionsPage } from "./pages/PermissionsPage";
-import React, { useState } from "react";
+import React, { Suspense, lazy, useState } from "react";
 import { LanguageProvider } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -22,26 +21,31 @@ import {
   LeadQuickAction,
 } from "./components/common/LeadDetailsModal";
 
-import { DepartmentDashboardPage } from "./pages/DepartmentDashboardPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LeadsPage } from "./pages/LeadsPage";
 import { AddLeadPage } from "./pages/AddLeadPage";
 import { VisitsPage } from "./pages/VisitsPage";
 import { FollowUpsPage } from "./pages/FollowUpsPage";
 import { BookingsPage } from "./pages/BookingsPage";
-import { StaffUsersPage } from "./pages/StaffUsersPage";
-import { BranchesTeamsPage } from "./pages/BranchesTeamsPage";
-import { TeamsPage } from "./pages/TeamsPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { AuditLogPage } from "./pages/AuditLogPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { BrokersPage } from "./pages/BrokersPage";
-import { OverviewPage } from "./pages/OverviewPage";
-import { FeedbackPage } from "./pages/FeedbackPage";
 import { ReviewWatcher } from "./components/reviews/ReviewWatcher";
-import { DeveloperPage } from "./pages/DeveloperPage";
 import { ZakiChat } from "./components/zaki/ZakiChat";
+import { SaveErrorToast } from "./components/common/SaveErrorToast";
+import { useStackTables } from "./components/common/useStackTables";
 import { Lead } from "./types/crm";
+
+// Pages most people open rarely are downloaded on first visit, keeping the first load small.
+const PermissionsPage = lazy(() => import("./pages/PermissionsPage").then((m) => ({ default: m.PermissionsPage })));
+const DepartmentDashboardPage = lazy(() => import("./pages/DepartmentDashboardPage").then((m) => ({ default: m.DepartmentDashboardPage })));
+const StaffUsersPage = lazy(() => import("./pages/StaffUsersPage").then((m) => ({ default: m.StaffUsersPage })));
+const BranchesTeamsPage = lazy(() => import("./pages/BranchesTeamsPage").then((m) => ({ default: m.BranchesTeamsPage })));
+const TeamsPage = lazy(() => import("./pages/TeamsPage").then((m) => ({ default: m.TeamsPage })));
+const ReportsPage = lazy(() => import("./pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
+const AuditLogPage = lazy(() => import("./pages/AuditLogPage").then((m) => ({ default: m.AuditLogPage })));
+const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const BrokersPage = lazy(() => import("./pages/BrokersPage").then((m) => ({ default: m.BrokersPage })));
+const OverviewPage = lazy(() => import("./pages/OverviewPage").then((m) => ({ default: m.OverviewPage })));
+const DeveloperPage = lazy(() => import("./pages/DeveloperPage").then((m) => ({ default: m.DeveloperPage })));
+const FeedbackPage = lazy(() => import("./pages/FeedbackPage").then((m) => ({ default: m.FeedbackPage })));
 
 const AppContent: React.FC = () => {
   const { leads, effectiveUser } = useCRM();
@@ -53,6 +57,7 @@ const AppContent: React.FC = () => {
   const setActiveTab = (tab: string) =>
     setRequestedTab(canAccessPage(effectiveUser, tab) ? tab : "dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useStackTables();
 
   // Selected lead modal state
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -105,6 +110,7 @@ const AppContent: React.FC = () => {
         {/* Viewport Content Area */}
         <main id="main-content" className="workspace-main">
           <div key={activeTab} className="animate-page-enter min-w-0">
+            <Suspense fallback={<div className="quiet-note" style={{ padding: 30 }}>جاري التحميل…</div>}>
             {activeTab === "dept_dashboard" && (
               <DepartmentDashboardPage
                 setActiveTab={setActiveTab}
@@ -182,6 +188,7 @@ const AppContent: React.FC = () => {
 
             {activeTab === "settings" && <SettingsPage />}
             {activeTab === "permissions" && <PermissionsPage />}
+            </Suspense>
           </div>
         </main>
       </div>
@@ -203,6 +210,7 @@ const AppContent: React.FC = () => {
           setLeadModalAction(null);
         }}
       />
+      <SaveErrorToast />
       <ReviewWatcher />
       <ZakiChat />
     </div>

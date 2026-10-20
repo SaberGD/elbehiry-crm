@@ -59,6 +59,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path,
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // Tell the person when something they did was not saved (reads outside one's scope are expected and stay silent).
+  if (operationType !== OperationType.GET && operationType !== OperationType.LIST && typeof window !== 'undefined') {
+    const code = (error as { code?: string })?.code || '';
+    window.dispatchEvent(new CustomEvent('crm-save-failed', { detail: { code, path } }));
+  }
   return errInfo;
 }
 

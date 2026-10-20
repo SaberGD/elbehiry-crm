@@ -1,5 +1,5 @@
 import { FilterBar } from "../components/common/FilterBar";
-import { canManageCatalog } from '../lib/access';
+import { canManageCatalog, canCreateCustomer } from '../lib/access';
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -138,28 +138,18 @@ export const BrokersPage: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
-      {/* Header Banner */}
-      <div className="bg-[#1d1d1c] dark:bg-[#0c0f17] text-[#f0efea] p-5 sm:p-6 rounded-2xl shadow-md border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="page-heading">
         <div>
-          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 text-slate-300 border border-white/10">
-            شراكات ومصادر الترشيح والعمولات
-          </span>
-          <h1 className="text-xl sm:text-2xl font-bold mt-1 text-white tracking-tight flex items-center gap-2">
-            <Users className="w-6 h-6 text-[#dc424b]" />
-            <span>إدارة الوسطاء والمكاتب الهندسية والتحليلات</span>
-          </h1>
-          <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-            متابعة المكاتب الهندسية، شركات المقاولات، والوسطاء العقاريين، احتساب نسبة العمولة % وحجم التحويلات والمبيعات الإجمالية الناتجة عن ترشيحاتهم.
-          </p>
+          <span className="eyebrow">مصادر الترشيح</span>
+          <h1>الوسطاء والشركاء</h1>
+          <p>المكاتب الهندسية والمقاولين والوسطاء اللي بيجيبوا عملاء، وحجم مشتريات العملاء اللي جابوهم.</p>
         </div>
-
-        {canManageCatalog(effectiveUser) && (<button
-          onClick={handleOpenAddModal}
-          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#292928] dark:hover:bg-[#343431] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 cursor-pointer flex items-center gap-1.5 min-h-[44px] shadow-sm"
-        >
-          <Plus className="w-4 h-4 text-[#dc424b]" />
-          <span>+ إضافة وسيط / جهة ترشيح جديدة</span>
-        </button>)}
+        {(canManageCatalog(effectiveUser) || canCreateCustomer(effectiveUser)) && (
+          <button className="btn-primary" onClick={handleOpenAddModal}>
+            <Plus size={16} />
+            إضافة وسيط
+          </button>
+        )}
       </div>
 
       {/* Analytics Summary Cards */}

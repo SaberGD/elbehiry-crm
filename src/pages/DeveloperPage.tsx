@@ -200,9 +200,9 @@ export function DeveloperPage() {
           <button
             className="btn-secondary"
             style={{ color: "#c8232b", borderColor: "#c8232b" }}
-            onClick={() => {
+            onClick={async () => {
               if (window.confirm("هتمسح كل الفروع والشركات والمخازن والفرق والأقسام والمسميات والموظفين التجريبيين. متأكد؟")) {
-                clearOrganizationData();
+                await clearOrganizationData();
                 window.alert("تم التفريغ. ابدأ بإضافة الشركة ثم الفروع من صفحة الهيكل الإداري.");
               }
             }}

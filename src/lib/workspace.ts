@@ -296,11 +296,11 @@ export function createWorkspace(raw: CRMContextType) {
     }) as CRMContextType["clearAllNotifications"],
     loadDemoData: (() => {
       require(raw.currentUser.role === "admin");
-      raw.loadDemoData();
+      return raw.loadDemoData();
     }) as CRMContextType["loadDemoData"],
     removeDemoData: (() => {
       require(raw.currentUser.role === "admin");
-      raw.removeDemoData();
+      return raw.removeDemoData();
     }) as CRMContextType["removeDemoData"],
     createLoginForUser: ((id, loginId, password, info) => {
       const target = staff.find((u) => u.id === id);
@@ -633,7 +633,7 @@ export function createWorkspace(raw: CRMContextType) {
     }) as CRMContextType["updateDistributionRule"],
     clearOrganizationData: (() => {
       require(raw.currentUser.role === "admin");
-      raw.clearOrganizationData();
+      return raw.clearOrganizationData();
     }) as CRMContextType["clearOrganizationData"],
     resetAllData: (() => {
       require(actor.role === "admin");

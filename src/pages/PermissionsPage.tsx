@@ -88,7 +88,7 @@ export function PermissionsPage() {
           </select>
         </label>
         <div className="table-scroll">
-          <table className="data-table permission-table">
+          <table className="data-table permission-table no-stack">
             <thead>
               <tr>
                 <th>الصلاحية</th>

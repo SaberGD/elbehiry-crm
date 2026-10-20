@@ -157,38 +157,24 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
-      {/* Header Banner */}
-      <div className="bg-[#1d1d1c] dark:bg-[#0c0f17] text-[#f0efea] p-5 sm:p-6 rounded-2xl shadow-md border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="page-heading">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 text-slate-300 border border-white/10">
-              الهيكل الإداري والميداني متعدد المستويات
-            </span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-bold mt-1 text-white tracking-tight flex items-center gap-2">
-            <Building2 className="w-6 h-6 text-[#dc424b]" />
-            <span>إدارة الفروع والمقرّات والشركات والمخازن</span>
-          </h1>
-          <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-            التحكم الشجري الكامل بالشركات، المحافظات الجغرافية، الفروع الرئيسية،
-            المعارض الفرعية، والمخازن اللوجستية المركزية.
-          </p>
+          <span className="eyebrow">إدارة المؤسسة</span>
+          <h1>الهيكل الإداري</h1>
+          <p>المحافظات والشركات والفروع والمعارض والمخازن، وكل فرع بتفاصيله.</p>
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {canManageOrganization(effectiveUser) && (
-            <button
-              onClick={() => {
-                setAddType("branch");
-                setShowAddModal(true);
-              }}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#292928] dark:hover:bg-[#343431] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 cursor-pointer flex items-center gap-1.5 min-h-[44px] shadow-sm"
-            >
-              <Plus className="w-4 h-4 text-[#dc424b]" />
-              <span>+ إضافة فرع / مقر جديد</span>
-            </button>
-          )}
-        </div>
+        {canManageOrganization(effectiveUser) && (
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setAddType("branch");
+              setShowAddModal(true);
+            }}
+          >
+            <Plus size={16} />
+            إضافة فرع أو مقر
+          </button>
+        )}
       </div>
 
       {/* Top Level Category Filter Selector */}

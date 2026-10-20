@@ -33,3 +33,37 @@ export async function resetStaffPassword(userId: string): Promise<{ password: st
   }
   return { password: data.password, loginId: data.loginId ?? null };
 }
+
+/**
+ * Creates a staff member's sign-in on the server (the browser never creates accounts, so self sign-up can stay off).
+ * Returns null when the server is not set up yet, so the caller can fall back.
+ */
+export async function createLoginOnServer(userId: string, loginId: string, password: string): Promise<string | null> {
+  const token = await auth.currentUser?.getIdToken();
+  // The staff record may still be on its way to the database: retry briefly if the server can't see it yet.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ action: "create_login", userId, loginId, password }),
+    }).catch(() => null);
+    if (!res) return null;
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return String(data.uid);
+    if (res.status === 503 || res.status === 404 && data?.error !== "user_not_found") return null;
+    if (data?.error === "user_not_found" && attempt < 3) {
+      await new Promise((r) => setTimeout(r, 1200));
+      continue;
+    }
+    const msg: Record<string, string> = {
+      login_taken: "رقم الدخول ده مستخدم لحساب تاني.",
+      forbidden: "مش مسموح لك تعمل حساب للشخص ده.",
+      already_has_login: "الموظف ده عنده حساب دخول بالفعل.",
+      bad_login_id: "رقم الدخول لازم يكون رقم موبايل أو اسم مستخدم إنجليزي.",
+      weak_password: "كلمة المرور لازم تكون 8 حروف على الأقل.",
+      rate_limited: "محاولات كتير، جرّب بعد شوية.",
+    };
+    throw new Error(msg[data?.error] || "تعذر إنشاء حساب الدخول، حاول تاني.");
+  }
+  return null;
+}

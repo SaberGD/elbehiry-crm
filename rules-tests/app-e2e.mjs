@@ -83,7 +83,7 @@ await as("agentA", async (page, go) => {
   const txt = await page.locator("main").innerText();
   check(txt.includes("عميل أحمد الخاص"), "agent sees own customer");
   check(!txt.includes("عميل المدير") && !txt.includes("عميل فرع تاني"), "agent does not see colleagues' or other branches' customers");
-  await go("الزيارات والمعاينات");
+  await go("الزيارات");
   await page.getByRole("button", { name: "تسجيل زيارة" }).click();
   await page.getByRole("radio", { name: /عميل ومعاه وسيط/ }).click();
   const brokerOptions = await page.locator(".party-block select option").allInnerTexts();
@@ -97,7 +97,7 @@ await as("agentA", async (page, go) => {
   await go("العملاء");
   check((await page.locator("main").innerText()).includes("زائر جديد"), "the visitor became the agent's customer (saved on the server)");
   // A visit that needs a follow-up: creates the customer, the follow-up and the history.
-  await go("الزيارات والمعاينات");
+  await go("الزيارات");
   await page.getByRole("button", { name: "تسجيل زيارة" }).click();
   await page.locator("input[name=customerName]").fill("زائر بمتابعة");
   await page.locator(".party-block input[type=tel]").first().fill("01066666666");

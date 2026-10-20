@@ -33,15 +33,12 @@ export const AuditLogPage: React.FC = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-150">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-          <ShieldCheck className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-          <span>سجل العمليات والرقابة الإدارية (Audit Log)</span>
-        </h1>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          تسجيل لكافة إجراءات التعديل والتخصيص والحذف والعمليات المنفذة في النظام
-        </p>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">للإدارة العليا</span>
+          <h1>سجل العمليات</h1>
+          <p>كل إضافة وتعديل في النظام: مين عمله وإمتى. السجل ده مش بيتعدّل ولا بيتمسح.</p>
+        </div>
       </div>
 
       {/* Table */}

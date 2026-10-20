@@ -173,8 +173,9 @@ export function canAccessPage(u: User, page: string) {
     return true;
   if (page === "permissions") return isDirector(u);
   if (page === "developer") return u.role === "admin";
+  // The top-customers board compares people and branches: it is for management, not for each salesperson.
   if (page === "overview")
-    return has(u, "bookings.view") && has(u, "customers.view");
+    return !isSales(u) && has(u, "bookings.view") && has(u, "customers.view");
   const key: Record<string, Parameters<typeof has>[1]> = {
     clients: "customers.view",
     feedback: "customers.view",

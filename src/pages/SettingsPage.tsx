@@ -508,8 +508,8 @@ export const SettingsPage: React.FC = () => {
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => {
-                    loadDemoData();
+                  onClick={async () => {
+                    await loadDemoData();
                     alert("تم تحميل البيانات التجريبية");
                   }}
                   className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold cursor-pointer"

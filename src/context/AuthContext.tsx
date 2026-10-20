@@ -16,7 +16,8 @@ import { doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserRole, User } from '../types/crm';
-import { toAuthEmail } from '../lib/loginId';
+import { normalizeLoginId, toAuthEmail } from '../lib/loginId';
+import { createLoginOnServer } from '../lib/adminClient';
 
 /** Server-trusted access record, keyed by Firebase Auth uid. Only admins write it. */
 export interface AuthProfile {
@@ -204,7 +205,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     role,
     branchId,
   }) => {
-    // A secondary app instance keeps the admin's own session untouched.
+    // Preferred: the server creates the account (the browser can then be denied sign-up entirely).
+    const serverUid = await createLoginOnServer(userId, normalizeLoginId(loginId), password);
+    if (serverUid) return serverUid;
+    // Fallback until the server key is installed. A secondary app instance keeps the admin's own session untouched.
     const secondary = getApps().some((a) => a.name === 'staff-creator')
       ? getApp('staff-creator')
       : initializeApp(firebaseConfig, 'staff-creator');

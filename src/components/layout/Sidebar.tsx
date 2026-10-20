@@ -119,10 +119,10 @@ export function Sidebar({
             PhoneCall,
             count,
           )}
-          {nav("visits", "الزيارات والمعاينات", Compass)}
+          {nav("visits", "الزيارات", Compass)}
+          {nav("feedback", "التقييمات والشكاوى", MessageSquareWarning, feedbackCount)}
           <p className="nav-group-label">المبيعات</p>
           {nav("bookings", "الحجوزات والتعاقدات", ShoppingBag)}
-          {nav("feedback", "التقييمات والشكاوى", MessageSquareWarning, feedbackCount)}
           {nav("overview", "كبار العملاء والوسطاء", Award)}
           {nav("brokers", "الوسطاء والشركاء", UserRound)}
           {nav(

@@ -7,18 +7,6 @@ import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
 import { scopesFor, seesAll } from "../lib/scopes";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
-import {
-  demoUsers,
-  demoReviews,
-  demoLeads,
-  demoVisits,
-  demoFollowUps,
-  demoBookings,
-  demoTimeline,
-  demoInvoices,
-  demoBrokers,
-  demoNotBought,
-} from "../data/demoData";
 import { today, followUpStatus } from "../lib/presentation";
 import {
   buildPostSaleSchedule,
@@ -72,27 +60,7 @@ import {
   PurchaseInvoice,
   NotificationItem,
 } from "../types/crm";
-import {
-  initialUsers,
-  initialBranches,
-  initialTeams,
-  initialCourses,
-  initialLeads,
-  initialVisits,
-  initialFollowUps,
-  initialBookings,
-  initialTimelineEvents,
-  initialAuditLogs,
-  initialCompanies,
-  initialGovernorates,
-  initialWarehouses,
-  initialDepartments,
-  initialJobPositions,
-  initialPurchaseCategories,
-  initialBrokers,
-  initialPurchaseInvoices,
-  initialNotifications,
-} from "../data/initialData";
+import { purchaseCategoryList } from "../lib/purchases";
 
 export interface FollowUpExtra {
   satisfactionRating?: number;
@@ -116,9 +84,9 @@ export interface CRMContextType {
   saveReviewAnalysis: (id: string, ai: ReviewAnalysis) => void;
   currentUser: User;
   logout: () => Promise<void>;
-  loadDemoData: () => void;
-  clearOrganizationData: () => void;
-  removeDemoData: () => void;
+  loadDemoData: () => Promise<void>;
+  clearOrganizationData: () => Promise<void>;
+  removeDemoData: () => Promise<void>;
   createLoginForUser: (
     userId: string,
     loginId: string,
@@ -290,7 +258,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   );
   const [purchaseCategories, setPurchaseCategories] = useState<
     PurchaseCategory[]
-  >(() => loadStorage("purchase_categories", initialPurchaseCategories));
+  >(() => loadStorage("purchase_categories", purchaseCategoryList.map((c) => ({ ...c, code: c.id.replace("cat-", "").toUpperCase(), active: true }))));
   const [brokers, setBrokers] = useState<BrokerEntity[]>(() =>
     loadStorage("brokers", []),
   );
@@ -1288,7 +1256,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const ids = new Set(demo.map((i) => i.id));
     return prev.filter((i) => !ids.has(i.id));
   };
-  const loadDemoData = () => {
+  // The sample data lives in its own chunk, downloaded only when someone asks for it.
+  const sampleData = async () => {
+    const [demo, seed] = await Promise.all([import("../data/demoData"), import("../data/initialData")]);
+    return { ...demo, ...seed };
+  };
+  const loadDemoData = async () => {
+    const {
+      initialCompanies, initialWarehouses, initialBranches, initialTeams, initialDepartments, initialJobPositions,
+      demoUsers, demoLeads, demoVisits, demoFollowUps, demoBookings, demoTimeline, demoInvoices, demoBrokers, demoNotBought, demoReviews,
+    } = await sampleData();
     // The sample org structure comes along, so the sample staff and customers have branches to belong to.
     setCompanies((p) => addMissing(p, initialCompanies));
     setWarehouses((p) => addMissing(p, initialWarehouses));
@@ -1308,7 +1285,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setReviewRequests((p) => addMissing(p, demoReviews));
     logAudit("تحميل بيانات تجريبية", "إعدادات", "demo", "تحميل موظفين وبيانات تجريبية لكل الأدوار");
   };
-  const removeDemoData = () => {
+  const removeDemoData = async () => {
+    const {
+      initialCompanies, initialWarehouses, initialBranches, initialTeams, initialDepartments, initialJobPositions,
+      demoUsers, demoLeads, demoVisits, demoFollowUps, demoBookings, demoTimeline, demoInvoices, demoBrokers, demoNotBought, demoReviews,
+    } = await sampleData();
     setCompanies((p) => dropDemo(p, initialCompanies));
     setWarehouses((p) => dropDemo(p, initialWarehouses));
     setBranches((p) => dropDemo(p, initialBranches));
@@ -1329,7 +1310,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   /** Developer-only: empties branches, companies, warehouses, teams, departments and job titles so the real structure can be entered from scratch. */
-  const clearOrganizationData = () => {
+  const clearOrganizationData = async () => {
+    const { initialUsers } = await import("../data/initialData");
     setCompanies([]);
     setWarehouses([]);
     setBranches([]);
