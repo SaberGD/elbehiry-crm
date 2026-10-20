@@ -249,21 +249,14 @@ const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = "almasar_crm_v1_";
 
-function loadStorage<T>(key: string, fallback: T): T {
-  try {
-    const data = localStorage.getItem(STORAGE_PREFIX + key);
-    return data ? JSON.parse(data) : fallback;
-  } catch {
-    return fallback;
-  }
+// Customer data is never copied to the browser's disk: Firestore is the only source of truth and it
+// enforces who may read what. These helpers stay so every collection keeps one place to start from.
+function loadStorage<T>(_key: string, fallback: T): T {
+  return fallback;
 }
 
-function saveStorage<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
-  } catch (e) {
-    console.error("Failed to save to localStorage", e);
-  }
+function saveStorage<T>(_key: string, _value: T) {
+  /* intentionally not persisted */
 }
 
 export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({

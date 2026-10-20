@@ -142,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Object.keys(localStorage)
         .filter((k) => k.startsWith(CACHE_PREFIX))
         .forEach((k) => localStorage.removeItem(k));
+      sessionStorage.clear();
     } catch {
       /* ignore */
     }

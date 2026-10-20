@@ -16,7 +16,7 @@ export function WeeklySummary() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(cacheKey(currentUser.id));
+      const saved = sessionStorage.getItem(cacheKey(currentUser.id));
       if (saved) setReport(JSON.parse(saved));
     } catch {
       /* ignore */
@@ -30,7 +30,7 @@ export function WeeklySummary() {
       const r = await weeklySummary(build());
       setReport(r);
       try {
-        localStorage.setItem(cacheKey(currentUser.id), JSON.stringify(r));
+        sessionStorage.setItem(cacheKey(currentUser.id), JSON.stringify(r));
       } catch {
         /* ignore */
       }
