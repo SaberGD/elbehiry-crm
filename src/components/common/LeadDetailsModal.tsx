@@ -43,6 +43,7 @@ import {
 } from "../../lib/presentation";
 import { useDialog } from "./useDialog";
 import { CustomerRatingModal } from "./CustomerRatingModal";
+import { InterestPicker, interestNames } from "./InterestPicker";
 import { NameWithTitle } from "./NameWithTitle";
 import { ReviewCard } from "../reviews/ReviewCard";
 import { VoiceNoteField } from "./VoiceNoteField";
@@ -93,7 +94,7 @@ export function LeadDetailsModal({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
-  const [department, setDepartment] = useState<Department>("decor");
+  const [interests, setInterests] = useState<Department[]>(["decor"]);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(today());
   const [reason, setReason] = useState("");
@@ -155,7 +156,7 @@ export function LeadDetailsModal({
       setPhone(lead.phone);
       setEmail(lead.email || "");
       setWhatsapp(lead.whatsappPhone || lead.phone);
-      setDepartment(lead.department);
+      setInterests(lead.interests?.length ? lead.interests : [lead.department]);
       setBrokerSel(lead.brokerId || "");
       setDate(today());
       setNote(initialAction === "edit" ? lead.notes : "");
@@ -208,8 +209,9 @@ export function LeadDetailsModal({
       updateLead(lead.id, {
         name: name.trim(),
         phone: phone.trim(),
-        department,
-        departmentName: departmentNames[department],
+        department: interests[0],
+        interests,
+        departmentName: interestNames(interests),
         email: email.trim() || undefined,
         whatsappPhone: whatsapp.trim() || phone.trim(),
         isSameWhatsApp: !whatsapp.trim() || whatsapp.trim() === phone.trim(),
@@ -530,7 +532,7 @@ export function LeadDetailsModal({
               <ShoppingBag size={16} />
               <span>
                 <small>القسم / المصدر</small>
-                {departmentNames[lead.department]} · {sourceNames[lead.source]}
+                {lead.interests?.length ? interestNames(lead.interests) : departmentNames[lead.department]} · {sourceNames[lead.source]}
               </span>
             </div>
           </div>
@@ -583,21 +585,7 @@ export function LeadDetailsModal({
                   </>
                 )}
                 {action === "edit" && (
-                  <label className="field">
-                    <span>القسم</span>
-                    <select
-                      value={department}
-                      onChange={(e) =>
-                        setDepartment(e.target.value as Department)
-                      }
-                    >
-                      {Object.entries(departmentNames).map(([id, label]) => (
-                        <option key={id} value={id}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <InterestPicker value={interests} onChange={setInterests} />
                 )}
                 {(action === "followup" || action === "visit") && (
                   <>

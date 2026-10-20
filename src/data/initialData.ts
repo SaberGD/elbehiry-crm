@@ -1062,7 +1062,6 @@ export const initialAuditLogs: AuditLog[] = [
 
 export const initialPurchaseCategories: PurchaseCategory[] = [
   { id: 'cat-decor', name: 'ديكور', code: 'DECOR', active: true },
-  { id: 'cat-paints', name: 'دهانات', code: 'PAINTS', active: true },
   { id: 'cat-construction', name: 'إنشائي', code: 'CONST', active: true },
   { id: 'cat-garden', name: 'بستان', code: 'GARDEN', active: true },
   { id: 'cat-misc', name: 'متنوع', code: 'MISC', active: true },

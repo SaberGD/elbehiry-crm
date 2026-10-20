@@ -2250,3 +2250,12 @@
 
 /* Zaki's floating button: white disc, then the character, then the red label, then the name on top */
 .zaki-fab-label { position: relative; z-index: 3; margin-top: -20px; }
+
+.interest-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.interest-chips button { padding: .55rem 1rem; border-radius: 99px; border: 1.5px solid var(--line); background: var(--surface); color: inherit; font: inherit; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s; }
+.interest-chips button.on { border-color: #c8232b; background: var(--brand-soft, #fbeceb); color: var(--brand-text, #a7252b); }
+.invoice-rows { display: flex; flex-direction: column; gap: .6rem; margin-top: 1rem; }
+.invoice-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: .6rem; align-items: end; }
+.invoice-row .field { margin: 0; }
+.invoice-row .icon-button { margin-bottom: 2px; }
+@media (max-width: 640px) { .invoice-row { grid-template-columns: minmax(0, 1fr) auto; } .invoice-row .field:nth-child(2) { grid-column: 1; } }

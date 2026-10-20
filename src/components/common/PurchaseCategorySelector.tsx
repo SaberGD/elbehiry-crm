@@ -1,8 +1,7 @@
-import { canManageCatalog } from "../../lib/access";
-import React, { useState } from "react";
-import { useCRM } from "../../context/CRMContext";
+import { purchaseCategoryList } from "../../lib/purchases";
+import React from "react";
 import { InvoiceLineItem } from "../../types/crm";
-import { Tag, Plus, Trash2, Calculator, Coins } from "lucide-react";
+import { Tag, Trash2, Calculator, Coins } from "lucide-react";
 
 interface PurchaseCategorySelectorProps {
   items: InvoiceLineItem[];
@@ -21,9 +20,6 @@ export const PurchaseCategorySelector: React.FC<
   title = "تحديد أقسام الشراء وأسعار المبيعات",
   subtitle = "اختر التصنيفات وادخل قيمة كل قسم بالجنيه المصري (ج.م / EGP)",
 }) => {
-  const { effectiveUser, purchaseCategories, addPurchaseCategory } = useCRM();
-  const [showAddCustomCat, setShowAddCustomCat] = useState(false);
-  const [customCatName, setCustomCatName] = useState("");
 
   const totalAmount = items.reduce(
     (sum, i) => sum + (Number(i.amount) || 0),
@@ -57,23 +53,6 @@ export const PurchaseCategorySelector: React.FC<
     onChange(updated);
   };
 
-  const handleCreateCustomCategory = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canManageCatalog(effectiveUser) || !customCatName.trim()) return;
-    const newCat = addPurchaseCategory({
-      name: customCatName.trim(),
-      code: customCatName.trim().toUpperCase().slice(0, 5),
-      active: true,
-    });
-    // Automatically select the new custom category
-    onChange([
-      ...items,
-      { categoryId: newCat.id, categoryName: newCat.name, amount: 0 },
-    ]);
-    setCustomCatName("");
-    setShowAddCustomCat(false);
-  };
-
   return (
     <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-700">
@@ -92,42 +71,7 @@ export const PurchaseCategorySelector: React.FC<
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {canManageCatalog(effectiveUser) && (
-            <button
-              type="button"
-              onClick={() => setShowAddCustomCat(!showAddCustomCat)}
-              className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 text-indigo-600" />
-              <span>إضافة تصنيف مخصص</span>
-            </button>
-          )}
-        </div>
       </div>
-
-      {/* Add Custom Category Drawer/Form */}
-      {canManageCatalog(effectiveUser) && showAddCustomCat && (
-        <form
-          onSubmit={handleCreateCustomCategory}
-          className="flex items-center gap-2 p-2 bg-indigo-50 dark:bg-indigo-950/50 rounded-xl border border-indigo-200 dark:border-indigo-800 animate-in fade-in"
-        >
-          <input
-            type="text"
-            required
-            value={customCatName}
-            onChange={(e) => setCustomCatName(e.target.value)}
-            placeholder="اسم التصنيف المخصص الجديد..."
-            className="flex-1 p-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg text-xs"
-          />
-          <button
-            type="submit"
-            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs cursor-pointer shrink-0"
-          >
-            إضافة
-          </button>
-        </form>
-      )}
 
       {/* Categories Toggle Buttons (Standard 5 + Custom) */}
       <div className="space-y-2">
@@ -135,8 +79,7 @@ export const PurchaseCategorySelector: React.FC<
           اختر التصنيفات المراد تفعيلها:
         </label>
         <div className="flex flex-wrap gap-2">
-          {purchaseCategories
-            .filter((c) => c.active)
+          {purchaseCategoryList
             .map((cat) => {
               const isSelected = items.some((i) => i.categoryId === cat.id);
               return (

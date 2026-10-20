@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { customerTitles, splitTitle, withTitle } from "../../lib/names";
 
 interface Props {
@@ -11,25 +11,31 @@ interface Props {
 }
 
 const OTHER = "__other";
+const isKnown = (t: string) => (customerTitles as readonly string[]).includes(t);
 
 /** A name box with the customer's preferred title next to it; the title is stored as part of the name. */
 export function NameWithTitle({ value, onChange, label = "اسم العميل", required, placeholder = "الاسم اللي هنناديه بيه", fieldName = "customerName" }: Props) {
-  const initial = splitTitle(value);
-  const [title, setTitle] = useState(initial.title);
-  const [custom, setCustom] = useState(!!initial.title && !(customerTitles as readonly string[]).includes(initial.title));
+  const first = splitTitle(value);
+  const [title, setTitle] = useState(first.title);
+  const [name, setName] = useState(first.name);
+  const [custom, setCustom] = useState(!!first.title && !isKnown(first.title));
+  // What we last sent up, so our own edits are never mistaken for a different customer being loaded.
+  const sent = useRef(value);
 
-  // A different customer was loaded into the form.
   useEffect(() => {
+    if (value === sent.current) return;
+    sent.current = value;
     const s = splitTitle(value);
-    if (value.trim() && s.title !== title) {
-      setTitle(s.title);
-      setCustom(!!s.title && !(customerTitles as readonly string[]).includes(s.title));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setTitle(s.title);
+    setName(s.name);
+    setCustom(!!s.title && !isKnown(s.title));
   }, [value]);
 
-  const name = splitTitle(value).name;
-  const emit = (t: string, n: string) => onChange(withTitle(t, n) || (t ? "" : n));
+  const emit = (t: string, n: string) => {
+    const full = withTitle(t, n) || (t ? "" : n);
+    sent.current = full;
+    onChange(full);
+  };
 
   return (
     <div className="field">
@@ -80,7 +86,10 @@ export function NameWithTitle({ value, onChange, label = "اسم العميل", 
           placeholder={placeholder}
           style={{ flex: 1, minWidth: 0 }}
           value={name}
-          onChange={(e) => emit(title, e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value);
+            emit(title, e.target.value);
+          }}
         />
       </div>
     </div>

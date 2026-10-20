@@ -5,6 +5,8 @@ import {
   canContactCustomer,
   canScheduleFollowUp,
 } from "../lib/access";
+import { PurchaseCategorySelector } from "../components/common/PurchaseCategorySelector";
+import { InterestPicker, interestNames } from "../components/common/InterestPicker";
 import { NameWithTitle } from "../components/common/NameWithTitle";
 import { hasPermission } from "../lib/permissions";
 import { useState } from "react";
@@ -18,6 +20,7 @@ import {
   FileText,
   SlidersHorizontal,
   ArrowUpLeft,
+  X,
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
 import {
@@ -73,7 +76,8 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   );
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [department, setDepartment] = useState<Department>("decor");
+  const [interests, setInterests] = useState<Department[]>(["decor"]);
+  const department = interests[0];
   const [source, setSource] = useState<LeadSource>("walk_in");
   const [sameWhatsapp, setSameWhatsapp] = useState(true);
   const [whatsapp, setWhatsapp] = useState("");
@@ -86,13 +90,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   const [brokerName, setBrokerName] = useState("");
   const [brokerPhone, setBrokerPhone] = useState("");
   const [makeInvoice, setMakeInvoice] = useState(false);
-  const [items, setItems] = useState<InvoiceLineItem[]>([
-    {
-      categoryId: purchaseCategories.find((c) => c.active)?.id || "",
-      categoryName: purchaseCategories.find((c) => c.active)?.name || "",
-      amount: 0,
-    },
-  ]);
+  const [items, setItems] = useState<InvoiceLineItem[]>([]);
   const [invoiceStatus, setInvoiceStatus] =
     useState<PurchaseInvoice["status"]>("recorded");
   const [error, setError] = useState("");
@@ -185,7 +183,8 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       status: "new",
       classification: "B",
       department,
-      departmentName: departmentNames[department],
+      interests,
+      departmentName: interestNames(interests),
       notes: notes.trim(),
     });
     if (makeInvoice && hasPermission(effectiveUser, "invoices.manage"))
@@ -313,19 +312,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
                 </button>
               </div>
             )}
-            <label className="field">
-              <span>مهتم بإيه؟</span>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value as Department)}
-              >
-                {Object.entries(departmentNames).map(([id, label]) => (
-                  <option value={id} key={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <InterestPicker value={interests} onChange={setInterests} />
             <label className="field">
               <span>عرفنا منين؟</span>
               <select
@@ -534,95 +521,8 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
             </label>
             {makeInvoice && (
               <div style={{ marginTop: 20 }}>
-                {items.map((item, index) => (
-                  <div
-                    className="field-grid"
-                    style={{ marginBottom: 15 }}
-                    key={index}
-                  >
-                    <label className="field">
-                      <span>التصنيف</span>
-                      <select
-                        value={item.categoryId}
-                        onChange={(e) =>
-                          setItems(
-                            items.map((v, i) =>
-                              i === index
-                                ? {
-                                    ...v,
-                                    categoryId: e.target.value,
-                                    categoryName:
-                                      purchaseCategories.find(
-                                        (c) => c.id === e.target.value,
-                                      )?.name || "",
-                                  }
-                                : v,
-                            ),
-                          )
-                        }
-                      >
-                        {purchaseCategories
-                          .filter((c) => c.active)
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                    <label className="field">
-                      <span>المبلغ بالجنيه</span>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={item.amount || ""}
-                        onChange={(e) =>
-                          setItems(
-                            items.map((v, i) =>
-                              i === index
-                                ? { ...v, amount: Number(e.target.value) }
-                                : v,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    {items.length > 1 && (
-                      <button
-                        className="btn-text"
-                        type="button"
-                        onClick={() =>
-                          setItems(items.filter((_, i) => i !== index))
-                        }
-                      >
-                        حذف البند
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="btn-text"
-                  onClick={() =>
-                    setItems([
-                      ...items,
-                      {
-                        categoryId:
-                          purchaseCategories.find((c) => c.active)?.id || "",
-                        categoryName:
-                          purchaseCategories.find((c) => c.active)?.name || "",
-                        amount: 0,
-                      },
-                    ])
-                  }
-                >
-                  <Plus size={15} />
-                  بند آخر
-                </button>
-                <p className="table-secondary">
-                  إجمالي المشتريات: <strong>{formatMoney(total)} ج.م</strong>
-                </p>
+                <PurchaseCategorySelector items={items} onChange={setItems} title="مشتريات العميل" subtitle="دوس على القسم اللي اشترى منه وحدد دفع فيه كام بالجنيه" />
+
               </div>
             )}
           </div>

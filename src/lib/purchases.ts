@@ -33,3 +33,11 @@ export function splitTotals(bookings: Booking[]): Record<Department, number> {
   }
   return out;
 }
+
+/** The only purchase categories in the system: one per main department. They match the ids of existing invoices. */
+export const purchaseCategoryList = [
+  { id: "cat-construction", name: "إنشائي" },
+  { id: "cat-decor", name: "ديكور" },
+  { id: "cat-garden", name: "بستان" },
+  { id: "cat-misc", name: "متنوع" },
+] as const;

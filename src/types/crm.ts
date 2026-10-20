@@ -195,6 +195,8 @@ export interface Lead {
   classification: LeadClassification;
   department: Department;
   departmentName?: string;
+  /** Everything the customer is interested in; `department` is the first of them. */
+  interests?: Department[];
   courseOfInterest?: string; // alias for department / service details
   locationRating?: number; // 1-5 rating for location
   treatmentRating?: number; // 1-5 rating for staff treatment

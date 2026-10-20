@@ -317,7 +317,7 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <NameWithTitle value={visitorName} onChange={setVisitorName} label="اسم الزائر" required placeholder="أدخل اسم الشخص..." fieldName="visitorName" />
+            <div className="sm:col-span-3"><NameWithTitle value={visitorName} onChange={setVisitorName} label="اسم الزائر" required placeholder="أدخل اسم الشخص..." fieldName="visitorName" /></div>
 
             <div>
               <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
