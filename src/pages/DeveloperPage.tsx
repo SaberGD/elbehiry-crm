@@ -4,8 +4,17 @@ import { auth } from "../lib/firebase";
 import { adminStatus } from "../lib/adminClient";
 import { useCRM } from "../context/CRMContext";
 
-interface Bucket { calls: number; in: number; out: number; think: number; audio: number }
-interface Usage { days: number; byMode: Record<string, Bucket>; byDay: Record<string, Bucket>; activeUsers: number }
+interface Bucket { calls: number; q?: number; in: number; out: number; think: number; audio: number }
+interface UserBucket extends Bucket { modes: Record<string, Bucket>; last: number; activeDays: number }
+interface Usage {
+  days: number;
+  windowDays: number;
+  byMode: Record<string, Bucket>;
+  byDay: Record<string, Bucket>;
+  byUser: Record<string, UserBucket>;
+  activeUsers: number;
+  recent: { t: number; uid: string; mode: string; in: number; out: number; audio: number }[];
+}
 
 const PRICE_KEY = "almasar_crm_v1_dev_prices";
 // Approximate public list prices per 1M tokens (USD). Editable: they change by model and over time.
@@ -51,7 +60,7 @@ function Num({ label, value, onChange, step = 1, hint }: { label: string; value:
 
 /** Developer-only tools: real AI token usage, a what-if cost calculator, and service health. */
 export function DeveloperPage() {
-  const { currentUser } = useCRM();
+  const { currentUser, users: staff } = useCRM();
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -90,9 +99,35 @@ export function DeveloperPage() {
       .catch(() => setAiOk(false));
   }, []);
 
+  const nameOf = (uid: string) => {
+    const u = staff.find((x) => x.authUid === uid);
+    return u ? u.name : uid.length > 8 ? `مستخدم ${uid.slice(0, 6)}…` : `مستخدم قديم (${uid})`;
+  };
+  const when = (t: number) => new Date(t * 1000).toLocaleString("ar-EG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const userRows = useMemo(
+    () =>
+      Object.entries(usage?.byUser ?? {})
+        .map(([uid, b]) => ({ uid, b, c: cost(b) }))
+        .sort((a, b) => b.c - a.c),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [usage, pTextIn, pAudioIn, pOut],
+  );
+  const loginUsers = staff.filter((u) => u.authUid && u.active).length;
+  const [projUsers, setProjUsers] = useNumber("proj_users", Math.max(loginUsers, 1));
+  const [projDays, setProjDays] = useNumber("proj_days", 22);
+  // Measured: money per person per day they actually used the AI.
+  const proj = useMemo(() => {
+    const totalCost = userRows.reduce((a, r) => a + r.c, 0);
+    const personDays = userRows.reduce((a, r) => a + r.b.activeDays, 0);
+    const perDay = personDays ? totalCost / personDays : 0;
+    const heaviest = userRows.reduce((m, r) => Math.max(m, r.b.activeDays ? r.c / r.b.activeDays : 0), 0);
+    const monthly = projUsers * projDays * perDay;
+    return { perDay, heaviest, monthly, worst: projUsers * projDays * heaviest, personDays };
+  }, [userRows, projUsers, projDays]);
+
   const total = useMemo(() => {
     const t: Bucket = { calls: 0, in: 0, out: 0, think: 0, audio: 0 };
-    for (const b of Object.values(usage?.byMode ?? {})) for (const k of Object.keys(t) as (keyof Bucket)[]) t[k] += b[k];
+    for (const b of Object.values(usage?.byMode ?? {})) for (const k of ["calls", "in", "out", "think", "audio"] as const) t[k] += b[k];
     return t;
   }, [usage]);
   const days = Object.entries(usage?.byDay ?? {}).slice(-14);
@@ -219,6 +254,77 @@ export function DeveloperPage() {
             )}
           </div>
         )}
+        {userRows.length > 0 && (
+          <div className="overflow-x-auto" style={{ marginTop: 8 }}>
+            <h3 style={{ margin: "8px 10px" }}>كل مستخدم استهلك قد إيه</h3>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>المستخدم</th>
+                  <th>أسئلة زكي</th>
+                  <th>ملاحظات صوتية</th>
+                  <th>إجمالي الطلبات</th>
+                  <th>توكنز (إدخال / إخراج)</th>
+                  <th>أيام الاستخدام</th>
+                  <th>آخر استخدام</th>
+                  <th>التكلفة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {userRows.map(({ uid, b, c }) => (
+                  <tr key={uid}>
+                    <td>{nameOf(uid)}</td>
+                    <td>{fmt(b.modes.agent?.q ?? 0)}</td>
+                    <td>{fmt(b.modes.transcribe?.calls ?? 0)}</td>
+                    <td>{fmt(b.calls)}</td>
+                    <td>
+                      {fmt(b.in)} / {fmt(b.out + b.think)}
+                    </td>
+                    <td>{b.activeDays}</td>
+                    <td>{b.last ? when(b.last) : "—"}</td>
+                    <td>
+                      ${money(c, 3)} · {money(c * egp)} ج.م
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {usage && usage.recent.length > 0 && (
+          <details style={{ margin: "10px 10px 6px" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>آخر الطلبات (طلب بطلب)</summary>
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>الوقت</th>
+                    <th>المستخدم</th>
+                    <th>الخدمة</th>
+                    <th>إدخال</th>
+                    <th>إخراج</th>
+                    <th>تكلفة الطلب</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...usage.recent].reverse().map((r, i) => {
+                    const c = cost({ calls: 1, in: r.in, out: r.out, think: 0, audio: r.audio });
+                    return (
+                      <tr key={i}>
+                        <td>{when(r.t)}</td>
+                        <td>{nameOf(r.uid)}</td>
+                        <td>{MODE_LABELS[r.mode] ?? r.mode}</td>
+                        <td>{fmt(r.in)}</td>
+                        <td>{fmt(r.out)}</td>
+                        <td>{money(c * egp, 3)} ج.م</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
         <details style={{ margin: "6px 10px 12px" }}>
           <summary style={{ cursor: "pointer", fontWeight: 600 }}>الأسعار المستخدمة في الحساب (قابلة للتعديل)</summary>
           <div className="field-grid" style={{ marginTop: 10 }}>
@@ -232,6 +338,52 @@ export function DeveloperPage() {
       </section>
 
       <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <div>
+            <h2>
+              <Calculator size={18} style={{ display: "inline", marginInlineEnd: 6 }} />
+              توقّع واقعي من استخدامك الفعلي
+            </h2>
+            <p>
+              محسوب من الطلبات المسجّلة فعلًا ({usage?.windowDays ?? 0} يوم بيانات): متوسط تكلفة الشخص في اليوم اللي بيستخدم فيه الذكاء الاصطناعي × عدد الناس × عدد
+              الأيام.
+            </p>
+          </div>
+        </div>
+        {proj.personDays === 0 ? (
+          <p className="quiet-note">لسه مفيش استخدام كفاية. جرّب زكي والصوت شوية وارجع هنا.</p>
+        ) : (
+          <>
+            <div className="field-grid" style={{ padding: "0 6px" }}>
+              <Num label="عدد المستخدمين المتوقع" value={projUsers} onChange={setProjUsers} hint={`حاليًا عندهم حساب: ${loginUsers}`} />
+              <Num label="أيام الاستخدام للشخص في الشهر" value={projDays} onChange={setProjDays} />
+            </div>
+            <div className="metric-grid" style={{ margin: "14px 6px 8px" }}>
+              <div className="metric">
+                <span className="metric-top">التكلفة الشهرية المتوقعة</span>
+                <strong className="metric-value">${money(proj.monthly)}</strong>
+                <span className="metric-note">≈ {money(proj.monthly * egp, 0)} ج.م</span>
+              </div>
+              <div className="metric">
+                <span className="metric-top">متوسط الشخص في اليوم</span>
+                <strong className="metric-value">${money(proj.perDay, 4)}</strong>
+                <span className="metric-note">≈ {money(proj.perDay * egp, 2)} ج.م · من {proj.personDays} يوم استخدام</span>
+              </div>
+              <div className="metric">
+                <span className="metric-top">لو الكل زي أكتر واحد استخدامًا</span>
+                <strong className="metric-value">${money(proj.worst)}</strong>
+                <span className="metric-note">≈ {money(proj.worst * egp, 0)} ج.م في الشهر</span>
+              </div>
+            </div>
+            <p className="table-secondary" style={{ margin: "0 10px 12px" }}>
+              كل ما البيانات تزيد الرقم بيبقى أدق. الأسعار من الجزء اللي فوق، وتقدر تعدّلها.
+            </p>
+          </>
+        )}
+      </section>
+
+      <details className="panel" style={{ marginTop: 20 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 600, padding: "6px 10px" }}>حاسبة يدوية (لو مفيش استخدام فعلي لسه)</summary>
         <div className="panel-header">
           <div>
             <h2>
@@ -277,7 +429,7 @@ export function DeveloperPage() {
         <p className="table-secondary" style={{ margin: "0 10px 12px" }}>
           تقدير فقط: الصوت ≈ 32 توكن لكل ثانية، والملخص الأسبوعي ≈ 9,000 إدخال / 700 إخراج. التكلفة الفعلية تظهر في لوحة Google AI Studio.
         </p>
-      </section>
+      </details>
     </div>
   );
 }

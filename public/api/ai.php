@@ -122,13 +122,13 @@ function usage_file(): string {
     return dirname(__DIR__, 2) . '/crm-ai-usage.jsonl';
 }
 
-function log_usage(string $mode, string $model, array $data, string $uid): void {
+function log_usage(string $mode, string $model, array $data, string $uid, bool $newQuestion = false): void {
     $u = $data['usageMetadata'] ?? null;
     if (!is_array($u)) return;
     $audio = 0;
     foreach (($u['promptTokensDetails'] ?? []) as $d) if (($d['modality'] ?? '') === 'AUDIO') $audio += (int) ($d['tokenCount'] ?? 0);
     $line = json_encode([
-        't' => time(), 'mode' => $mode, 'model' => $model, 'user' => substr(sha1($uid), 0, 8),
+        't' => time(), 'mode' => $mode, 'model' => $model, 'uid' => $uid, 'q' => $newQuestion ? 1 : 0,
         'in' => (int) ($u['promptTokenCount'] ?? 0), 'out' => (int) ($u['candidatesTokenCount'] ?? 0),
         'think' => (int) ($u['thoughtsTokenCount'] ?? 0), 'audio' => $audio,
     ]) . "\n";
@@ -143,25 +143,50 @@ function log_usage(string $mode, string $model, array $data, string $uid): void 
 function usage_report(): array {
     $f = usage_file();
     $since = time() - 30 * 86400;
+    $zero = fn() => ['calls' => 0, 'q' => 0, 'in' => 0, 'out' => 0, 'think' => 0, 'audio' => 0];
+    $add = function (array &$b, array $r) {
+        $b['calls']++;
+        $b['q'] += (int) ($r['q'] ?? 0);
+        foreach (['in', 'out', 'think', 'audio'] as $k) $b[$k] += (int) ($r[$k] ?? 0);
+    };
     $byMode = [];
     $byDay = [];
-    $users = [];
+    $byUser = [];
+    $recent = [];
+    $first = null;
     if (is_file($f)) {
         foreach (file($f, FILE_IGNORE_NEW_LINES) ?: [] as $l) {
             $r = json_decode($l, true);
             if (!is_array($r) || ($r['t'] ?? 0) < $since) continue;
+            $first = $first === null ? (int) $r['t'] : min($first, (int) $r['t']);
             $m = (string) ($r['mode'] ?? 'unknown');
             $d = date('Y-m-d', (int) $r['t']);
-            foreach ([[&$byMode, $m], [&$byDay, $d]] as [&$bucket, $key]) {
-                $bucket[$key] ??= ['calls' => 0, 'in' => 0, 'out' => 0, 'think' => 0, 'audio' => 0];
-                $bucket[$key]['calls']++;
-                foreach (['in', 'out', 'think', 'audio'] as $k) $bucket[$key][$k] += (int) ($r[$k] ?? 0);
-            }
-            $users[$r['user'] ?? '?'] = true;
+            $byMode[$m] ??= $zero();
+            $add($byMode[$m], $r);
+            $byDay[$d] ??= $zero();
+            $add($byDay[$d], $r);
+            $u = (string) ($r['uid'] ?? ($r['user'] ?? '?'));
+            $byUser[$u] ??= $zero() + ['modes' => [], 'days' => [], 'last' => 0];
+            $add($byUser[$u], $r);
+            $byUser[$u]['modes'][$m] ??= $zero();
+            $add($byUser[$u]['modes'][$m], $r);
+            $byUser[$u]['days'][$d] = true;
+            $byUser[$u]['last'] = max($byUser[$u]['last'], (int) $r['t']);
+            $recent[] = ['t' => (int) $r['t'], 'uid' => $u, 'mode' => $m, 'in' => (int) ($r['in'] ?? 0), 'out' => (int) ($r['out'] ?? 0) + (int) ($r['think'] ?? 0), 'audio' => (int) ($r['audio'] ?? 0)];
         }
     }
+    foreach ($byUser as &$u) {
+        $u['activeDays'] = count($u['days']);
+        unset($u['days']);
+    }
+    unset($u);
     ksort($byDay);
-    return ['days' => 30, 'byMode' => $byMode, 'byDay' => $byDay, 'activeUsers' => count($users)];
+    return [
+        'days' => 30,
+        'windowDays' => $first === null ? 0 : max(1, (int) ceil((time() - $first) / 86400)),
+        'byMode' => $byMode, 'byDay' => $byDay, 'byUser' => $byUser,
+        'activeUsers' => count($byUser), 'recent' => array_slice($recent, -40),
+    ];
 }
 
 function rate_limit(string $uid): void {
@@ -329,7 +354,10 @@ if ($mode === 'agent') {
             'generationConfig' => ['temperature' => 0.2],
         ], fn($v) => $v !== null)
     );
-    if ($status === 200) log_usage('agent', $model, $data, $uid);
+    $lastParts = $contents[count($contents) - 1]['parts'] ?? [];
+    $isNewQuestion = true;
+    foreach ($lastParts as $lp) if (isset($lp['functionResponse'])) $isNewQuestion = false;
+    if ($status === 200) log_usage('agent', $model, $data, $uid, $isNewQuestion);
     $content = $data['candidates'][0]['content'] ?? null;
     if ($status !== 200 || !is_array($content) || !isset($content['parts'])) fail(502, 'ai_unavailable', $status !== 200 ? gemini_error($status, $data) : 'empty_reply');
     $content['parts'] = normalize_parts($content['parts']);
