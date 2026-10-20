@@ -6,11 +6,17 @@ export const DEFAULT_MAX_BRANCHES = 2;
 /** Sign-in accounts for the company's own people. The developer account is not counted. */
 export const DEFAULT_MAX_USERS = 10;
 
+export const DEFAULT_AI_PER_HOUR = 120;
+export const DEFAULT_AI_PER_DAY = 600;
+
 export interface License {
   maxBranches: number;
   maxUsers?: number;
+  /** Zaki / AI requests allowed per account; enforced by the server (api/ai.php). */
+  aiPerHour?: number;
+  aiPerDay?: number;
 }
-export const defaultLicense: License = { maxBranches: DEFAULT_MAX_BRANCHES, maxUsers: DEFAULT_MAX_USERS };
+export const defaultLicense: License = { maxBranches: DEFAULT_MAX_BRANCHES, maxUsers: DEFAULT_MAX_USERS, aiPerHour: DEFAULT_AI_PER_HOUR, aiPerDay: DEFAULT_AI_PER_DAY };
 
 export interface BranchQuota {
   max: number;

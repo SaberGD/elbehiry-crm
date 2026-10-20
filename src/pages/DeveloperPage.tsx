@@ -1,4 +1,4 @@
-import { branchQuota, userQuota } from "../lib/license";
+import { DEFAULT_AI_PER_DAY, DEFAULT_AI_PER_HOUR, branchQuota, userQuota } from "../lib/license";
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, Code2, RefreshCw, Server } from "lucide-react";
 import { auth } from "../lib/firebase";
@@ -70,6 +70,12 @@ export function DeveloperPage() {
   const uQuota = userQuota(staff, license);
   const [maxUsers, setMaxUsers] = useState<number>(uQuota.max);
   useEffect(() => setMaxUsers(uQuota.max), [uQuota.max]);
+  const curHour = license.aiPerHour ?? DEFAULT_AI_PER_HOUR;
+  const curDay = license.aiPerDay ?? DEFAULT_AI_PER_DAY;
+  const [aiHour, setAiHour] = useState<number>(curHour);
+  const [aiDay, setAiDay] = useState<number>(curDay);
+  useEffect(() => setAiHour(curHour), [curHour]);
+  useEffect(() => setAiDay(curDay), [curDay]);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -224,17 +230,22 @@ export function DeveloperPage() {
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-header">
           <div>
-            <h2>باقة الشركة (الفروع والمستخدمين)</h2>
+            <h2>باقة الشركة (الفروع والمستخدمين والذكاء الاصطناعي)</h2>
             <p>الحدود المتاحة لصاحب البيزنس. الفروع والمستخدمين التجريبيين وحساب المطوّر مش بيتحسبوا. أنت بس اللي تقدر تغيّرها.</p>
           </div>
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap", padding: "0 22px 20px" }}>
           <Num label="أقصى عدد فروع" value={maxBranches} onChange={setMaxBranches} hint={`مستخدم دلوقتي: ${quota.used} من ${quota.max}`} />
           <Num label="أقصى عدد مستخدمين" value={maxUsers} onChange={setMaxUsers} hint={`مستخدم دلوقتي: ${uQuota.used} من ${uQuota.max}`} />
+          <Num label="طلبات الذكاء الاصطناعي في الساعة (لكل حساب)" value={aiHour} onChange={setAiHour} hint="لو عدّى الحد بيتوقف مؤقتًا" />
+          <Num label="طلبات الذكاء الاصطناعي في اليوم (لكل حساب)" value={aiDay} onChange={setAiDay} hint="حماية من الإساءة وتكلفة زايدة" />
           <button
             className="btn-primary"
-            disabled={maxBranches < 1 || maxUsers < 1 || (maxBranches === license.maxBranches && maxUsers === uQuota.max)}
-            onClick={() => setLicense({ maxBranches, maxUsers })}
+            disabled={
+              maxBranches < 1 || maxUsers < 1 || aiHour < 1 || aiDay < 1 ||
+              (maxBranches === license.maxBranches && maxUsers === uQuota.max && aiHour === curHour && aiDay === curDay)
+            }
+            onClick={() => setLicense({ maxBranches, maxUsers, aiPerHour: aiHour, aiPerDay: aiDay })}
           >
             حفظ الباقة
           </button>

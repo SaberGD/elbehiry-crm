@@ -591,7 +591,14 @@ export function createWorkspace(raw: CRMContextType) {
     setLicense: ((l) => {
       require(raw.currentUser.role === "admin" && Number.isInteger(l.maxBranches) && l.maxBranches >= 1 && l.maxBranches <= 1000);
       require(l.maxUsers === undefined || (Number.isInteger(l.maxUsers) && l.maxUsers >= 1 && l.maxUsers <= 10000));
-      raw.setLicense({ maxBranches: l.maxBranches, ...(l.maxUsers !== undefined ? { maxUsers: l.maxUsers } : {}) });
+      const okCap = (n?: number) => n === undefined || (Number.isInteger(n) && n >= 1 && n <= 100000);
+      require(okCap(l.aiPerHour) && okCap(l.aiPerDay));
+      raw.setLicense({
+        maxBranches: l.maxBranches,
+        ...(l.maxUsers !== undefined ? { maxUsers: l.maxUsers } : {}),
+        ...(l.aiPerHour !== undefined ? { aiPerHour: l.aiPerHour } : {}),
+        ...(l.aiPerDay !== undefined ? { aiPerDay: l.aiPerDay } : {}),
+      });
     }) as CRMContextType["setLicense"],
     addBranch: ((data) => {
       require(access.canManageOrganization(actor));
