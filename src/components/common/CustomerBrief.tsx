@@ -19,7 +19,9 @@ const key = (leadId: string, version: string) => `crm_brief_${leadId}_${version}
  * Saved for the current state of the customer, so opening the file again costs nothing until something new is recorded.
  */
 export function CustomerBrief({ lead, compact = false }: { lead: Lead; compact?: boolean }) {
-  const { visits, followUps, bookings, notBoughtRecords, reviewRequests, reviewNotes, timelineEvents } = useCRM();
+  const { visits, followUps, bookings, notBoughtRecords, reviewRequests, reviewNotes, timelineEvents, watchCustomerHistory, isCustomerHistoryLoaded } = useCRM();
+  useEffect(() => watchCustomerHistory(lead.id), [lead.id, watchCustomerHistory]);
+  const historyLoaded = isCustomerHistoryLoaded(lead.id);
   const input = { lead, visits, followUps, bookings, notBoughtRecords, reviewRequests, reviewNotes, timelineEvents };
   const version = useMemo(() => briefVersion(input), [lead, visits, followUps, bookings, notBoughtRecords, reviewRequests, reviewNotes, timelineEvents]);
   const [brief, setBrief] = useState<CustomerBriefResult | null>(null);
@@ -43,6 +45,7 @@ export function CustomerBrief({ lead, compact = false }: { lead: Lead; compact?:
 
   // Opening a customer shows the brief straight away: the saved one if nothing changed, otherwise a fresh one.
   useEffect(() => {
+    if (!historyLoaded) return; // wait for the customer's history, so the summary is built on the whole file
     let alive = true;
     let timer: number | undefined;
     setBrief(null);
@@ -72,7 +75,7 @@ export function CustomerBrief({ lead, compact = false }: { lead: Lead; compact?:
       window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lead.id, version]);
+  }, [lead.id, version, historyLoaded]);
 
   if (state === "off") return null;
 

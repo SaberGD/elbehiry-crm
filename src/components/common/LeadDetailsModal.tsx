@@ -95,7 +95,10 @@ export function LeadDetailsModal({
     addTimelineEvent,
     reviewRequests,
     reviewNotes,
+    watchCustomerHistory,
   } = useCRM();
+  // The customer's history is read only while their file is open.
+  useEffect(() => (isOpen && lead ? watchCustomerHistory(lead.id) : undefined), [isOpen, lead?.id, watchCustomerHistory]);
   const [tab, setTab] = useState("timeline");
   const [timelineFilter, setTimelineFilter] = useState<"all" | TimelineGroup>("all");
   const [action, setAction] = useState<Action>(null);

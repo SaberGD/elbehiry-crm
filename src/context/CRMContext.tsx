@@ -28,13 +28,18 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useCallback,
 } from "react";
 import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
 import {
   useFirestoreCollection,
   useFirestoreDocument,
+  narrowScope,
+  fetchScoped,
+  patchDocs,
+  deleteDocs,
 } from "../lib/useFirestoreSync";
 import {
   User,
@@ -213,6 +218,17 @@ export interface CRMContextType {
   updateTeam: (id: string, updates: Partial<Team>) => void;
 
   // Timeline & Audit
+  /**
+   * Customer history is read only for customers on screen. Call while a customer is shown; the returned
+   * function stops it. `timelineEvents` holds the history of the customers currently watched.
+   */
+  watchCustomerHistory: (leadId: string) => () => void;
+  /** Whether the history of a watched customer has arrived (so summaries don't run on a half-loaded file). */
+  isCustomerHistoryLoaded: (leadId: string) => boolean;
+  /** The audit log is read only once a screen asks for it, newest first, a page at a time. */
+  requestAuditLogs: () => void;
+  loadMoreAuditLogs: () => void;
+  auditLogsHasMore: boolean;
   addTimelineEvent: (event: Omit<TimelineEvent, "id" | "timestamp">) => void;
   logAudit: (
     action: string,
@@ -239,6 +255,11 @@ function loadStorage<T>(_key: string, fallback: T): T {
 function saveStorage<T>(_key: string, _value: T) {
   /* intentionally not persisted */
 }
+
+/** Newest notifications kept live (older ones are long handled). */
+const NOTIFICATIONS_WINDOW = 200;
+/** Audit log rows read per page. */
+const AUDIT_PAGE = 300;
 
 export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -346,6 +367,37 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     [authForScope?.role, authForScope?.userId, authForScope?.branchId, JSON.stringify(authForScope?.supervisedBranchIds ?? [])],
   );
 
+  // Customer history (the largest collection) is read per customer on screen, not all at once.
+  const [watchedLeads, setWatchedLeads] = useState<Record<string, number>>({});
+  const watchCustomerHistory = useCallback((leadId: string) => {
+    const step = (d: number) =>
+      setWatchedLeads((prev) => {
+        const n = (prev[leadId] || 0) + d;
+        const next = { ...prev };
+        if (n > 0) next[leadId] = n;
+        else delete next[leadId];
+        return next;
+      });
+    step(1);
+    return () => step(-1);
+  }, []);
+  const watchedIds = Object.keys(watchedLeads).sort().join(",");
+  const timelineScope = useMemo(
+    () => narrowScope(scope.timeline, "leadId", watchedIds ? watchedIds.split(",") : []),
+    [scope.timeline, watchedIds],
+  );
+  const [historyLoadedIds, setHistoryLoadedIds] = useState("");
+  const isCustomerHistoryLoaded = useCallback(
+    (leadId: string) => historyLoadedIds.split(",").includes(leadId),
+    [historyLoadedIds],
+  );
+
+  // The audit log is only read when its page asks for it, newest first, a page at a time.
+  const [auditWanted, setAuditWanted] = useState(false);
+  const [auditLimit, setAuditLimit] = useState(AUDIT_PAGE);
+  const requestAuditLogs = useCallback(() => setAuditWanted(true), []);
+  const loadMoreAuditLogs = useCallback(() => setAuditLimit((n) => n + AUDIT_PAGE), []);
+
   // Only top management may write the shared setup (structure, catalogue, settings), so only they seed it.
   const topWriter = !!authForScope && ["admin", "general_manager"].includes(authForScope.role);
 
@@ -365,7 +417,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   useFirestoreCollection("purchaseCategories", purchaseCategories, setPurchaseCategories, { seedIfEmpty: topWriter });
   useFirestoreCollection("brokers", brokers, setBrokers, { scope: scope.brokers });
   useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices, { scope: scope.invoices });
-  useFirestoreCollection("notifications", notifications, setNotifications, { scope: scope.notifications });
+  useFirestoreCollection("notifications", notifications, setNotifications, {
+    scope: scope.notifications,
+    window: { orderBy: "createdAt", limit: NOTIFICATIONS_WINDOW },
+  });
   useFirestoreCollection("leads", leads, setLeads, { scope: scope.leads });
   useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: scope.notBought });
   useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests, { scope: scope.reviews });
@@ -373,8 +428,14 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   useFirestoreCollection("visits", visits, setVisits, { scope: scope.visits });
   useFirestoreCollection("followUps", followUps, setFollowUps, { scope: scope.followUps });
   useFirestoreCollection("bookings", bookings, setBookings, { scope: scope.bookings });
-  useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents, { scope: scope.timeline });
-  useFirestoreCollection("activityLogs", auditLogs, setAuditLogs, { scope: scope.audit });
+  useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents, {
+    scope: timelineScope,
+    onLoaded: () => setHistoryLoadedIds(watchedIds),
+  });
+  useFirestoreCollection("activityLogs", auditLogs, setAuditLogs, {
+    scope: auditWanted ? scope.audit : "none",
+    window: { orderBy: "timestamp", limit: auditLimit },
+  });
   useFirestoreDocument(["settings", "license"], license, setLicense, { canWrite: authForScope?.role === "admin" });
   useFirestoreDocument(["settings", "distribution"], distributionRule, setDistributionRule, { canWrite: topWriter });
   useFirestoreDocument(["settings", "permissions"], permissionMatrix, (m) =>
@@ -774,12 +835,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       }),
     );
 
-    // The customer's history stays readable by the new owner.
-    setTimelineEvents((prev) =>
-      prev.map((e) =>
-        e.leadId === leadId ? { ...e, leadOwnerId: newAgentId, branchId: newBranchId || e.branchId } : e,
-      ),
-    );
+    // The customer's history stays readable by the new owner. Not all of it is loaded, so it is updated on the server.
+    fetchScoped<TimelineEvent>("timelineEvents", narrowScope(scope.timeline, "leadId", [leadId]))
+      .then((events) =>
+        patchDocs(
+          "timelineEvents",
+          events.map((e) => e.id),
+          newBranchId ? { leadOwnerId: newAgentId, branchId: newBranchId } : { leadOwnerId: newAgentId },
+        ),
+      )
+      .catch((e) => handleFirestoreError(e, OperationType.WRITE, "timelineEvents"));
     // Outstanding work follows the new owner; completed history keeps its original author.
     setFollowUps((prev) =>
       prev.map((task) => {
@@ -803,6 +868,9 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
       type: "agent_reassigned",
+      // Belongs to the new owner already (the customer list in this render still has the old one).
+      leadOwnerId: newAgentId,
+      ...(newBranchId ? { branchId: newBranchId } : {}),
       title: "إعادة تعيين مسؤول المبيعات",
       details: `تم نقل العميل إلى المسؤول: ${targetAgent?.name || newAgentId}`,
     });
@@ -1386,17 +1454,21 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const d = { customers: n(leads), branches: n(branches), staff: n(users), brokers: n(brokers) };
     return { ...d, any: d.customers + d.branches + d.staff + d.brokers > 0 };
   }, [leads, branches, users, brokers]);
-  const demoWorld = (): DemoWorld => ({
+  // Customer history is not kept loaded, so it is read in full here.
+  const demoWorld = async (): Promise<DemoWorld> => ({
     users, companies, warehouses, branches, teams, departmentEntities, jobPositions, leads, visits, followUps, bookings,
-    timelineEvents, purchaseInvoices, brokers, notBoughtRecords, reviewRequests, reviewNotes, notifications, auditLogs,
+    timelineEvents: await fetchScoped<TimelineEvent>("timelineEvents", scope.timeline),
+    purchaseInvoices, brokers, notBoughtRecords, reviewRequests, reviewNotes, notifications,
+    // The audit log can't be deleted (rules), so only what is loaded matters here.
+    auditLogs,
   });
   /** What removing the sample data would delete, and how many real customers are tied to sample branches or staff. */
   const previewDemoRemoval = async () => {
-    const { total, realLinked } = planDemoRemoval(demoWorld(), await knownDemoIds(), currentUser.id);
+    const { total, realLinked } = planDemoRemoval(await demoWorld(), await knownDemoIds(), currentUser.id);
     return { total, realLinked };
   };
   const removeDemoData = async () => {
-    const { drop } = planDemoRemoval(demoWorld(), await knownDemoIds(), currentUser.id);
+    const { drop } = planDemoRemoval(await demoWorld(), await knownDemoIds(), currentUser.id);
     const keep = <T extends { id: string }>(c: keyof typeof drop) => (prev: T[]) => prev.filter((i) => !drop[c].has(i.id));
     setCompanies(keep("companies"));
     setWarehouses(keep("warehouses"));
@@ -1410,6 +1482,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setFollowUps(keep("followUps"));
     setBookings(keep("bookings"));
     setTimelineEvents(keep("timelineEvents"));
+    deleteDocs("timelineEvents", [...drop.timelineEvents]).catch((e) => handleFirestoreError(e, OperationType.DELETE, "timelineEvents"));
     setPurchaseInvoices(keep("purchaseInvoices"));
     setBrokers(keep("brokers"));
     setNotBoughtRecords(keep("notBoughtRecords"));
@@ -1792,6 +1865,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         addTeam,
         updateTeam,
 
+        watchCustomerHistory,
+        isCustomerHistoryLoaded,
+        requestAuditLogs,
+        loadMoreAuditLogs,
+        auditLogsHasMore: auditLogs.length >= auditLimit,
         addTimelineEvent,
         logAudit,
 

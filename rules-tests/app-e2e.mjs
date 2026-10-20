@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join } from "node:path";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { chromium } from "playwright-core";
 
 const DIST = process.env.APP_DIST;
@@ -37,6 +37,11 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await lead("L2", "b1", "bm1", "عميل المدير");
   await lead("L3", "b2", "agentC", "عميل فرع تاني");
   await setDoc(doc(f, "brokers", "BR1"), { id: "BR1", name: "وسيط فرع 1", phone: "01111111111", type: "individual", active: true, totalReferrals: 0, totalVolume: 0, branchIds: ["b1"] });
+  // Customer history and the audit log are read on demand (per open customer / when the page opens).
+  const ev = (id, leadId, b, owner, title) => setDoc(doc(f, "timelineEvents", id), { id, leadId, branchId: b, leadOwnerId: `usr-${owner}`, authorId: `usr-${owner}`, authorName: "x", type: "note", title, details: "", timestamp: "2026-10-02T10:00:00.000Z" });
+  await ev("T1", "L1", "b1", "agentA", "ملاحظة قديمة على عميل أحمد");
+  await ev("T3", "L3", "b2", "agentC", "ملاحظة على عميل الفرع التاني");
+  await setDoc(doc(f, "activityLogs", "A1"), { id: "A1", timestamp: "2026-10-02T10:00:00.000Z", userId: "usr-gm", userName: "المدير العام", userRole: "general_manager", action: "عملية قديمة في السجل", entity: "x", entityId: "x", details: "" });
   await setDoc(doc(f, "brokers", "BR2"), { id: "BR2", name: "وسيط فرع 2", phone: "01222222222", type: "individual", active: true, totalReferrals: 0, totalVolume: 0, branchIds: ["b2"] });
 });
 
@@ -119,6 +124,16 @@ await as("agentA", async (page, go) => {
   await page.getByRole("button", { name: /حفظ العميل/ }).click();
   await page.waitForTimeout(2500);
   check((await page.locator("main").innerText()).includes("عميل من الفورم"), "agent adds a customer from the form");
+  await go("العملاء");
+  await page.locator("button.customer-name", { hasText: "عميل أحمد الخاص" }).click();
+  await page.waitForTimeout(2000);
+  check((await page.locator("body").innerText()).includes("ملاحظة قديمة على عميل أحمد"), "opening a customer loads their history");
+  // Signing out clears the device's cached data and returns to the login screen.
+  await page.keyboard.press("Escape");
+  await page.locator('summary[aria-label="الحساب ونطاق العمل"]').click();
+  await page.locator(".logout-button").click();
+  await page.waitForSelector('input[type="password"]', { timeout: 20000 }).catch(() => {});
+  check(await page.locator('input[type="password"]').isVisible(), "signing out returns to the login screen");
 });
 
 await as("bm1", async (page, go) => {
@@ -138,6 +153,24 @@ await as("gm", async (page, go) => {
   await go("العملاء");
   const txt = await page.locator("main").innerText();
   check(txt.includes("عميل فرع تاني") && txt.includes("عميل أحمد الخاص"), "general manager sees every branch");
+  await go("العملاء");
+  // Reassigning re-points the whole history on the server, loaded or not.
+  await page.locator("button.customer-name", { hasText: "عميل أحمد الخاص" }).click();
+  await page.waitForTimeout(1500);
+  await page.locator("button.client-more-toggle").click();
+  await page.getByRole("button", { name: "تغيير المسؤول" }).first().click();
+  await page.locator("select").filter({ has: page.locator("option", { hasText: "اختَر موظفًا من نفس الفرع" }) }).selectOption({ label: "مدير فرع 1" });
+  await page.locator('form button[type="submit"]').last().click();
+  await page.waitForTimeout(2500);
+  let owner;
+  await env.withSecurityRulesDisabled(async (ctx) => { owner = (await getDoc(doc(ctx.firestore(), "timelineEvents", "T1"))).data()?.leadOwnerId; });
+  check(owner === "usr-bm1", `reassigning moves the customer's history to the new owner (${owner})`);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  await page.locator("aside summary", { hasText: "إدارة المؤسسة" }).click();
+  await go("سجل العمليات");
+  await page.waitForTimeout(1500);
+  check((await page.locator("main").innerText()).includes("عملية قديمة في السجل"), "the audit log loads when its page opens");
 });
 
 await browser.close();
