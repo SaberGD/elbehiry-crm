@@ -37,14 +37,14 @@ export const demoStaffExtras: User[] = [
   {
     ...base,
     id: "usr-demo-manager",
-    name: "ماجد البحيري (مدير عام المؤسسة)",
+    name: "ماجد البحيري (صاحب البيزنس)",
     email: "manager@demo.elbehiry",
     role: "general_manager",
   },
   {
     ...base,
     id: "usr-demo-regional",
-    name: "هشام عادل (مشرف عام)",
+    name: "هشام عادل (مدير المبيعات العام)",
     email: "regional@demo.elbehiry",
     role: "regional_manager",
     supervisedBranchIds: ["br-cairo", "br-giza"],

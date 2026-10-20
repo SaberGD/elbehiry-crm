@@ -73,13 +73,13 @@ export function Navbar({
   const accountRef = useRef<HTMLDetailsElement>(null);
   const [pwdOpen, setPwdOpen] = useState(false);
   const [viewBranch, setViewBranch] = useState("");
-  const previewRoles: UserRole[] = ["general_manager", "regional_manager", "branch_manager", "supervisor", "sales_agent"];
+  const previewRoles: UserRole[] = ["general_manager", "regional_manager", "branch_manager"];
   const previewRoleLabels: Record<string, string> = {
-    general_manager: "مدير عام المؤسسة",
-    regional_manager: "مشرف عام (كل الفروع)",
-    branch_manager: "مدير فرع",
+    general_manager: "صاحب البيزنس",
+    regional_manager: "مدير المبيعات العام",
+    branch_manager: "مدير مبيعات الفرع",
     supervisor: "مشرف مختص",
-    sales_agent: "موظف بفرع",
+    sales_agent: "سيلز بالفرع",
   };
   const viewValue = !viewAsUser ? "me" : viewAsUser.id.startsWith("preview:") ? `role:${viewAsUser.role}` : `user:${viewAsUser.id}`;
   const applyView = (value: string, branchChoice: string) => {

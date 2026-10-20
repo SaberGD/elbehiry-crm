@@ -42,8 +42,8 @@ function render(name,label,branch){
       box.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",Number(x.getAttribute("data-v"))<=v[id])});
       if(id==="rating"&&v.rating<=2)document.getElementById("cmp").checked=true;if(id==="rating")refToggle()});
   });
-  function refToggle(){document.getElementById("refbox").hidden=!(v.rec===true||v.rating>=4)}
-  document.getElementById("rec").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;v.rec=b.getAttribute("data-v")==="1";refToggle();
+  function refToggle(){var box=document.getElementById("refbox"),show=v.rating>=4;box.hidden=!show;if(!show){document.getElementById("rn").value="";document.getElementById("rp").value=""}}
+  document.getElementById("rec").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;v.rec=b.getAttribute("data-v")==="1";
     this.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x===b)})});
   document.getElementById("send").addEventListener("click",function(){
     var err=document.getElementById("err");err.textContent="";

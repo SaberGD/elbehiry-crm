@@ -63,7 +63,7 @@ export function PermissionsPage() {
           <div>
             <h2>خمسة مناصب، وصلاحيات حسب الاختصاص</h2>
             <p>
-              «موظف بفرع» منصب صلاحيات؛ المسمى الوظيفي مثل سيلز أو محاسب يُحدّد
+              «سيلز بالفرع» منصب صلاحيات؛ المسمى الوظيفي مثل سيلز أو محاسب يُحدّد
               بشكل مستقل في ملف الموظف.
             </p>
           </div>
@@ -128,7 +128,7 @@ export function PermissionsPage() {
                     key={p}
                     className={`permission-column ${p === selectedProfile ? "is-selected" : ""}`}
                   >
-                    {p === "director" ? "مدير عام المؤسسة فقط" : "—"}
+                    {p === "director" ? "صاحب البيزنس فقط" : "—"}
                   </td>
                 ))}
               </tr>

@@ -15,6 +15,7 @@ import { departmentIds } from "./purchases";
 import { brokerRows, customerRows, departmentLeaders, feedbackSummary } from "./overview";
 import { departmentNames, followUpStatus, today } from "./presentation";
 import { reasonLabel } from "./notBought";
+import { isSalesCapable } from "./permissions";
 import { employeeRatings } from "./employeeRating";
 import { referrerRows } from "./referrals";
 import { complaintOpenedAt, complaintState, complaintStateLabel, isComplaint, isLateComplaint, reviewStats } from "./reviews";
@@ -131,7 +132,7 @@ export function buildSnapshot(input: SnapshotInput) {
       })
       .filter((b) => b.customers > 0),
     agents: users
-      .filter((u) => ["sales_agent", "team_leader"].includes(u.role))
+      .filter(isSalesCapable)
       .map((u) => {
         const mine = leads.filter((l) => l.assignedAgentId === u.id);
         const ids = new Set(mine.map((l) => l.id));

@@ -1,5 +1,6 @@
 import type { FollowUp, ReviewRequest, User } from "../types/crm";
 import { isComplaint } from "./reviews";
+import { isSalesCapable } from "./permissions";
 
 /** A new employee starts near this score and moves toward their real average as ratings come in. */
 export const PRIOR_STARS = 4;
@@ -65,7 +66,7 @@ export function ratingInputs(reviews: ReviewRequest[], followUps: FollowUp[]): S
 export function employeeRatings(users: User[], reviews: ReviewRequest[], followUps: FollowUp[], now = Date.now()): EmployeeRating[] {
   const inputs = ratingInputs(reviews, followUps);
   return users
-    .filter((u) => ["sales_agent", "team_leader"].includes(u.role))
+    .filter(isSalesCapable)
     .map((u) => {
       const mine = inputs.filter((i) => i.agentId === u.id);
       const { average, score } = scoreOf(mine.map((i) => i.stars));

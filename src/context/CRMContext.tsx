@@ -324,7 +324,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       "تحديث مصفوفة الصلاحيات",
       "permissions",
       "roles",
-      "تم تحديث صلاحيات الوظائف بواسطة مدير عام المؤسسة",
+      "تم تحديث صلاحيات الوظائف بواسطة صاحب البيزنس",
     );
   };
 

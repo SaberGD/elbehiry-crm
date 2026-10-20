@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useCRM } from "../context/CRMContext";
 import { ReviewCard } from "../components/reviews/ReviewCard";
 import { EmployeeRatings } from "../components/reviews/EmployeeRatings";
-import { pendingReferral } from "../lib/referrals";
+import { hasReferral, pendingReferral } from "../lib/referrals";
 import { FilterBar, inDateRange } from "../components/common/FilterBar";
 import { averageRating, complaintState, isComplaint, isLateComplaint, resolutionHours, reviewPhase } from "../lib/reviews";
 
@@ -29,7 +29,7 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
     const late = open.filter((r) => isLateComplaint(r, reviewNotes));
     const hours = complaints.map((r) => resolutionHours(r, reviewNotes)).filter((h): h is number => h !== null);
     const avgHours = hours.length ? Math.round(hours.reduce((a, b) => a + b, 0) / hours.length) : null;
-    const referrals = sorted.filter((r) => !!r.response?.referral);
+    const referrals = sorted.filter(hasReferral);
     const newReferrals = referrals.filter(pendingReferral);
     return { sorted, complaints, open, late, avgHours, waiting, answered, referrals, newReferrals, avg: averageRating(sorted) };
   }, [reviewRequests, reviewNotes]);

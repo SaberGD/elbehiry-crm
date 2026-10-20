@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { MessageCircle, Send, UserPlus, XCircle } from "lucide-react";
 import { canCreateCustomer, canEditCustomer } from "../../lib/access";
-import { referralMessage } from "../../lib/referrals";
+import { hasReferral, referralMessage } from "../../lib/referrals";
 import { useCRM } from "../../context/CRMContext";
 import type { ReviewRequest } from "../../types/crm";
 import {
@@ -112,7 +112,7 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
               {resp.comment}
             </blockquote>
           )}
-          {resp.referral && (
+          {hasReferral(r) && resp.referral && (
             <div className="referral-box">
               <strong>رشّح لنا:</strong> {resp.referral.name} · <bdi dir="ltr">{resp.referral.phone}</bdi>
               {r.referralLeadId ? (

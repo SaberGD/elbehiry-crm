@@ -2,6 +2,8 @@ import { BrokerSearch } from "../components/common/BrokerSearch";
 import { CustomerRatingModal } from "../components/common/CustomerRatingModal";
 import {
   canCreateCustomer,
+  branchAgents,
+  defaultAgent,
   canAssignCustomers,
   canManageCatalog,
   canContactCustomer,
@@ -69,17 +71,8 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   const initialBranch =
     effectiveUser.branchId || availableBranches[0]?.id || "";
   const [branchId, setBranchId] = useState(initialBranch);
-  const agents = users.filter(
-    (u) =>
-      u.active &&
-      u.branchId === branchId &&
-      ["sales_agent", "team_leader", "branch_manager"].includes(u.role),
-  );
-  const [agentId, setAgentId] = useState(
-    effectiveUser.role === "sales_agent"
-      ? effectiveUser.id
-      : agents.find((u) => u.role === "sales_agent")?.id || effectiveUser.id,
-  );
+  const agents = branchAgents(users, branchId);
+  const [agentId, setAgentId] = useState(defaultAgent(users, effectiveUser, initialBranch));
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [interests, setInterests] = useState<Department[]>(["decor"]);
@@ -107,10 +100,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   const selectedAgent = users.find((u) => u.id === agentId);
   const changeBranch = (id: string) => {
     setBranchId(id);
-    const candidate = users.find(
-      (u) => u.active && u.branchId === id && u.role === "sales_agent",
-    );
-    setAgentId(candidate?.id || effectiveUser.id);
+    setAgentId(defaultAgent(users, effectiveUser, id));
   };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -4,6 +4,7 @@ import { bookingSplit, departmentIds } from "./purchases";
 import { brokerRows, customerRows, feedbackSummary } from "./overview";
 import { departmentNames, followUpStatus, sourceNames, statusNames } from "./presentation";
 import { notBoughtReasons, reasonLabel } from "./notBought";
+import { isSalesCapable } from "./permissions";
 import { employeeRatings, ratingLevelLabel } from "./employeeRating";
 import { pendingReferral, referrerRows } from "./referrals";
 import { complaintOpenedAt, complaintState, complaintStateLabel, isComplaint, isLateComplaint, resolutionHours, reviewStats } from "./reviews";
@@ -312,7 +313,7 @@ export function runTool(name: string, a: Args, d: ToolData): unknown {
         groupBy === "branch"
           ? d.branches.map((b) => ({ name: b.name, ...mk(d.leads.filter((l) => l.branchId === b.id)) })).filter((r) => r.customers)
           : d.users
-              .filter((u) => ["sales_agent", "team_leader"].includes(u.role))
+              .filter(isSalesCapable)
               .map((u) => ({ name: u.name, branch: branchName(u.branchId ?? ""), ...mk(d.leads.filter((l) => l.assignedAgentId === u.id)) }))
               .filter((r) => r.customers);
       return { groupBy, ...page(rows.sort((x, y) => y.purchasesTotalEGP - x.purchasesTotalEGP), limitOf(a)) };

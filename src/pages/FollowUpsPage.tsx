@@ -1,4 +1,4 @@
-import { isReferralPhone } from "../lib/referrals";
+import { REFERRAL_MIN_STARS, isReferralPhone } from "../lib/referrals";
 import { canCompleteFollowUp, canAccessPage, isSales } from "../lib/access";
 import { hasPermission } from "../lib/permissions";
 import { useState } from "react";
@@ -85,7 +85,7 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
       (isPostSale(selected) && !rating)
     )
       return;
-    const hasReferral = isPostSale(selected) && !!(referralName.trim() || referralPhone.trim());
+    const hasReferral = isPostSale(selected) && rating >= REFERRAL_MIN_STARS && !!(referralName.trim() || referralPhone.trim());
     if (hasReferral && (!referralName.trim() || !isReferralPhone(referralPhone))) {
       setFormError("اكتب اسم المرشَّح ورقم موبايله بشكل صحيح، أو سيب الخانتين فاضيين.");
       return;
@@ -402,6 +402,8 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                       placeholder="إيه اللي عجبه أو ما عجبوش؟"
                     />
                   </label>
+                  {rating >= REFERRAL_MIN_STARS ? (
+                    <>
                   <div className="field">
                     <span>
                       حد من قرايبه أو معارفه محتاج؟{" "}
@@ -419,6 +421,10 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                     </span>
                     <textarea rows={2} value={referralNote} onChange={(e) => setReferralNote(e.target.value)} placeholder="محتاج إيه؟ (دهان شقة، تشطيب…)" />
                   </label>
+                    </>
+                  ) : (
+                    <p className="quiet-note">الترشيحات بنسألها بس للعميل اللي قيّم 4 أو 5 نجوم. اللي مش راضي بنركّز على حل مشكلته الأول.</p>
+                  )}
                 </>
               )}
               {formError && <p className="notice warning" role="alert">{formError}</p>}

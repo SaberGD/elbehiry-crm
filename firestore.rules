@@ -284,7 +284,8 @@ service cloud.firestore {
           && request.resource.data.response.keys().hasOnly(['rating', 'treatment', 'price', 'quality', 'wouldRecommend', 'comment', 'referral'])
           && (!('comment' in request.resource.data.response) || request.resource.data.response.comment.size() <= 1500)
           && (!('referral' in request.resource.data.response) || (
-                request.resource.data.response.referral.keys().hasOnly(['name', 'phone'])
+                request.resource.data.response.rating >= 4
+                && request.resource.data.response.referral.keys().hasOnly(['name', 'phone'])
                 && request.resource.data.response.referral.name is string
                 && request.resource.data.response.referral.name.size() > 0
                 && request.resource.data.response.referral.name.size() <= 80

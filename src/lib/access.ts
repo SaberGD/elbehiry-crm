@@ -9,13 +9,28 @@ import type {
   Booking,
   PurchaseInvoice,
 } from "../types/crm";
-import { hasPermission as has, isDirector, positionRoles } from "./permissions";
+import { hasPermission as has, isDirector, isSalesCapable, positionRoles } from "./permissions";
+export { isSalesCapable };
 export const isGlobalManager = isDirector;
 export const isExecutive = (u: User) =>
   isDirector(u) || ["regional_manager", "supervisor"].includes(u.role);
 export const isFieldManager = (u: User) => u.role === "branch_manager";
 export const isSales = (u: User) =>
   ["sales_agent", "team_leader"].includes(u.role);
+/** People who can own customers at a branch: its salespeople and sales manager, and the general sales manager. */
+export const branchAgents = (users: User[], branchId: string) =>
+  users.filter(
+    (u) =>
+      u.active &&
+      ((u.branchId === branchId && ["sales_agent", "team_leader", "branch_manager"].includes(u.role)) ||
+        (u.role === "regional_manager" && (!u.supervisedBranchIds?.length || u.supervisedBranchIds.includes(branchId)))),
+  );
+/** Who a new customer goes to by default: the person registering them if they sell there, else the branch's sales manager. */
+export const defaultAgent = (users: User[], me: User, branchId: string) => {
+  const here = branchAgents(users, branchId);
+  if (here.some((u) => u.id === me.id)) return me.id;
+  return (here.find((u) => u.role === "branch_manager") ?? here.find((u) => u.role === "sales_agent") ?? here[0])?.id ?? me.id;
+};
 export const canCreateCustomer = (u: User) => has(u, "customers.create");
 export const canManageOrganization = (u: User) => has(u, "organization.manage");
 export const canManageCatalog = (u: User) => has(u, "catalog.manage");
@@ -158,16 +173,19 @@ export const assignableRoles = (u: User): UserRole[] =>
   !canManageStaff(u)
     ? []
     : u.role === "admin"
-      ? positionRoles // the developer creates managers, and other developers
+      ? positionRoles // the developer creates the owner, managers, and other developers
       : isDirector(u)
-        ? positionRoles.filter((r) => r !== "admin" && r !== "general_manager")
+        ? ["regional_manager", "branch_manager"] // the owner creates the general sales manager and the branch sales managers
         : u.role === "regional_manager"
-        ? ["branch_manager", "sales_agent"]
-        : ["sales_agent"];
+          ? ["branch_manager"]
+          : ["sales_agent"]; // later: a branch manager's own salespeople
+/** Older roles that still exist on saved accounts; they can be edited but no longer added. */
+const legacyRoles: UserRole[] = ["supervisor", "sales_agent", "team_leader"];
 export const canEditStaff = (actor: User, target: User, branches: Branch[]) =>
   canManageStaff(actor) &&
   actor.id !== target.id &&
-  assignableRoles(actor).includes(target.role) &&
+  (assignableRoles(actor).includes(target.role) ||
+    (legacyRoles.includes(target.role) && !["sales_agent", "team_leader"].includes(actor.role))) &&
   (isGlobalManager(actor) ||
     (!!target.branchId && canSeeBranch(actor, target.branchId, branches)));
 export function canAccessPage(u: User, page: string) {

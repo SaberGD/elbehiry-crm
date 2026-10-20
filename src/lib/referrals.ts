@@ -8,8 +8,12 @@ export const referralMessage = (referrer: string) =>
   `أهلًا 🌷 معاك فريق البحيري للدهانات والديكور. ${referrer} رشّحنا ليك وقال إنك ممكن تحتاج شغل دهانات أو تشطيب. يسعدنا نساعدك، وتقدر تعدّي على أقرب فرع لنا في الوقت اللي يناسبك.`;
 
 /** A review that carries a person the customer recommended and that nobody has registered yet. */
-export const pendingReferral = (r: ReviewRequest) =>
-  r.status === "answered" && !!r.response?.referral && !r.referralLeadId;
+export const pendingReferral = (r: ReviewRequest) => hasReferral(r) && !r.referralLeadId;
+
+/** We only take a recommendation from a customer who is happy: 4 or 5 stars. Someone upset is not asked. */
+export const REFERRAL_MIN_STARS = 4;
+export const hasReferral = (r: ReviewRequest) =>
+  r.status === "answered" && !!r.response?.referral && (r.response.rating ?? 0) >= REFERRAL_MIN_STARS;
 
 export interface ReferrerRow {
   leadId: string;

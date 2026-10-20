@@ -4,7 +4,7 @@ import { MessageCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ArrowRight, ArrowUpLeft, CheckCircle2, ChevronDown, Handshake, MessageSquare, PlusCircle, ShoppingBag, UserRound, Users, CalendarClock, SlidersHorizontal } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
-import { canCreateCustomer, canSeeBranch } from "../lib/access";
+import { branchAgents, canCreateCustomer, canSeeBranch, defaultAgent } from "../lib/access";
 import { hasPermission } from "../lib/permissions";
 import { departmentNames, sourceNames } from "../lib/presentation";
 import { FilterBar, inDateRange } from "../components/common/FilterBar";
@@ -80,7 +80,7 @@ export function VisitsPage({ onOpenLead }: Props) {
   const [brokerName, setBrokerName] = useState("");
   const [brokerPhone, setBrokerPhone] = useState("");
   const [branchId, setBranchId] = useState(effectiveUser.branchId || availableBranches[0]?.id || "");
-  const agents = users.filter((u) => u.active && u.branchId === branchId && ["sales_agent", "team_leader", "branch_manager"].includes(u.role));
+  const agents = branchAgents(users, branchId);
   const [agentId, setAgentId] = useState(effectiveUser.id);
   const [reason, setReason] = useState("");
   const [outcome, setOutcome] = useState<OutcomeState>(emptyOutcome);
@@ -93,7 +93,7 @@ export function VisitsPage({ onOpenLead }: Props) {
 
   const hasClient = type !== "broker";
   const hasBroker = type !== "client";
-  const validAgent = agents.some((u) => u.id === agentId) ? agentId : agents.find((u) => u.id === effectiveUser.id)?.id || agents[0]?.id || effectiveUser.id;
+  const validAgent = agents.some((u) => u.id === agentId) ? agentId : defaultAgent(users, effectiveUser, branchId);
   const matches = useMemo(() => {
     const t = clientSearch.trim().toLowerCase();
     if (!t) return [];
@@ -589,7 +589,7 @@ export function VisitsPage({ onOpenLead }: Props) {
               <label className="field">
                 <span>الموظف المستقبِل</span>
                 <select value={validAgent} onChange={(e) => setAgentId(e.target.value)}>
-                  {[...agents, ...(agents.some((u) => u.id === effectiveUser.id) ? [] : [effectiveUser])].map((u) => (
+                  {agents.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
                     </option>

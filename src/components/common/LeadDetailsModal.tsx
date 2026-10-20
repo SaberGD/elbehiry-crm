@@ -5,6 +5,7 @@ import {
   canEditCustomer,
   canContactCustomer,
   canRequestReview,
+  branchAgents,
   canCreateCustomer,
   canScheduleFollowUp,
   canAssignCustomers,
@@ -679,14 +680,8 @@ export function LeadDetailsModal({
                       onChange={(e) => setAgent(e.target.value)}
                     >
                       <option value="">اختَر موظفًا من نفس الفرع</option>
-                      {users
-                        .filter(
-                          (u) =>
-                            u.active &&
-                            u.branchId === lead.branchId &&
-                            ["sales_agent", "team_leader"].includes(u.role) &&
-                            canSeeBranch(effectiveUser, u.branchId, branches),
-                        )
+                      {branchAgents(users, lead.branchId)
+                        .filter((u) => canSeeBranch(effectiveUser, lead.branchId, branches))
                         .map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.name}

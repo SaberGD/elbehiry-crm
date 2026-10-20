@@ -19,12 +19,12 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Roles
     "role.admin": "مطوّر",
-    "role.general_manager": "مدير عام المؤسسة",
-    "role.regional_manager": "مشرف عام",
-    "role.branch_manager": "مدير فرع",
+    "role.general_manager": "صاحب البيزنس",
+    "role.regional_manager": "مدير المبيعات العام",
+    "role.branch_manager": "مدير مبيعات الفرع",
     "role.supervisor": "مشرف مختص",
-    "role.team_leader": "موظف بفرع",
-    "role.sales_agent": "موظف بفرع",
+    "role.team_leader": "سيلز بالفرع",
+    "role.sales_agent": "سيلز بالفرع",
 
     // Customer Categories
     "category.individual": "عميل فردي",

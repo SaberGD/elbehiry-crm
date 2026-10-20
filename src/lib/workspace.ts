@@ -152,10 +152,13 @@ export function createWorkspace(raw: CRMContextType) {
       (u) =>
         u.id === id &&
         u.active &&
-        u.branchId === branch &&
-        ["sales_agent", "team_leader", "supervisor", "branch_manager"].includes(
-          u.role,
-        ),
+        ((u.branchId === branch &&
+          ["sales_agent", "team_leader", "supervisor", "branch_manager"].includes(
+            u.role,
+          )) ||
+          // The general sales manager also sells, in any of the branches they oversee.
+          (u.role === "regional_manager" &&
+            (!u.supervisedBranchIds?.length || u.supervisedBranchIds.includes(branch)))),
     );
   const requireCustomerWrite = (id: string) => {
     const lead = findLead(id);

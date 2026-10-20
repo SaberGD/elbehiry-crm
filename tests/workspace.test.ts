@@ -98,8 +98,8 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
   } as CRMContextType;
   return { raw, calls, view: createWorkspace(raw) };
 }
-test("five positions migrate legacy director and team leader without changing saved IDs", () => {
-  assert.equal(positionRoles.length, 6);
+test("the available roles are developer, owner, general sales manager and branch sales manager, and legacy ones keep their saved IDs", () => {
+  assert.deepEqual(positionRoles, ["admin", "general_manager", "regional_manager", "branch_manager"]);
   assert.equal(normalizeUser(makeUser("general_manager")).role, "general_manager");
   assert.equal(
     normalizeUser(makeUser("team_leader", { jobPositionTitle: "قائد تنفيذ" }))

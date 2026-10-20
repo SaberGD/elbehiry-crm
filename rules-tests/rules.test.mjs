@@ -152,7 +152,9 @@ test("a customer can recommend one person with the review, and staff can link th
   ];
   for (const referral of bad)
     await assertFails(updateDoc(doc(db(null), "reviewRequests", id), { status: "answered", isComplaint: false, answeredAt: "x", response: { rating: 5, referral } }));
-  await assertSucceeds(updateDoc(doc(db(null), "reviewRequests", id), { status: "answered", isComplaint: false, answeredAt: "x", response: { rating: 5, referral: { name: "سامي", phone: "01012345678" } } }));
+  // someone who rated 3 or less is not asked, so a recommendation from them is refused
+  await assertFails(updateDoc(doc(db(null), "reviewRequests", id), { status: "answered", isComplaint: false, answeredAt: "x", response: { rating: 3, referral: { name: "سامي", phone: "01012345678" } } }));
+  await assertSucceeds(updateDoc(doc(db(null), "reviewRequests", id), { status: "answered", isComplaint: false, answeredAt: "x", response: { rating: 4, referral: { name: "سامي", phone: "01012345678" } } }));
   await assertSucceeds(updateDoc(doc(db("agentA"), "reviewRequests", id), { referralLeadId: "ld-1" }));
   await assertFails(updateDoc(doc(db("agentA"), "reviewRequests", id), { "response.referral.name": "غيره" }));
   await assertFails(updateDoc(doc(db("agentC"), "reviewRequests", id), { referralLeadId: "ld-2" }));

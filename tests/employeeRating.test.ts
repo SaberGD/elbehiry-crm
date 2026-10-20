@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { FollowUp, ReviewRequest, User } from "../src/types/crm";
 import { employeeRatings, levelOf, scoreOf } from "../src/lib/employeeRating";
-import { isReferralPhone, pendingReferral, phoneKey, referrerRows } from "../src/lib/referrals";
+import { hasReferral, isReferralPhone, pendingReferral, phoneKey, referrerRows } from "../src/lib/referrals";
 
 const NOW = Date.parse("2026-10-20T12:00:00Z");
 const day = (n: number) => new Date(NOW - n * 86_400_000).toISOString();
@@ -41,7 +41,9 @@ test("ratings come from review links and post-sale satisfaction, per employee, w
   assert.equal(first.complaints, 1);
   assert.equal(first.responseRatePercent, 80);
   assert.equal(second.userId, "b");
-  assert.equal(employeeRatings([agent("a"), { ...agent("m"), role: "branch_manager" } as User], [], [], NOW).length, 1);
+  // the branch sales manager sells too, so they carry a rating; an owner or a developer does not
+  const people = [agent("a"), { ...agent("m"), role: "branch_manager" } as User, { ...agent("o"), role: "general_manager" } as User, { ...agent("d"), role: "admin" } as User];
+  assert.deepEqual(employeeRatings(people, [], [], NOW).map((r) => r.userId).sort(), ["a", "m"]);
 });
 
 test("trend compares the last 30 days with before", () => {
@@ -65,4 +67,12 @@ test("referrers are ranked by what the people they brought bought", () => {
   ] as never[];
   const rows = referrerRows(leads, [{ leadId: "x", amount: 7000, bookingStatus: "confirmed" }] as never[]);
   assert.deepEqual(rows[0], { leadId: "p", name: "العميل", branchId: "b1", referred: 2, visited: 1, bought: 1, totalEGP: 7000 });
+});
+
+test("a recommendation counts only from a customer who rated 4 or 5", () => {
+  const ref = { name: "س", phone: "01012345678" };
+  assert.equal(hasReferral(review("a", 5, 1, { response: { rating: 5, referral: ref } })), true);
+  assert.equal(hasReferral(review("a", 4, 1, { response: { rating: 4, referral: ref } })), true);
+  assert.equal(hasReferral(review("a", 3, 1, { response: { rating: 3, referral: ref } })), false);
+  assert.equal(pendingReferral(review("a", 2, 1, { response: { rating: 2, referral: ref } })), false);
 });
