@@ -298,6 +298,10 @@ export function createWorkspace(raw: CRMContextType) {
       require(raw.currentUser.role === "admin");
       return raw.loadDemoData();
     }) as CRMContextType["loadDemoData"],
+    previewDemoRemoval: (() => {
+      require(raw.currentUser.role === "admin");
+      return raw.previewDemoRemoval();
+    }) as CRMContextType["previewDemoRemoval"],
     removeDemoData: (() => {
       require(raw.currentUser.role === "admin");
       return raw.removeDemoData();

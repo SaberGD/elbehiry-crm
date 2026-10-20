@@ -8,6 +8,8 @@ export type UserRole =
   | "sales_agent";
 
 export interface JobPosition {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   title: string;
   departmentId: string;
@@ -17,6 +19,8 @@ export interface JobPosition {
 }
 
 export interface DepartmentEntity {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   code: string;
@@ -25,6 +29,8 @@ export interface DepartmentEntity {
 }
 
 export interface User {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   email: string;
@@ -57,6 +63,8 @@ export interface User {
 }
 
 export interface Company {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   code: string;
@@ -77,6 +85,8 @@ export interface Governorate {
 }
 
 export interface Warehouse {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   code: string;
@@ -98,6 +108,8 @@ export type BranchType =
   | "project_site";
 
 export interface Branch {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   code: string;
@@ -115,6 +127,8 @@ export interface Branch {
 }
 
 export interface Team {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   branchId: string;
@@ -176,6 +190,8 @@ export type CustomerCategory =
   | "broker_company";
 
 export interface Lead {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   phone: string;
@@ -223,6 +239,8 @@ export interface Lead {
 export type VisitorType = "client" | "broker" | "both";
 
 export interface Visit {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   /** Who came: a customer, a broker on their own, or a customer who came with a broker. */
   visitorType?: VisitorType;
@@ -270,6 +288,8 @@ export type FollowUpType =
   | "meeting";
 
 export interface FollowUp {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   leadId: string;
   leadName: string;
@@ -302,6 +322,8 @@ export type BookingStatus =
 export type PaymentStatus = "full" | "deposit" | "pending" | "refunded";
 
 export interface Booking {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   leadId: string;
   leadName: string;
@@ -343,6 +365,8 @@ export type TimelineEventType =
   | "admin_action";
 
 export interface TimelineEvent {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   leadId: string;
   timestamp: string;
@@ -357,6 +381,8 @@ export interface TimelineEvent {
 }
 
 export interface AuditLog {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   timestamp: string;
   userId: string;
@@ -388,6 +414,8 @@ export interface InvoiceLineItem {
 }
 
 export interface PurchaseInvoice {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   invoiceNumber: string;
   date: string;
@@ -410,6 +438,8 @@ export interface PurchaseInvoice {
 }
 
 export interface BrokerEntity {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   type: "individual" | "company" | "engineering_company" | "contractor";
@@ -427,6 +457,8 @@ export interface BrokerEntity {
 }
 
 export interface NotificationItem {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   title: string;
   message: string;
@@ -442,6 +474,8 @@ export interface NotificationItem {
 }
 
 export interface NotBoughtRecord {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   /** The visit after which the customer had not bought yet. */
   visitId?: string;
@@ -478,6 +512,8 @@ export interface ReviewAnalysis {
 }
 
 export interface ReviewRequest {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   /** The document id IS the secret token in the customer's link. */
   id: string;
   leadId: string;
@@ -511,6 +547,8 @@ export interface ReviewRequest {
 
 /** Managers can only add follow-up notes to a complaint; nothing is ever edited or deleted. */
 export interface ReviewNote {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   requestId: string;
   branchId?: string;

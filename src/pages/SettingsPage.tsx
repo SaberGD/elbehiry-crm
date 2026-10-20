@@ -55,7 +55,7 @@ export const DEFAULT_FONT_PREFERENCE: FontPreference = {
 };
 
 export const SettingsPage: React.FC = () => {
-  const { courses, resetAllData, effectiveUser, currentUser, loadDemoData, removeDemoData } = useCRM();
+  const { resetAllData, effectiveUser, currentUser, loadDemoData, removeDemoData, previewDemoRemoval, demoSummary } = useCRM();
   const { language, setLanguage, t } = useLanguage();
   const { theme, setTheme } = useTheme();
 
@@ -124,8 +124,7 @@ export const SettingsPage: React.FC = () => {
           <span>إعدادات النظام، الثيم، اللغة والخطوط</span>
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          إدارة تفضيلات المظهر والوضع الداكن، لغة العرض، نوع وحجم الخط، وقواعد
-          توزيع العملاء
+          إدارة تفضيلات المظهر والوضع الداكن، لغة العرض، ونوع وحجم الخط
         </p>
       </div>
 
@@ -461,35 +460,6 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Courses & Services List */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
-        <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
-          <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-          <span>الخدمات والأقسام المتاحة ({courses.length})</span>
-        </h3>
-
-        <div className="space-y-2">
-          {courses.map((c) => (
-            <div
-              key={c.id}
-              className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs"
-            >
-              <div>
-                <div className="font-bold text-slate-900 dark:text-slate-100">
-                  {c.name}
-                </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  {c.category} · المدة: {c.duration}
-                </div>
-              </div>
-              <div className="font-bold text-emerald-700 dark:text-emerald-400 font-mono-numbers text-sm">
-                {c.price.toLocaleString("ar-EG")} ج.م
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {isDirector(effectiveUser) && (
         <>
           {" "}
@@ -498,13 +468,15 @@ export const SettingsPage: React.FC = () => {
               <div className="font-bold text-sm text-sky-900 dark:text-sky-300">
                 بيانات تجريبية لاستكشاف الأدوار
               </div>
-              <p className="text-xs text-sky-800 dark:text-sky-300">
-                تحمّل موظفًا لكل دور (مدير فرع، مشرف عام، مشرفين مختصين، موظفي فروع في 3 فروع)
-                مع حوالي 35 عميلًا بسيناريوهات مختلفة: كبار مشترين (حتى مليون جنيه موزعة على الأقسام)،
-                عملاء بستان فقط وديكور فقط، وسطاء أقوياء وضعاف، اشترى جزءًا فقط، زوار ما اشتروش بأسباب
-                مختلفة (سعر، منافس، موافقة، مجهول...)، حجوزات ملغاة، شغل متسلّم بتقييمات من 2 لـ 5 ومتابعات
-                بعد البيع (مستحقة ومتأخرة وقادمة). بعدها استخدم «معاينة مساحة عمل موظف» لرؤية النظام بعين أي دور.
-                الحذف يزيل البيانات التجريبية فقط.
+              <p className="text-xs text-sky-800 dark:text-sky-300 leading-6">
+                تحمّل فروعًا وموظفين وعملاء ووسطاء وزيارات ومشتريات وتقييمات وهمية، عشان تجرّب النظام بعين كل دور.
+                كل حاجة بتتحمّل بعلامة «تجريبي»، فتقدر تحمّلها في أي وقت وتحذفها بضغطة من غير ما تلمس أي بيانات حقيقية
+                سجّلتها. الحذف بيشيل كمان أي حاجة اتسجلت على عملاء تجريبيين (زيارات، متابعات، مشتريات، تقييمات، سجل التعاملات).
+              </p>
+              <p className="text-xs font-bold text-sky-900 dark:text-sky-200">
+                {demoSummary.any
+                  ? `محمّل حاليًا: ${demoSummary.customers} عميل · ${demoSummary.branches} فرع · ${demoSummary.staff} موظف · ${demoSummary.brokers} وسيط`
+                  : "مفيش بيانات تجريبية محمّلة دلوقتي."}
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -517,9 +489,18 @@ export const SettingsPage: React.FC = () => {
                   تحميل البيانات التجريبية
                 </button>
                 <button
-                  onClick={() => {
-                    if (window.confirm("حذف كل الموظفين والبيانات التجريبية؟ بياناتك الحقيقية لن تتأثر.")) {
-                      removeDemoData();
+                  onClick={async () => {
+                    const { total, realLinked } = await previewDemoRemoval();
+                    if (!total) {
+                      alert("مفيش بيانات تجريبية لحذفها.");
+                      return;
+                    }
+                    const warn = realLinked
+                      ? `\n\nتنبيه: ${realLinked} عميل حقيقي مربوط بفرع أو موظف تجريبي. هيفضلوا زي ما هم، بس هيبقى مسؤولهم أو فرعهم محذوف.`
+                      : "";
+                    if (window.confirm(`هيتحذف ${total} سجل تجريبي (فروع وموظفين وعملاء وكل اللي اتسجل عليهم). بياناتك الحقيقية مش هتتأثر.${warn}\n\nمتأكد؟`)) {
+                      await removeDemoData();
+                      alert("اتحذفت البيانات التجريبية.");
                     }
                   }}
                   className="px-4 py-2 border border-sky-600 text-sky-700 dark:text-sky-300 rounded-xl text-xs font-bold cursor-pointer"
@@ -530,22 +511,21 @@ export const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Data Reset Danger Zone */}
-          <div className="bg-red-50/50 dark:bg-red-950/20 p-6 rounded-2xl border border-red-200 dark:border-red-900 shadow-xs space-y-3">
-            <div className="flex items-center gap-2 text-red-900 dark:text-red-300 font-bold text-sm">
-              <ShieldAlert className="w-5 h-5 text-red-600 dark:text-red-400" />
-              <span>منطقة النظام الحساسة (إعادة تعيين البيانات)</span>
+          {/* Browser cache only: the system's data is on the server and is not touched. */}
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
+              <RefreshCw className="w-4 h-4" />
+              <span>مسح ذاكرة المتصفح</span>
             </div>
-            <p className="text-xs text-red-700 dark:text-red-300">
-              يمكنك إعادة ضبط كافة بيانات العملاء، المتابعات، الزيارات والحجوزات
-              وإعادة تعيين البيانات التجريبية الشاملة في أي وقت.
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              بيمسح الإعدادات المحفوظة على الجهاز ده بس (زي المظهر والخط). بيانات النظام نفسها (العملاء والزيارات والمشتريات) على
+              السيرفر ومش بتتأثر.
             </p>
             <button
               onClick={handleReset}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl text-xs font-bold cursor-pointer"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>إعادة ضبط وتصفير البيانات</span>
+              مسح ذاكرة المتصفح
             </button>
           </div>
         </>

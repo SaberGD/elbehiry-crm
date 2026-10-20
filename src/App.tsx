@@ -13,6 +13,7 @@ import {
   MustChangePasswordScreen,
 } from "./pages/LoginPage";
 import { ViewAsBar } from "./components/layout/ViewAsBar";
+import { DemoBanner } from "./components/layout/DemoBanner";
 import { Navbar } from "./components/layout/Navbar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { MobileBottomNav } from "./components/layout/MobileBottomNav";
@@ -110,6 +111,7 @@ const AppContent: React.FC = () => {
 
         {/* Viewport Content Area */}
         <main id="main-content" className="workspace-main">
+          {activeTab !== "settings" && <DemoBanner onOpenSettings={() => setActiveTab("settings")} />}
           {activeTab !== "feedback" && <LateComplaintsBanner onOpen={() => setActiveTab("feedback")} />}
           <div key={activeTab} className="animate-page-enter min-w-0">
             <Suspense fallback={<div className="quiet-note" style={{ padding: 30 }}>جاري التحميل…</div>}>

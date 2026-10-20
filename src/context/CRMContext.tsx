@@ -6,6 +6,7 @@ import {
 import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
 import { scopesFor, seesAll } from "../lib/scopes";
+import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
 import { today, followUpStatus, statusNames, sourceNames, followUpTypeNames } from "../lib/presentation";
 import {
@@ -87,6 +88,9 @@ export interface CRMContextType {
   loadDemoData: () => Promise<void>;
   clearOrganizationData: () => Promise<void>;
   removeDemoData: () => Promise<void>;
+  previewDemoRemoval: () => Promise<{ total: number; realLinked: number }>;
+  /** How much flagged sample data is loaded right now. */
+  demoSummary: { customers: number; branches: number; staff: number; brokers: number; any: boolean };
   createLoginForUser: (
     userId: string,
     loginId: string,
@@ -351,7 +355,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   useFirestoreCollection("departments", departmentEntities, setDepartmentEntities, { seedIfEmpty: topWriter });
   useFirestoreCollection("jobPositions", jobPositions, setJobPositions, { seedIfEmpty: topWriter });
   useFirestoreCollection("purchaseCategories", purchaseCategories, setPurchaseCategories, { seedIfEmpty: topWriter });
-  useFirestoreCollection("courses", courses, setCourses, { seedIfEmpty: topWriter });
   useFirestoreCollection("brokers", brokers, setBrokers, { scope: scope.brokers });
   useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices, { scope: scope.invoices });
   useFirestoreCollection("notifications", notifications, setNotifications, { scope: scope.notifications });
@@ -1266,47 +1269,73 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       initialCompanies, initialWarehouses, initialBranches, initialTeams, initialDepartments, initialJobPositions,
       demoUsers, demoLeads, demoVisits, demoFollowUps, demoBookings, demoTimeline, demoInvoices, demoBrokers, demoNotBought, demoReviews,
     } = await sampleData();
+    // Everything is flagged as sample data, so it can be removed later without touching real records.
     // The sample org structure comes along, so the sample staff and customers have branches to belong to.
-    setCompanies((p) => addMissing(p, initialCompanies));
-    setWarehouses((p) => addMissing(p, initialWarehouses));
-    setBranches((p) => addMissing(p, initialBranches));
-    setTeams((p) => addMissing(p, initialTeams));
-    setDepartmentEntities((p) => addMissing(p, initialDepartments));
-    setJobPositions((p) => addMissing(p, initialJobPositions));
-    setUsers((p) => addMissing(p, demoUsers.map(normalizeUser)));
-    setLeads((p) => addMissing(p, demoLeads));
-    setVisits((p) => addMissing(p, demoVisits));
-    setFollowUps((p) => addMissing(p, demoFollowUps));
-    setBookings((p) => addMissing(p, demoBookings));
-    setTimelineEvents((p) => addMissing(p, demoTimeline));
-    setPurchaseInvoices((p) => addMissing(p, demoInvoices));
-    setBrokers((p) => addMissing(p, demoBrokers));
-    setNotBoughtRecords((p) => addMissing(p, demoNotBought));
-    setReviewRequests((p) => addMissing(p, demoReviews));
-    logAudit("تحميل بيانات تجريبية", "إعدادات", "demo", "تحميل موظفين وبيانات تجريبية لكل الأدوار");
+    setCompanies((p) => addMissing(p, asDemo(initialCompanies)));
+    setWarehouses((p) => addMissing(p, asDemo(initialWarehouses)));
+    setBranches((p) => addMissing(p, asDemo(initialBranches)));
+    setTeams((p) => addMissing(p, asDemo(initialTeams)));
+    setDepartmentEntities((p) => addMissing(p, asDemo(initialDepartments)));
+    setJobPositions((p) => addMissing(p, asDemo(initialJobPositions)));
+    setUsers((p) => addMissing(p, asDemo(demoUsers.map(normalizeUser))));
+    setLeads((p) => addMissing(p, asDemo(demoLeads)));
+    setVisits((p) => addMissing(p, asDemo(demoVisits)));
+    setFollowUps((p) => addMissing(p, asDemo(demoFollowUps)));
+    setBookings((p) => addMissing(p, asDemo(demoBookings)));
+    setTimelineEvents((p) => addMissing(p, asDemo(demoTimeline)));
+    setPurchaseInvoices((p) => addMissing(p, asDemo(demoInvoices)));
+    setBrokers((p) => addMissing(p, asDemo(demoBrokers)));
+    setNotBoughtRecords((p) => addMissing(p, asDemo(demoNotBought)));
+    setReviewRequests((p) => addMissing(p, asDemo(demoReviews)));
+  };
+
+  /** Ids that older versions of the sample data loaded without a flag. */
+  const knownDemoIds = async (): Promise<KnownDemoIds> => {
+    const d = await sampleData();
+    const ids = (xs: { id: string }[]) => new Set(xs.map((x) => x.id));
+    return {
+      companies: ids(d.initialCompanies), warehouses: ids(d.initialWarehouses), branches: ids(d.initialBranches), teams: ids(d.initialTeams),
+      departmentEntities: ids(d.initialDepartments), jobPositions: ids(d.initialJobPositions), users: ids(d.demoUsers), leads: ids(d.demoLeads),
+      visits: ids(d.demoVisits), followUps: ids(d.demoFollowUps), bookings: ids(d.demoBookings), timelineEvents: ids(d.demoTimeline),
+      purchaseInvoices: ids(d.demoInvoices), brokers: ids(d.demoBrokers), notBoughtRecords: ids(d.demoNotBought), reviewRequests: ids(d.demoReviews),
+    };
+  };
+  const demoSummary = useMemo(() => {
+    const n = (xs: { isDemo?: boolean }[]) => xs.filter((x) => x.isDemo).length;
+    const d = { customers: n(leads), branches: n(branches), staff: n(users), brokers: n(brokers) };
+    return { ...d, any: d.customers + d.branches + d.staff + d.brokers > 0 };
+  }, [leads, branches, users, brokers]);
+  const demoWorld = (): DemoWorld => ({
+    users, companies, warehouses, branches, teams, departmentEntities, jobPositions, leads, visits, followUps, bookings,
+    timelineEvents, purchaseInvoices, brokers, notBoughtRecords, reviewRequests, reviewNotes, notifications, auditLogs,
+  });
+  /** What removing the sample data would delete, and how many real customers are tied to sample branches or staff. */
+  const previewDemoRemoval = async () => {
+    const { total, realLinked } = planDemoRemoval(demoWorld(), await knownDemoIds(), currentUser.id);
+    return { total, realLinked };
   };
   const removeDemoData = async () => {
-    const {
-      initialCompanies, initialWarehouses, initialBranches, initialTeams, initialDepartments, initialJobPositions,
-      demoUsers, demoLeads, demoVisits, demoFollowUps, demoBookings, demoTimeline, demoInvoices, demoBrokers, demoNotBought, demoReviews,
-    } = await sampleData();
-    setCompanies((p) => dropDemo(p, initialCompanies));
-    setWarehouses((p) => dropDemo(p, initialWarehouses));
-    setBranches((p) => dropDemo(p, initialBranches));
-    setTeams((p) => dropDemo(p, initialTeams));
-    setDepartmentEntities((p) => dropDemo(p, initialDepartments));
-    setJobPositions((p) => dropDemo(p, initialJobPositions));
-    setUsers((p) => dropDemo(p, demoUsers));
-    setLeads((p) => dropDemo(p, demoLeads));
-    setVisits((p) => dropDemo(p, demoVisits));
-    setFollowUps((p) => dropDemo(p, demoFollowUps));
-    setBookings((p) => dropDemo(p, demoBookings));
-    setTimelineEvents((p) => dropDemo(p, demoTimeline));
-    setPurchaseInvoices((p) => dropDemo(p, demoInvoices));
-    setBrokers((p) => dropDemo(p, demoBrokers));
-    setNotBoughtRecords((p) => dropDemo(p, demoNotBought));
-    setReviewRequests((p) => dropDemo(p, demoReviews));
-    logAudit("حذف البيانات التجريبية", "إعدادات", "demo", "حذف الموظفين والبيانات التجريبية");
+    const { drop } = planDemoRemoval(demoWorld(), await knownDemoIds(), currentUser.id);
+    const keep = <T extends { id: string }>(c: keyof typeof drop) => (prev: T[]) => prev.filter((i) => !drop[c].has(i.id));
+    setCompanies(keep("companies"));
+    setWarehouses(keep("warehouses"));
+    setBranches(keep("branches"));
+    setTeams(keep("teams"));
+    setDepartmentEntities(keep("departmentEntities"));
+    setJobPositions(keep("jobPositions"));
+    setUsers(keep("users"));
+    setLeads(keep("leads"));
+    setVisits(keep("visits"));
+    setFollowUps(keep("followUps"));
+    setBookings(keep("bookings"));
+    setTimelineEvents(keep("timelineEvents"));
+    setPurchaseInvoices(keep("purchaseInvoices"));
+    setBrokers(keep("brokers"));
+    setNotBoughtRecords(keep("notBoughtRecords"));
+    setReviewRequests(keep("reviewRequests"));
+    setReviewNotes(keep("reviewNotes"));
+    setNotifications(keep("notifications"));
+    setAuditLogs(keep("auditLogs"));
   };
 
   /** Developer-only: empties branches, companies, warehouses, teams, departments and job titles so the real structure can be entered from scratch. */
@@ -1599,6 +1628,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         loadDemoData,
         clearOrganizationData,
         removeDemoData,
+        previewDemoRemoval,
+        demoSummary,
         createLoginForUser,
         viewAsUser,
         setViewAsUser,
