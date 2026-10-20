@@ -46,6 +46,10 @@ interface AuthContextType {
   changePassword: (current: string, next: string) => Promise<void>;
   bootstrapAdmin: (data: { name: string; loginId: string; password: string; phone: string }) => Promise<void>;
   /** Creates a Firebase login for a staff member without signing the current admin out. */
+  /** Info for the "no access" screen: who is signed in, and whether they are the account that set the system up. */
+  signedInAs: { email: string | null; uid: string | null };
+  isFounder: boolean;
+  restoreFounder: () => Promise<void>;
   createStaffLogin: (data: {
     userId: string;
     loginId: string;
@@ -127,6 +131,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
   }, [fbUser]);
+
+  // The account that ran the first-time setup can restore its own developer record if it ever goes missing.
+  const [isFounder, setIsFounder] = useState(false);
+  useEffect(() => {
+    if (!fbUser || !profileReady || profile) return setIsFounder(false);
+    getDoc(doc(db, 'meta', 'bootstrap'))
+      .then((snap) => setIsFounder(snap.exists() && snap.data()?.createdBy === fbUser.uid))
+      .catch(() => setIsFounder(false));
+  }, [fbUser, profileReady, profile]);
+  const restoreFounder = async () => {
+    if (!fbUser) return;
+    await setDoc(doc(db, 'authProfiles', fbUser.uid), {
+      uid: fbUser.uid,
+      email: fbUser.email || '',
+      name: fbUser.displayName || fbUser.email || 'المطوّر',
+      userId: fbUser.uid,
+      role: 'admin',
+      active: true,
+    }, { merge: true });
+  };
 
   let status: AuthStatus;
   if (!authReady || busy) status = 'loading';
@@ -232,7 +256,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ status, profile, needsBootstrap, login, logout, changePassword, bootstrapAdmin, createStaffLogin }}
+      value={{
+        status,
+        profile,
+        needsBootstrap,
+        login,
+        logout,
+        changePassword,
+        bootstrapAdmin,
+        createStaffLogin,
+        signedInAs: { email: fbUser?.email ?? null, uid: fbUser?.uid ?? null },
+        isFounder,
+        restoreFounder,
+      }}
     >
       {children}
     </AuthContext.Provider>

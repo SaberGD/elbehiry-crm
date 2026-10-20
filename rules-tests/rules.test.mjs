@@ -47,6 +47,7 @@ before(async () => {
     await setDoc(doc(f, "timelineEvents", "T1"), { id: "T1", leadId: "L1", branchId: "b1", leadOwnerId: userId("agentA"), authorId: userId("agentA"), details: "x" });
     await setDoc(doc(f, "activityLogs", "A1"), { id: "A1", userId: userId("gm") });
     await setDoc(doc(f, "notifications", "NT1"), { id: "NT1", targetUserId: userId("agentA") });
+    await setDoc(doc(f, "meta", "bootstrap"), { createdBy: "uid-founder" });
   });
 });
 after(async () => env && env.cleanup());
@@ -160,4 +161,11 @@ test("timeline, audit trail and notifications are scoped too", async () => {
   await assertFails(setDoc(doc(db("agentA"), "activityLogs", "A3"), { id: "A3", userId: userId("gm") }));
   await assertSucceeds(getDocs(query(collection(db("agentA"), "notifications"), where("targetUserId", "==", userId("agentA")))));
   await assertFails(getDocs(collection(db("agentA"), "notifications")));
+});
+
+test("only the account that set the system up can restore its own developer record", async () => {
+  const rec = (u) => ({ uid: u, email: "x", name: "x", userId: u, role: "admin", active: true });
+  await assertFails(setDoc(doc(env.authenticatedContext("uid-stranger").firestore(), "authProfiles", "uid-stranger"), rec("uid-stranger")));
+  await assertFails(setDoc(doc(env.authenticatedContext("uid-founder").firestore(), "authProfiles", "uid-other"), rec("uid-other")));
+  await assertSucceeds(setDoc(doc(env.authenticatedContext("uid-founder").firestore(), "authProfiles", "uid-founder"), rec("uid-founder")));
 });

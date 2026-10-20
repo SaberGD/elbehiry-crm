@@ -99,6 +99,16 @@ service cloud.firestore {
       return isStaff() && isSalesRole() && branchOk(d.branchId) && profile().userId in d.get('delegatedTo', []);
     }
 
+    // The person who ran the first-time setup (meta/bootstrap.createdBy), restoring their own developer record.
+    function isFounder(uid) {
+      return signedIn() && request.auth.uid == uid
+        && exists(/databases/$(database)/documents/meta/bootstrap)
+        && get(/databases/$(database)/documents/meta/bootstrap).data.get('createdBy', '') == request.auth.uid
+        && request.resource.data.role == 'admin'
+        && request.resource.data.uid == uid
+        && request.resource.data.active == true;
+    }
+
     // ---------- access control ----------
     match /meta/{docId} {
       // Lets the login screen know whether first-run setup is still needed.
@@ -117,11 +127,14 @@ service cloud.firestore {
         || (signedIn() && request.auth.uid == uid
             && request.resource.data.role == 'admin'
             && request.resource.data.uid == uid
-            && !exists(/databases/$(database)/documents/meta/bootstrap));
+            && !exists(/databases/$(database)/documents/meta/bootstrap))
+        // The account that set the system up can always restore its own developer record.
+        || isFounder(uid);
 
       allow update: if (isTop() && mayGrant(request.resource.data.role) && mayGrant(resource.data.role))
         || (branchManagerMayWrite(request.resource.data) && isLowRole(resource.data.role)
             && resource.data.branchId == myBranch())
+        || isFounder(uid)
         // After an admin reset, the person may clear their own "must change password" flag.
         || (signedIn() && request.auth.uid == uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword'])
