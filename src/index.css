@@ -2191,7 +2191,7 @@
 /* Zaki panel, v2: navy header with the character, soft bubbles, pill input */
 .zaki-panel { border-radius: 22px; border: 1px solid var(--line, rgba(128,128,128,.3)); box-shadow: 0 24px 70px rgba(8,14,32,.38); }
 .zaki-head {
-  position: relative; min-height: 96px; padding: 0.9rem 1.1rem 0; align-items: flex-start; gap: .8rem; overflow: hidden;
+  position: relative; min-height: 108px; padding: 0.9rem 1.1rem 0; align-items: flex-start; gap: .8rem; overflow: hidden;
   background: radial-gradient(120% 140% at 100% 100%, rgba(200,35,43,.55) 0%, rgba(200,35,43,0) 55%), linear-gradient(135deg, #0e1730, #1a2748);
 }
 .zaki-head::after { content: ""; position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: #c8232b; }

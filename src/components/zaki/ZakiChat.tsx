@@ -259,7 +259,7 @@ export function ZakiChat() {
       {open && (
         <div className="zaki-panel" role="dialog" aria-label="زكي، المساعد الذكي">
           <div className="zaki-head">
-            <ZakiAvatar mood={busy ? (slow ? "watch" : "thinking") : mood} size={104} className="zaki-head-art" />
+            <ZakiAvatar mood={busy ? (slow ? "watch" : "thinking") : mood} size={124} className="zaki-head-art" />
             <div>
               <strong>زكي</strong>
               <small><i className="zaki-online" />متاح · بيجاوب من بيانات نظامك</small>
