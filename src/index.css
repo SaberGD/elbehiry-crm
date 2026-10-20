@@ -2217,3 +2217,13 @@
 .zaki-demo small { font-weight: 700; color: #c8232b; opacity: 1; }
 .zaki-demo-line { font-size: 1.2rem; }
 :root.dark .zaki-panel { background: var(--surface); }
+
+/* v3: the character stands in the header and rises above the panel's edge */
+.zaki-panel { overflow: visible; height: min(620px, calc(100vh - 110px)); }
+.zaki-head { overflow: visible; border-radius: 22px 22px 0 0; min-height: 92px; padding-inline-start: 150px; align-items: center; }
+.zaki-head::after { border-radius: 0; }
+.zaki-head-art { position: absolute; inset-inline-start: 8px; bottom: 3px; order: 0; z-index: 3; margin: 0 !important; pointer-events: none; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
+.zaki-head .icon-button { align-self: center; }
+.zaki-body { border-radius: 0; }
+.zaki-foot { border-radius: 0 0 22px 22px; }
+@media (max-width: 1023px) { .zaki-panel { height: min(560px, calc(100vh - 150px)); } }
