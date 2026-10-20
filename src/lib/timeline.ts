@@ -1,5 +1,5 @@
 import type { FollowUpType, ReviewNote, ReviewRequest, TimelineEvent, TimelineEventType } from "../types/crm";
-import { statusNames } from "./presentation";
+import { sourceNames, statusNames } from "./presentation";
 import { isComplaint } from "./reviews";
 
 export type TimelineGroup = "visit" | "purchase" | "followup" | "review" | "note" | "account";
@@ -61,6 +61,10 @@ export function cleanEvent(e: TimelineEvent): { title: string; details: string }
   }
   if (e.type === "followup_created")
     title = title.replace(/\((call|whatsapp|branch_visit|email|meeting)\)/, (_, k: FollowUpType) => `(${followUpTypes[k]})`);
+  if (e.type === "created")
+    details = details
+      .replace(/^تم إضافة العميل بواسطة .*?،\s*/, "")
+      .replace(/المصدر:\s*([a-z_]+)/, (_, k) => `المصدر: ${(sourceNames as Record<string, string>)[k] ?? k}`);
   details = details
     .replace(/\s*[.|-]?\s*(الملاحظات|السبب):\s*(?=$|\s*\|)/g, "")
     .replace(/\s*[.|]\s*$/g, "")

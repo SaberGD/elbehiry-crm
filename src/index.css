@@ -2426,3 +2426,60 @@
 .review-offer small {
   color: var(--muted);
 }
+.outcome-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.outcome-tile {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 14px 8px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.outcome-tile small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.outcome-tile.is-bought[aria-pressed="true"] {
+  border-color: #15803d;
+  background: #e4f4e9;
+  color: #14532d;
+}
+.outcome-tile.is-not_yet[aria-pressed="true"] {
+  border-color: #b45309;
+  background: #fdf3d9;
+  color: #7c4a03;
+}
+.outcome-tile.is-inquiry[aria-pressed="true"] {
+  border-color: #1d4ed8;
+  background: #e6eefb;
+  color: #1e3a8a;
+}
+.outcome-tile[aria-pressed="true"] small {
+  color: inherit;
+  opacity: 0.8;
+}
+@media (max-width: 520px) {
+  .outcome-tiles {
+    grid-template-columns: 1fr;
+  }
+  .outcome-tile {
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    text-align: start;
+    align-items: center;
+    column-gap: 10px;
+  }
+  .outcome-tile small {
+    grid-column: 2;
+  }
+}

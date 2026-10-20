@@ -323,6 +323,34 @@ test("a customer and its optional invoice can be created in one UI submission", 
     } as never),
   );
 });
+test("a customer created a moment ago can get its purchase or its not-bought reason, but not in another branch", () => {
+  const customer = {
+    ...seed.initialLeads[0],
+    id: "new-customer-2",
+    branchId: employee.branchId!,
+    assignedAgentId: employee.id,
+  };
+  const { view, calls } = fixture(employee, { addLead: () => customer });
+  const created = view.addLead(customer);
+  view.addBooking({
+    leadId: created.id,
+    branchId: employee.branchId!,
+    agentId: employee.id,
+    amount: 1000,
+  } as never);
+  view.addNotBoughtRecord({
+    leadId: created.id,
+    branchId: employee.branchId!,
+    agentId: employee.id,
+    reasons: ["price"],
+  } as never);
+  assert.deepEqual(calls, ["addBooking", "addNotBoughtRecord"]);
+  assert.throws(() =>
+    view.addNotBoughtRecord({ leadId: created.id, branchId: other.branchId!, agentId: employee.id, reasons: ["price"] } as never),
+  );
+  assert.throws(() => view.addNotBoughtRecord({ leadId: created.id, branchId: employee.branchId!, agentId: employee.id, reasons: [] } as never));
+  assert.throws(() => view.addBooking({ leadId: "ghost", branchId: employee.branchId!, agentId: employee.id, amount: 1 } as never));
+});
 test("creating a branch requires a real company and governorate instead of an unscoped branch", () => {
   const { view } = fixture(director);
   assert.throws(() => view.addBranch({ name: "unscoped", code: "X" } as never));

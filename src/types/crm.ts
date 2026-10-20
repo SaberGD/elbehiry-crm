@@ -253,6 +253,7 @@ export interface Visit {
   requiresFollowUp: boolean;
   followUpAgentId?: string;
   followUpDate?: string;
+  followUpReason?: string;
 }
 
 export type FollowUpStatus =
@@ -321,6 +322,8 @@ export interface Booking {
   notes: string;
   createdAt: string;
   deliveredAt?: string; // set when the work is finished and handed over
+  /** The visit this purchase was made in, when it was recorded with the visit. */
+  visitId?: string;
 }
 
 export type TimelineEventType =
@@ -440,6 +443,8 @@ export interface NotificationItem {
 
 export interface NotBoughtRecord {
   id: string;
+  /** The visit after which the customer had not bought yet. */
+  visitId?: string;
   leadId: string;
   leadName: string;
   branchId: string;

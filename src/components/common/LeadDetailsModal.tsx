@@ -396,12 +396,6 @@ export function LeadDetailsModal({
           </button>
         </div>
         <div className="client-action-bar">
-          {canEditCustomer(effectiveUser, lead) && (
-            <button className="btn-primary" onClick={() => setOutcomeOpen(true)}>
-              <ShoppingBag size={15} />
-              اشترى ولا لسه؟
-            </button>
-          )}
           {allowed("followup") && (
             <button className="btn-primary" onClick={() => show("followup")}>
               <Plus size={15} />

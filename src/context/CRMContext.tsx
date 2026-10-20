@@ -7,7 +7,7 @@ import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
 import { scopesFor, seesAll } from "../lib/scopes";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
-import { today, followUpStatus, statusNames, followUpTypeNames } from "../lib/presentation";
+import { today, followUpStatus, statusNames, sourceNames, followUpTypeNames } from "../lib/presentation";
 import {
   buildPostSaleSchedule,
   milestoneLabel,
@@ -629,7 +629,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       authorName: effectiveUser.name,
       type: "created",
       title: "إضافة العميل للنظام",
-      details: `تم إضافة العميل بواسطة ${effectiveUser.name} (${effectiveUser.role})، المصدر: ${newLead.source}`,
+      details: `المصدر: ${sourceNames[newLead.source] ?? newLead.source}`,
     });
 
     logAudit(
@@ -815,7 +815,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
           assignedAgentName: agent?.name,
           branchId: visitData.branchId,
           scheduledAt: visitData.followUpDate,
-          reason: `متابعة نتيجة زيارة المقر بتاريخ ${visitData.date}`,
+          reason: visitData.followUpReason || `متابعة نتيجة زيارة المقر بتاريخ ${visitData.date}`,
           type: "call",
           notes: visitData.notes,
         });
@@ -1004,8 +1004,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
       type: "booking_created",
-      title: `تأكيد حجز جديد: ${bookingData.courseName}`,
-      details: `إجمالي المشتريات: ${bookingData.amount} ج.م - الملاحظات: ${bookingData.notes}`,
+      title: `تسجيل مشتريات: ${bookingData.courseName}`,
+      details: [`إجمالي المشتريات: ${bookingData.amount.toLocaleString("en-US")} ج.م`, bookingData.visitId ? "من زيارة الفرع" : "", bookingData.notes ? `الملاحظات: ${bookingData.notes}` : ""].filter(Boolean).join(" · "),
     });
 
     logAudit(

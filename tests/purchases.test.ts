@@ -52,3 +52,18 @@ test("department totals add up across purchases", () => {
   assert.equal(t.decor, 10);
   assert.equal(t.garden, 25);
 });
+
+import { purchaseFromItems } from "../src/lib/purchases";
+test("purchase picked per category becomes a booking split across the four departments", () => {
+  const p = purchaseFromItems([
+    { categoryId: "cat-decor", categoryName: "ديكور", amount: 30000 },
+    { categoryId: "cat-garden", categoryName: "بستان", amount: 5000 },
+    { categoryId: "cat-misc", categoryName: "متنوع", amount: 0 },
+  ]);
+  assert.equal(p.amount, 35000);
+  assert.equal(p.department, "decor");
+  assert.deepEqual(p.departmentAmounts, { decor: 30000, garden: 5000 });
+  assert.equal(p.courseId, "ps-multi");
+  assert.equal(p.courseName, "ديكور + بستان");
+  assert.equal(purchaseFromItems([{ categoryId: "cat-misc", categoryName: "متنوع", amount: 10 }]).department, "general");
+});

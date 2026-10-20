@@ -21,6 +21,8 @@ test("old events with raw keys are shown in Arabic and empty fragments disappear
   assert.equal(s.details, "تغيرت الحالة من جديد إلى مهتم");
   const f = cleanEvent(ev({ type: "followup_created", title: "جدولة متابعة جديدة (call)" }));
   assert.equal(f.title, "جدولة متابعة جديدة (اتصال)");
+  const c = cleanEvent(ev({ type: "created", title: "إضافة العميل للنظام", details: "تم إضافة العميل بواسطة م. خالد (admin)، المصدر: walk_in" }));
+  assert.equal(c.details, "المصدر: زيارة الفرع");
   const v = cleanEvent(ev({ type: "visit", details: "استقبله الموظف: أحمد. النتيجة: مهتم. الملاحظات: " }));
   assert.equal(v.details, "استقبله الموظف: أحمد. النتيجة: مهتم");
 });

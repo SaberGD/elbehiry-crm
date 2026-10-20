@@ -8,7 +8,8 @@ import {
   canRequestReview,
   canScheduleFollowUp,
 } from "../lib/access";
-import { PurchaseCategorySelector } from "../components/common/PurchaseCategorySelector";
+import { purchaseFromItems } from "../lib/purchases";
+import { OutcomeSection, emptyOutcome, outcomeError, type OutcomeState } from "../components/common/OutcomeSection";
 import { InterestPicker, interestNames } from "../components/common/InterestPicker";
 import { NameWithTitle } from "../components/common/NameWithTitle";
 import { hasPermission } from "../lib/permissions";
@@ -21,6 +22,7 @@ import {
   MessageCircle,
   UserRound,
   FileText,
+  ShoppingBag,
   SlidersHorizontal,
   ArrowUpLeft,
   X,
@@ -57,7 +59,8 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
     purchaseCategories,
     addLead,
     addBroker,
-    addPurchaseInvoice,
+    addBooking,
+    addNotBoughtRecord,
     findDuplicateLeadsByPhone,
   } = useCRM();
   const availableBranches = branches.filter(
@@ -92,10 +95,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   const [brokerId, setBrokerId] = useState("");
   const [brokerName, setBrokerName] = useState("");
   const [brokerPhone, setBrokerPhone] = useState("");
-  const [makeInvoice, setMakeInvoice] = useState(false);
-  const [items, setItems] = useState<InvoiceLineItem[]>([]);
-  const [invoiceStatus, setInvoiceStatus] =
-    useState<PurchaseInvoice["status"]>("recorded");
+  const [outcome, setOutcome] = useState<OutcomeState>(emptyOutcome);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<Lead | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -103,7 +103,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
     phone.replace(/\D/g, "").length >= 10
       ? findDuplicateLeadsByPhone(phone)
       : [];
-  const total = items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const total = outcome.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const selectedAgent = users.find((u) => u.id === agentId);
   const changeBranch = (id: string) => {
     setBranchId(id);
@@ -147,14 +147,9 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       setError("بيانات الوسيط تحتاج اسم ورقم هاتف صحيح.");
       return;
     }
-    if (
-      makeInvoice &&
-      (!items.length ||
-        items.some(
-          (i) => !i.categoryId || i.amount <= 0 || !Number.isFinite(i.amount),
-        ))
-    ) {
-      setError("كل بند في الفاتورة يحتاج تصنيفًا ومبلغًا أكبر من صفر.");
+    const outErr = outcomeError(outcome, false);
+    if (outErr || (outcome.result === "bought" && !hasPermission(effectiveUser, "bookings.create"))) {
+      setError(outErr || "حسابك مش مسموحله يسجل مشتريات.");
       return;
     }
     let linkedBroker =
@@ -191,23 +186,32 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       departmentName: interestNames(interests),
       notes: notes.trim(),
     });
-    if (makeInvoice && hasPermission(effectiveUser, "invoices.manage"))
-      addPurchaseInvoice({
-        date: today(),
+    if (outcome.result === "bought" && hasPermission(effectiveUser, "bookings.create")) {
+      const purchase = purchaseFromItems(outcome.items);
+      addBooking({
         leadId: lead.id,
         leadName: lead.name,
         leadPhone: lead.phone,
         branchId,
         branchName: lead.branchName,
         agentId,
-        agentName: selectedAgent?.name,
-        brokerId: linkedBroker?.id,
-        brokerName: linkedBroker?.name,
-        items,
-        totalAmount: total,
-        status: invoiceStatus,
-        notes: "فاتورة مرتبطة بتسجيل العميل",
+        ...purchase,
+        bookingDate: today(),
+        bookingStatus: "confirmed",
+        source: lead.source,
+        notes: "",
       });
+    } else if (outcome.result === "not_yet") {
+      addNotBoughtRecord({
+        leadId: lead.id,
+        leadName: lead.name,
+        branchId,
+        agentId,
+        reasons: outcome.reasons,
+        otherText: outcome.reasons.includes("other") ? outcome.otherText.trim() : undefined,
+        note: outcome.note.trim() || undefined,
+      });
+    }
     setCreated(lead);
   };
   if (created)
@@ -514,30 +518,19 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
             )}
           </div>
         </details>
-        <details className="optional-section">
+        <details className="optional-section" open={!!outcome.result || undefined}>
           <summary>
-            <FileText size={18} />
+            <ShoppingBag size={18} />
             <span>
-              إضافة فاتورة <em className="optional-tag">اختياري</em>
+              نتيجة التعامل <em className="optional-tag">اختياري</em>
             </span>
             <ChevronDown size={16} />
           </summary>
           <div className="optional-content">
-            <label className="checkbox-line">
-              <input
-                type="checkbox"
-                disabled={!hasPermission(effectiveUser, "invoices.manage")}
-                checked={makeInvoice}
-                onChange={(e) => setMakeInvoice(e.target.checked)}
-              />
-              العميل عنده مشتريات وعايز أسجلها دلوقتي
-            </label>
-            {makeInvoice && (
-              <div style={{ marginTop: 20 }}>
-                <PurchaseCategorySelector items={items} onChange={setItems} title="مشتريات العميل" subtitle="دوس على القسم اللي اشترى منه وحدد دفع فيه كام بالجنيه" />
-
-              </div>
-            )}
+            <p className="quiet-note" style={{ padding: "0 0 14px" }}>
+              لو العميل اشترى أو قال ليه لسه، سجّلها دلوقتي. وسيبها فاضية لو لسه مفيش نتيجة.
+            </p>
+            <OutcomeSection value={outcome} onChange={setOutcome} />
           </div>
         </details>
         {error && (

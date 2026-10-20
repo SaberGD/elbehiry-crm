@@ -10,9 +10,12 @@ import { departmentNames, sourceNames } from "../lib/presentation";
 import { FilterBar, inDateRange } from "../components/common/FilterBar";
 import { NameWithTitle } from "../components/common/NameWithTitle";
 import { InterestPicker, interestNames } from "../components/common/InterestPicker";
-import { PurchaseCategorySelector } from "../components/common/PurchaseCategorySelector";
+import { purchaseFromItems } from "../lib/purchases";
+import { OutcomeSection, emptyOutcome, outcomeError, outcomeLabel, type OutcomeState } from "../components/common/OutcomeSection";
 import { VoiceNoteField } from "../components/common/VoiceNoteField";
-import type { Department, InvoiceLineItem, Lead, LeadSource, Visit, VisitorType } from "../types/crm";
+import { addToDate } from "../lib/postSale";
+import { reasonLabel } from "../lib/notBought";
+import type { Department, Lead, LeadSource, Visit, VisitorType } from "../types/crm";
 
 interface Props {
   onOpenLead: (leadId: string) => void;
@@ -24,10 +27,9 @@ const typeChoices: { id: VisitorType; title: string; hint: string; Icon: typeof 
   { id: "broker", title: "وسيط", hint: "مقاول أو مهندس جه لوحده", Icon: Handshake },
   { id: "both", title: "عميل ومعاه وسيط", hint: "الوسيط هو اللي جابه", Icon: Users },
 ];
-const outcomes = ["تم الشراء", "لسه", "استفسار فقط"] as const;
 
 export function VisitsPage({ onOpenLead }: Props) {
-  const { effectiveUser, visits, branches, users, leads, brokers, addVisit, addBroker, addPurchaseInvoice, updateLead } = useCRM();
+  const { effectiveUser, visits, branches, users, leads, brokers, addVisit, addBroker, addBooking, addNotBoughtRecord, updateLead } = useCRM();
   const [mode, setMode] = useState<"list" | "form">("list");
   const [notice, setNotice] = useState("");
   // Offered right after saving a visit of a customer: optional, one tap.
@@ -81,12 +83,10 @@ export function VisitsPage({ onOpenLead }: Props) {
   const agents = users.filter((u) => u.active && u.branchId === branchId && ["sales_agent", "team_leader", "branch_manager"].includes(u.role));
   const [agentId, setAgentId] = useState(effectiveUser.id);
   const [reason, setReason] = useState("");
-  const [outcome, setOutcome] = useState<string>("");
+  const [outcome, setOutcome] = useState<OutcomeState>(emptyOutcome);
   const [source, setSource] = useState<LeadSource>("walk_in");
   const [notes, setNotes] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
-  const [bought, setBought] = useState(false);
-  const [items, setItems] = useState<InvoiceLineItem[]>([]);
   const [followUp, setFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState("");
   const [error, setError] = useState("");
@@ -103,7 +103,7 @@ export function VisitsPage({ onOpenLead }: Props) {
   const duplicate = hasClient && clientMode === "new" && typedPhone.length >= 10 ? leads.find((l) => l.phone.replace(/\D/g, "") === typedPhone) : undefined;
   const activeBrokers = brokers.filter((b) => b.active);
   const pickedBroker = brokers.find((b) => b.id === brokerId);
-  const total = items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const total = outcome.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
   const openForm = () => {
     setType("client");
@@ -120,12 +120,10 @@ export function VisitsPage({ onOpenLead }: Props) {
     setBranchId(effectiveUser.branchId || availableBranches[0]?.id || "");
     setAgentId(effectiveUser.id);
     setReason("");
-    setOutcome("");
+    setOutcome(emptyOutcome);
     setSource("walk_in");
     setNotes("");
     setWhatsapp("");
-    setBought(false);
-    setItems([]);
     setFollowUp(false);
     setFollowUpDate("");
     setError("");
@@ -142,7 +140,9 @@ export function VisitsPage({ onOpenLead }: Props) {
     if (hasClient && (!clientName || !/^\+?[\d\s()-]{10,18}$/.test(clientPhone))) return setError("اكتب اسم العميل ورقم هاتف صحيح، أو اختار عميل مسجّل.");
     if (hasBroker && brokerMode === "existing" && !pickedBroker) return setError("اكتب اسم الوسيط واختاره من النتايج، أو أضفه كوسيط جديد.");
     if (hasBroker && brokerMode === "new" && (!brokerName.trim() || !/^\+?[\d\s()-]{10,18}$/.test(brokerPhone.trim()))) return setError("اكتب اسم الوسيط ورقم هاتفه.");
-    if (bought && hasClient && (!items.length || items.some((i) => !(i.amount > 0)))) return setError("حدد القسم اللي اشترى منه ومبلغه، أو شيل علامة «اشترى».");
+    const outErr = hasClient ? outcomeError(outcome, true) : "";
+    if (outErr) return setError(outErr);
+    if (hasClient && outcome.result === "bought" && !hasPermission(effectiveUser, "bookings.create")) return setError("حسابك مش مسموحله يسجل مشتريات. اختار «لسه» أو «استفسار فقط».");
     if (followUp && hasClient && !followUpDate) return setError("حدد تاريخ المتابعة.");
     if (!agents.some((u) => u.id === validAgent) && validAgent !== effectiveUser.id) return setError("اختار موظف نشط من نفس الفرع.");
 
@@ -151,7 +151,10 @@ export function VisitsPage({ onOpenLead }: Props) {
     const now = new Date();
     const date = now.toISOString().slice(0, 10);
     const bits = [notes.trim()];
-    const finalOutcome = bought ? "تم الشراء" : outcome || "لسه";
+    const bought = hasClient && outcome.result === "bought";
+    const finalOutcome = hasClient && outcome.result ? outcomeLabel[outcome.result] : "زيارة وسيط";
+    const followUpOn = hasClient && (followUp || bought);
+    const followUpOnDate = followUp ? followUpDate : addToDate(date, { days: 3 });
     try {
       const visit = addVisit({
         visitorType: type,
@@ -172,9 +175,10 @@ export function VisitsPage({ onOpenLead }: Props) {
         notes: bits.filter(Boolean).join(" | "),
         hasPreviousRecord: false,
         linkedLeadId: pickedLead?.id,
-        requiresFollowUp: hasClient && followUp,
+        requiresFollowUp: followUpOn && hasPermission(effectiveUser, "followups.create"),
         followUpAgentId: validAgent,
-        followUpDate: hasClient && followUp ? followUpDate : undefined,
+        followUpDate: followUpOn ? followUpOnDate : undefined,
+        followUpReason: !followUp && bought ? `متابعة بعد الشراء بتاريخ ${date}: رأيه في الخدمة وتقييمه` : undefined,
       });
       // A customer who came with a broker belongs to that broker; the purchase is credited to them.
       if (hasClient && broker && visit.linkedLeadId) {
@@ -182,23 +186,38 @@ export function VisitsPage({ onOpenLead }: Props) {
         // A brand-new customer already got the broker when the visit created them.
         if (lead && !lead.brokerId) updateLead(visit.linkedLeadId, { brokerId: broker.id, brokerName: broker.name });
       }
-      if (hasClient && bought && total > 0 && visit.linkedLeadId && hasPermission(effectiveUser, "invoices.manage")) {
-        addPurchaseInvoice({
-          date,
-          leadId: visit.linkedLeadId,
-          leadName: clientName,
-          leadPhone: clientPhone,
-          branchId,
-          branchName: branches.find((b) => b.id === branchId)?.name,
-          agentId: validAgent,
-          agentName: users.find((u) => u.id === validAgent)?.name,
-          brokerId: broker?.id,
-          brokerName: broker?.name,
-          items,
-          totalAmount: total,
-          status: "recorded",
-          notes: `مشتريات زيارة الفرع بتاريخ ${date}`,
-        });
+      // The result belongs to this visit: a purchase becomes the customer's purchase, "not yet" keeps its reason.
+      if (hasClient && visit.linkedLeadId) {
+        const leadId = visit.linkedLeadId;
+        const branchName = branches.find((b) => b.id === branchId)?.name;
+        if (bought && hasPermission(effectiveUser, "bookings.create")) {
+          const purchase = purchaseFromItems(outcome.items);
+          addBooking({
+            leadId,
+            leadName: clientName,
+            leadPhone: clientPhone,
+            branchId,
+            branchName,
+            agentId: validAgent,
+            ...purchase,
+            bookingDate: date,
+            bookingStatus: "confirmed",
+            source,
+            notes: "",
+            visitId: visit.id,
+          });
+        } else if (outcome.result === "not_yet") {
+          addNotBoughtRecord({
+            leadId,
+            leadName: clientName,
+            branchId,
+            agentId: validAgent,
+            visitId: visit.id,
+            reasons: outcome.reasons,
+            otherText: outcome.reasons.includes("other") ? outcome.otherText.trim() : undefined,
+            note: outcome.note.trim() || undefined,
+          });
+        }
       }
       setNotice(`اتسجلت الزيارة${hasClient ? ` وملف ${clientName} موجود في العملاء` : ""}.`);
       setReviewFor(hasClient && visit.linkedLeadId ? { leadId: visit.linkedLeadId, label: `زيارة ${branches.find((b) => b.id === branchId)?.name || "الفرع"} يوم ${date}` } : null);
@@ -517,7 +536,6 @@ export function VisitsPage({ onOpenLead }: Props) {
                   ← دوّر في الوسطاء المسجلين بدل كده
                 </button>
               )}
-              {type === "both" && <p className="quiet-note">لو العميل اشترى، المبلغ بيتحسب على الوسيط لأنه هو اللي دخّله.</p>}
             </div>
           )}
 
@@ -527,23 +545,25 @@ export function VisitsPage({ onOpenLead }: Props) {
             </span>
             <input placeholder="استفسار، معاينة، عرض سعر…" value={reason} onChange={(e) => setReason(e.target.value)} />
           </label>
-          {!bought && (
-            <div className="field">
-              <span>
-                نتيجة الزيارة <em>اختياري</em>
-              </span>
-              <div className="interest-chips" role="group" aria-label="نتيجة الزيارة">
-                {outcomes
-                  .filter((o) => o !== "تم الشراء")
-                  .map((o) => (
-                    <button type="button" key={o} aria-pressed={outcome === o} className={outcome === o ? "on" : ""} onClick={() => setOutcome(outcome === o ? "" : o)}>
-                      {o}
-                    </button>
-                  ))}
+        </section>
+
+        {hasClient && (
+          <section className="form-section">
+            <div className="section-title">
+              <span className="section-number">02</span>
+              <div>
+                <h2>نتيجة الزيارة</h2>
+                <p>اشترى ولا لسه؟ سجلها دلوقتي عشان تتربط بالزيارة دي.</p>
               </div>
             </div>
-          )}
-        </section>
+            <OutcomeSection
+              value={outcome}
+              onChange={setOutcome}
+              required
+              boughtHint={type === "both" ? "المبلغ بيتحسب على الوسيط لأنه هو اللي دخّله." : undefined}
+            />
+          </section>
+        )}
 
         <details className="optional-section">
           <summary>
@@ -580,25 +600,6 @@ export function VisitsPage({ onOpenLead }: Props) {
           </div>
         </details>
 
-        {hasClient && (
-          <details className="optional-section" open={bought || undefined}>
-            <summary>
-              <ShoppingBag size={18} />
-              <span>
-                المشتريات <em className="optional-tag">اختياري</em>
-              </span>
-              <ChevronDown size={16} />
-            </summary>
-            <div className="optional-content">
-              <label className="checkbox-line">
-                <input type="checkbox" checked={bought} onChange={(e) => setBought(e.target.checked)} />
-                العميل اشترى حاجة في الزيارة دي
-              </label>
-              {bought && <PurchaseCategorySelector items={items} onChange={setItems} title="مشتريات الزيارة" subtitle="دوس على القسم اللي اشترى منه وحدد دفع فيه كام بالجنيه" />}
-            </div>
-          </details>
-        )}
-
         {hasClient && hasPermission(effectiveUser, "followups.create") && (
           <details className="optional-section" open={followUp || undefined}>
             <summary>
@@ -613,6 +614,9 @@ export function VisitsPage({ onOpenLead }: Props) {
                 <input type="checkbox" checked={followUp} onChange={(e) => setFollowUp(e.target.checked)} />
                 العميل ده محتاج متابعة
               </label>
+              {outcome.result === "bought" && !followUp && (
+                <p className="quiet-note">لأنه اشترى، هتتجدول متابعة تلقائي بعد 3 أيام (رأيه في الخدمة والتقييم). علّم هنا لو عايز ميعاد تاني.</p>
+              )}
               {followUp && (
                 <label className="field" style={{ marginTop: 12 }}>
                   <span>ميعاد المتابعة</span>

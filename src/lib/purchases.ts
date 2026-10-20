@@ -41,3 +41,32 @@ export const purchaseCategoryList = [
   { id: "cat-garden", name: "بستان" },
   { id: "cat-misc", name: "متنوع" },
 ] as const;
+
+const categoryDepartment: Record<string, Department> = {
+  "cat-construction": "construction",
+  "cat-decor": "decor",
+  "cat-garden": "garden",
+  "cat-misc": "general",
+};
+
+/** The booking fields for what a customer bought, from the amounts picked per category. */
+export function purchaseFromItems(items: { categoryId: string; categoryName: string; amount: number }[]) {
+  const amounts: Partial<Record<Department, number>> = {};
+  const names: string[] = [];
+  for (const i of items) {
+    const dept = categoryDepartment[i.categoryId] ?? (departmentIds.includes(i.categoryId as Department) ? (i.categoryId as Department) : "general");
+    const amount = Number(i.amount);
+    if (!(amount > 0)) continue;
+    amounts[dept] = (amounts[dept] ?? 0) + amount;
+    names.push(i.categoryName);
+  }
+  const entries = Object.entries(amounts) as [Department, number][];
+  const primary = [...entries].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "general";
+  return {
+    department: primary,
+    departmentAmounts: amounts,
+    amount: entries.reduce((s, [, v]) => s + v, 0),
+    courseId: entries.length === 1 ? `ps-${primary}` : "ps-multi",
+    courseName: [...new Set(names)].join(" + "),
+  };
+}

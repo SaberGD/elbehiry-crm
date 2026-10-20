@@ -1,6 +1,6 @@
 import { hasPermission, isDirector, withPermissions } from "./permissions";
 import type { CRMContextType } from "../context/CRMContext";
-import type { User, UserRole } from "../types/crm";
+import type { Lead, User, UserRole } from "../types/crm";
 import * as access from "./access";
 import { isComplaint } from "./reviews";
 
@@ -405,12 +405,14 @@ export function createWorkspace(raw: CRMContextType) {
       raw.updateFollowUpResult(id, ...args);
     }) as CRMContextType["updateFollowUpResult"],
     addBooking: ((data) => {
-      const lead = findLead(data.leadId);
+      // A customer created a moment ago (by a visit or a registration) is not in the list yet.
+      const lead = raw.leads.some((l) => l.id === data.leadId) ? findLead(data.leadId) : pendingCustomers.get(data.leadId);
+      require(!!lead);
       require(
         hasPermission(actor, "bookings.create") &&
-          (!access.isSales(actor) || lead.assignedAgentId === actor.id),
+          (!access.isSales(actor) || lead!.assignedAgentId === actor.id),
       );
-      require(data.branchId === lead.branchId);
+      require(data.branchId === lead!.branchId);
       requireAssignment(data.branchId, data.agentId);
       return raw.addBooking(data);
     }) as CRMContextType["addBooking"],
@@ -446,9 +448,11 @@ export function createWorkspace(raw: CRMContextType) {
       raw.addReviewNote(requestId, text.trim(), kind);
     }) as CRMContextType["addReviewNote"],
     addNotBoughtRecord: ((data) => {
-      const lead = findLead(data.leadId);
-      require(access.canEditCustomer(actor, lead));
-      require(data.branchId === lead.branchId && data.reasons.length > 0);
+      const known = raw.leads.some((l) => l.id === data.leadId);
+      const lead = known ? findLead(data.leadId) : pendingCustomers.get(data.leadId);
+      require(!!lead);
+      require(known ? access.canEditCustomer(actor, lead as Lead) : !access.isSales(actor) || lead!.assignedAgentId === actor.id);
+      require(data.branchId === lead!.branchId && data.reasons.length > 0);
       return raw.addNotBoughtRecord(data);
     }) as CRMContextType["addNotBoughtRecord"],
     completeBooking: ((id, deliveredAt) => {
