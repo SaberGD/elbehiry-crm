@@ -6,7 +6,7 @@
  *   GET  ?ping=1                                      -> {"configured": bool}
  *
  * The Gemini key never reaches the browser. It lives in a PHP file OUTSIDE public_html:
- *   <account>/domains/engsaber.space/crm-ai-secrets.php
+ *   <account>/domains/<site>/crm-ai-secrets.php (next to public_html)
  *   <?php return ['gemini_key' => '...', 'model' => 'gemini-flash-latest'];
  * Every request must carry a valid Firebase ID token (a signed-in staff member).
  */
@@ -30,7 +30,8 @@ function fail(int $code, string $error): void {
 /** Folders searched for crm-ai-secrets.php, all outside the web root. */
 function secret_paths(): array {
     $paths = [];
-    foreach ([3, 4, 5] as $up) {
+    // Docroot is <account>/domains/<site>/public_html, so level 2 is the site folder (outside the web root).
+    foreach ([2, 3, 4, 5] as $up) {
         $paths[] = dirname(__DIR__, $up) . '/crm-ai-secrets.php';
     }
     $home = getenv('HOME');

@@ -8,7 +8,7 @@
 ## الإعداد (مرة واحدة)
 1. أنشئ مفتاحًا من https://aistudio.google.com/apikey
 2. من hPanel ← File Manager، أنشئ الملف **خارج** `public_html`:
-   `domains/engsaber.space/crm-ai-secrets.php`
+   `domains/<اسم الموقع>/crm-ai-secrets.php` (بجانب `public_html` وليس داخله)، مثلًا `domains/dev-elbehiry.engsaber.space/` لموقع dev
    ```php
    <?php
    return [
@@ -16,7 +16,7 @@
      'model'      => 'gemini-flash-latest', // اختياري
    ];
    ```
-3. لا تضع المفتاح في الريبو ولا في الكود. الملف يخدم موقعَي dev وmain معًا.
+3. لا تضع المفتاح في الريبو ولا في الكود. كل موقع يقرأ ملفه من فولدره (أو من `domains/` ليخدم المواقع كلها).
 
 ## الأمان
 - المفتاح يبقى على السيرفر فقط، ولا يصل للمتصفح.
