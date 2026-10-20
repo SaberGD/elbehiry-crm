@@ -43,7 +43,7 @@ test("WhatsApp numbers and message", () => {
   const url = whatsappUrl("01012345678", "أهلًا");
   assert.ok(url.startsWith("https://wa.me/201012345678?text="));
   const msg = requestMessage({ name: "م. أحمد علي" }, "زيارة فرع القاهرة", "https://x/review/?t=abc");
-  assert.ok(msg.includes("أحمد") && !msg.includes("م. أحمد") && msg.includes("https://x/review/?t=abc"));
+  assert.ok(msg.includes("أهلًا م. أحمد") && !msg.includes("علي") && msg.includes("https://x/review/?t=abc"));
 });
 
 test("one reminder after 48h, then the request expires; answered/cancelled stop everything", () => {

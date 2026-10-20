@@ -1,4 +1,5 @@
 import type { Lead, ReviewNote, ReviewRequest } from "../types/crm";
+import { greetingName } from "./names";
 
 export const REVIEW_REMINDER_HOURS = 48;
 const HOUR = 3_600_000;
@@ -25,7 +26,7 @@ export function whatsappUrl(phone: string, text: string): string {
   return `https://wa.me/${whatsappNumber(phone)}?text=${encodeURIComponent(text)}`;
 }
 
-const firstName = (name: string) => name.replace(/^(م\.|د\.|أ\.|الحاج|المهندس|الدكتور|الأستاذ)\s*/u, "").split(/\s+/)[0] || name;
+const firstName = greetingName;
 
 export function requestMessage(lead: Pick<Lead, "name">, subjectLabel: string, link: string): string {
   return `أهلًا ${firstName(lead.name)} 🌷\nشكرًا إنك زرتنا (${subjectLabel}) في البحيري للدهانات والديكور.\nرأيك يهمنا جدًا، ممكن تقيّم تجربتك في دقيقة واحدة؟ ولو عندك أي ملاحظة أو شكوى اكتبها لنا وهنتابعها فورًا:\n${link}`;

@@ -1,3 +1,4 @@
+import { FilterBar } from "../components/common/FilterBar";
 import { canManageCatalog } from '../lib/access';
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
@@ -195,30 +196,32 @@ export const BrokersPage: React.FC = () => {
       </div>
 
       {/* Search & Filters */}
-      <div className="glass-card p-4 rounded-2xl shadow-xs flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute right-3 dir-ltr:right-auto dir-ltr:left-3 top-3 text-slate-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="ابحث بالاسم، الهاتف، أو الوصف..."
-            className="w-full pr-9 dir-ltr:pr-3 dir-ltr:pl-9 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-          />
-        </div>
-
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs font-semibold"
-        >
-          <option value="all">كافة أنواع الوسطاء</option>
-          <option value="engineering_company">شركة استشارات هندسية</option>
-          <option value="contractor">شركة مقاولات وتنفيذ</option>
-          <option value="individual">وسيط فردي / استشاري</option>
-          <option value="company">شركة وساطة عقارية</option>
-        </select>
-      </div>
+      <section className="panel">
+        <FilterBar
+          search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'ابحث بالاسم أو الهاتف أو الوصف…' }}
+          selects={[
+            {
+              id: 'type',
+              label: 'نوع الوسيط',
+              value: typeFilter,
+              onChange: setTypeFilter,
+              allLabel: 'كل أنواع الوسطاء',
+              primary: true,
+              options: [
+                { value: 'engineering_company', label: 'شركة استشارات هندسية' },
+                { value: 'contractor', label: 'شركة مقاولات وتنفيذ' },
+                { value: 'individual', label: 'وسيط فردي / استشاري' },
+                { value: 'company', label: 'شركة وساطة عقارية' },
+              ],
+            },
+          ]}
+          count={{ shown: filteredBrokers.length, noun: 'وسيط' }}
+          onReset={() => {
+            setSearchTerm('');
+            setTypeFilter('all');
+          }}
+        />
+      </section>
 
       {/* Brokers Grid Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -35,7 +35,6 @@ import { TeamsPage } from "./pages/TeamsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { InvoicesPage } from "./pages/InvoicesPage";
 import { BrokersPage } from "./pages/BrokersPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
@@ -153,8 +152,6 @@ const AppContent: React.FC = () => {
             {activeTab === "bookings" && (
               <BookingsPage onOpenLead={handleOpenLead} />
             )}
-
-            {activeTab === "invoices" && <InvoicesPage />}
 
             {activeTab === "brokers" && <BrokersPage />}
 

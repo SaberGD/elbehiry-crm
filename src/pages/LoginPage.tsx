@@ -15,7 +15,7 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     dir="rtl"
     className="min-h-screen bg-[#07090e] flex items-center justify-center p-4 text-[#dfe2ee] font-sans"
   >
-    <div className="w-full max-w-sm bg-[#181c24] border border-white/10 rounded-2xl p-6 shadow-2xl">
+    <div className="w-full max-w-sm bg-[#1d1d1c] border border-white/10 rounded-2xl p-6 shadow-2xl">
       <div className="flex justify-center mb-5">
         <ElBeheryLogo size="xl" />
       </div>

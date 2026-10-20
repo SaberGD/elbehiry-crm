@@ -122,7 +122,6 @@ export function Sidebar({
           {nav("visits", "الزيارات والمعاينات", Compass)}
           <p className="nav-group-label">المبيعات</p>
           {nav("bookings", "الحجوزات والتعاقدات", ShoppingBag)}
-          {nav("invoices", "الفواتير", FileText)}
           {nav("feedback", "التقييمات والشكاوى", MessageSquareWarning, feedbackCount)}
           {nav("overview", "كبار العملاء والوسطاء", Award)}
           {nav("brokers", "الوسطاء والشركاء", UserRound)}

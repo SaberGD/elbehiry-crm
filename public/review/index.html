@@ -61,7 +61,8 @@ fetch(BASE+token+"?key="+KEY).then(function(r){
 }).then(function(doc){
   if(!doc)return;
   var f=doc.fields||{},status=val(f.status);
-  var name=String(val(f.leadName)||"").replace(/^(م\.|د\.|أ\.|الحاج|المهندس|الدكتور|الأستاذ)\s*/,"").split(/\s+/)[0];
+  var full=String(val(f.leadName)||"").trim(),tm=full.match(/^(م\.|د\.|أ\.|الحاج|الحاجة|السيد|السيدة|المستشار|الكابتن|المهندس|المهندسة|الدكتور|الدكتورة|الأستاذ|الأستاذة)\s*/),
+  name=(tm?tm[1]+" ":"")+full.slice(tm?tm[0].length:0).split(/\s+/)[0];
   if(status==="answered"){show("💚","شكرًا ليك","تقييمك وصلنا بالفعل، ورأيك فارق معانا.");return}
   if(status==="cancelled"){show("✅","الطلب ده اتقفل","شكرًا لوقتك.");return}
   render(name,String(val(f.subjectLabel)||""),String(val(f.branchName)||""));

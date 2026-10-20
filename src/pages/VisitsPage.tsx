@@ -1,3 +1,6 @@
+import { departmentNames } from "../lib/presentation";
+import { FilterBar, inDateRange } from "../components/common/FilterBar";
+import { NameWithTitle } from "../components/common/NameWithTitle";
 import { hasPermission } from "../lib/permissions";
 import { canCreateCustomer } from "../lib/access";
 import React, { useState, useMemo, useEffect } from "react";
@@ -69,6 +72,21 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
   >([]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [fBranch, setFBranch] = useState("all");
+  const [fAgent, setFAgent] = useState("all");
+  const [fDept, setFDept] = useState("all");
+  const [fOutcome, setFOutcome] = useState("all");
+  const [fFrom, setFFrom] = useState("");
+  const [fTo, setFTo] = useState("");
+  const resetFilters = () => {
+    setSearchQuery("");
+    setFBranch("all");
+    setFAgent("all");
+    setFDept("all");
+    setFOutcome("all");
+    setFFrom("");
+    setFTo("");
+  };
 
   // Search existing customers for pre-filling visitor
   const matchingCustomers = useMemo(() => {
@@ -209,12 +227,19 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
   );
 
   const filteredVisits = visits.filter((v) => {
+    const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
-      v.visitorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.phone.includes(searchQuery) ||
-      v.reason.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
+      !q || v.visitorName.toLowerCase().includes(q) || v.phone.includes(q) || v.reason.toLowerCase().includes(q) || (v.outcome || "").toLowerCase().includes(q);
+    return (
+      matchesSearch &&
+      (fBranch === "all" || v.branchId === fBranch) &&
+      (fAgent === "all" || v.receivedByAgentId === fAgent) &&
+      (fDept === "all" || v.department === fDept) &&
+      (fOutcome === "all" || v.outcome === fOutcome) &&
+      inDateRange(v.date, fFrom, fTo)
+    );
   });
+  const uniq = <T,>(list: T[]) => [...new Set(list)];
 
   return (
     <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-150">
@@ -292,19 +317,7 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                اسم الزائر الكامل *
-              </label>
-              <input
-                type="text"
-                required
-                value={visitorName}
-                onChange={(e) => setVisitorName(e.target.value)}
-                placeholder="أدخل اسم الشخص..."
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-              />
-            </div>
+            <NameWithTitle value={visitorName} onChange={setVisitorName} label="اسم الزائر" required placeholder="أدخل اسم الشخص..." fieldName="visitorName" />
 
             <div>
               <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -518,16 +531,18 @@ export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
       {/* Search & Register Table */}
       <div className="glass-card rounded-2xl shadow-xs overflow-hidden">
         <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
-          <div className="relative max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 dir-ltr:right-auto dir-ltr:left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="البحث في الزيارات باسم الزائر أو الهاتف أو النتيجة..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pr-9 dir-ltr:pr-3 dir-ltr:pl-9 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs outline-none"
-            />
-          </div>
+          <FilterBar
+            search={{ value: searchQuery, onChange: setSearchQuery, placeholder: "ابحث باسم الزائر أو الهاتف أو النتيجة…" }}
+            selects={[
+              { id: "branch", label: "الفرع", value: fBranch, onChange: setFBranch, allLabel: "كل الفروع", primary: true, options: uniq(visits.map((v) => v.branchId)).map((id) => ({ value: id, label: visits.find((v) => v.branchId === id)?.branchName || id })) },
+              { id: "agent", label: "الموظف المستقبِل", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", options: uniq(visits.map((v) => v.receivedByAgentId)).map((id) => ({ value: id, label: visits.find((v) => v.receivedByAgentId === id)?.receivedByAgentName || id })) },
+              { id: "dept", label: "القسم", value: fDept, onChange: setFDept, allLabel: "كل الأقسام", options: uniq(visits.map((v) => v.department)).map((d) => ({ value: d, label: departmentNames[d] || d })) },
+              { id: "outcome", label: "نتيجة الزيارة", value: fOutcome, onChange: setFOutcome, allLabel: "كل النتائج", options: uniq(visits.map((v) => v.outcome).filter(Boolean)).map((o) => ({ value: o, label: o })) },
+            ]}
+            dates={{ from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, label: "تاريخ الزيارة" }}
+            count={{ shown: filteredVisits.length, noun: "زيارة" }}
+            onReset={resetFilters}
+          />
         </div>
 
         <div className="overflow-x-auto">

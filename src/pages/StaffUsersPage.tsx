@@ -1,3 +1,4 @@
+import { FilterBar } from "../components/common/FilterBar";
 import { authErrorMessage } from "../context/AuthContext";
 import { resetStaffPassword } from "../lib/adminClient";
 import {
@@ -381,76 +382,25 @@ export const StaffUsersPage: React.FC = () => {
       {/* TAB 1: EMPLOYEES LIST */}
       {activeTab === "employees" && (
         <div className="space-y-4">
-          {/* Filters Bar */}
-          <div className="glass-card p-4 rounded-2xl shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 dir-ltr:right-auto dir-ltr:left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="بحث بالاسم أو البريد أو الهاتف..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pr-9 dir-ltr:pr-3 dir-ltr:pl-9 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs outline-none"
-              />
-            </div>
-
-            <div>
-              <select
-                value={selectedBranchFilter}
-                onChange={(e) => setSelectedBranchFilter(e.target.value)}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-              >
-                <option value="">جميع الفروع ({branches.length})</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <select
-                value={selectedRoleFilter}
-                onChange={(e) => setSelectedRoleFilter(e.target.value)}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-              >
-                <option value="">جميع الأدوار الوظيفية</option>
-                {positionRoles.map((r) => (
-                  <option key={r} value={r}>
-                    {positionNames[r]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <select
-                value={selectedDeptFilter}
-                onChange={(e) => setSelectedDeptFilter(e.target.value)}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-              >
-                <option value="">جميع الأقسام</option>
-                {departmentEntities.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-              >
-                <option value="all">جميع الحالات</option>
-                <option value="active">مفعل فقط</option>
-                <option value="inactive">معطل فقط</option>
-              </select>
-            </div>
-          </div>
+          <section className="panel">
+            <FilterBar
+              search={{ value: searchQuery, onChange: setSearchQuery, placeholder: "بحث بالاسم أو البريد أو الهاتف…" }}
+              selects={[
+                { id: "branch", label: "الفرع", value: selectedBranchFilter, onChange: setSelectedBranchFilter, all: "", allLabel: "كل الفروع", primary: true, options: branches.map((b) => ({ value: b.id, label: b.name })) },
+                { id: "role", label: "الدور الوظيفي", value: selectedRoleFilter, onChange: setSelectedRoleFilter, all: "", allLabel: "كل الأدوار", primary: true, options: positionRoles.map((r) => ({ value: r, label: positionNames[r] })) },
+                { id: "dept", label: "القسم", value: selectedDeptFilter, onChange: setSelectedDeptFilter, all: "", allLabel: "كل الأقسام", options: departmentEntities.map((d) => ({ value: d.id, label: d.name })) },
+                { id: "status", label: "الحالة", value: statusFilter, onChange: (v) => setStatusFilter(v as "all" | "active" | "inactive"), allLabel: "كل الحالات", options: [{ value: "active", label: "مفعل فقط" }, { value: "inactive", label: "معطل فقط" }] },
+              ]}
+              count={{ shown: filteredUsers.length, noun: "موظف" }}
+              onReset={() => {
+                setSearchQuery("");
+                setSelectedBranchFilter("");
+                setSelectedRoleFilter("");
+                setSelectedDeptFilter("");
+                setStatusFilter("all");
+              }}
+            />
+          </section>
 
           {/* Employee Table */}
           <div className="glass-card rounded-2xl shadow-xs overflow-hidden">

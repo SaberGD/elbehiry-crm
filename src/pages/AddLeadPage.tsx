@@ -5,6 +5,7 @@ import {
   canContactCustomer,
   canScheduleFollowUp,
 } from "../lib/access";
+import { NameWithTitle } from "../components/common/NameWithTitle";
 import { hasPermission } from "../lib/permissions";
 import { useState } from "react";
 import {
@@ -283,19 +284,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
             </div>
           </div>
           <div className="field-grid">
-            <label className="field">
-              <span>
-                اسم العميل <em>مطلوب</em>
-              </span>
-              <input
-                name="customerName"
-                autoComplete="name"
-                required
-                placeholder="الاسم اللي هنناديه بيه"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
+            <NameWithTitle value={name} onChange={setName} required />
             <label className="field">
               <span>
                 رقم الهاتف <em>مطلوب</em>

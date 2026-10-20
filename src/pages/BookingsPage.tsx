@@ -1,7 +1,8 @@
 import { canAccessPage } from "../lib/access";
 import { hasPermission } from "../lib/permissions";
 import { useState } from "react";
-import { Search, ArrowUpLeft, ShoppingBag, PackageCheck, X } from "lucide-react";
+import { ArrowUpLeft, ShoppingBag, PackageCheck, X } from "lucide-react";
+import { FilterBar, inDateRange } from "../components/common/FilterBar";
 import { useCRM } from "../context/CRMContext";
 import { formatMoney, today, departmentNames } from "../lib/presentation";
 import { departmentIds, bookingSplit } from "../lib/purchases";
@@ -19,16 +20,37 @@ export function BookingsPage({ onOpenLead }: Props) {
   const dialogRef = useDialog(!!delivering, () => setDelivering(null));
   const [query, setQuery] = useState("");
   const [dept, setDept] = useState("all");
+  const [fBranch, setFBranch] = useState("all");
+  const [fAgent, setFAgent] = useState("all");
+  const [fState, setFState] = useState("all");
+  const [fFrom, setFFrom] = useState("");
+  const [fTo, setFTo] = useState("");
+  const resetFilters = () => {
+    setQuery("");
+    setDept("all");
+    setFBranch("all");
+    setFAgent("all");
+    setFState("all");
+    setFFrom("");
+    setFTo("");
+  };
   const visible = bookings;
-  const active = visible.filter((b) => b.bookingStatus !== "cancelled");
   const rows = visible.filter(
     (b) =>
       (dept === "all" ||
         bookingSplit(b)[dept as keyof ReturnType<typeof bookingSplit>] > 0) &&
+      (fBranch === "all" || b.branchId === fBranch) &&
+      (fAgent === "all" || b.agentId === fAgent) &&
+      (fState === "all" ||
+        (fState === "cancelled" ? b.bookingStatus === "cancelled" : b.bookingStatus !== "cancelled" && (fState === "delivered" ? !!b.deliveredAt : !b.deliveredAt))) &&
+      inDateRange(b.bookingDate, fFrom, fTo) &&
       [b.leadName, b.leadPhone, b.courseName].some((v) =>
-        v.includes(query.trim()),
+        (v || "").includes(query.trim()),
       ),
   );
+  // The totals follow the filters, so what you see always adds up.
+  const active = rows.filter((b) => b.bookingStatus !== "cancelled");
+  const uniq = (list: string[]) => [...new Set(list.filter(Boolean))];
   return (
     <div>
       <div className="page-heading">
@@ -56,29 +78,18 @@ export function BookingsPage({ onOpenLead }: Props) {
         </div>
       </div>
       <section className="panel">
-        <div className="filter-toolbar">
-          <label className="directory-search">
-            <Search size={17} />
-            <input
-              aria-label="البحث في التعاقدات"
-              placeholder="اسم العميل أو رقم الهاتف أو الخدمة…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <select
-            aria-label="القسم"
-            value={dept}
-            onChange={(e) => setDept(e.target.value)}
-          >
-            <option value="all">كل الأقسام</option>
-            {departmentIds.map((id) => (
-              <option key={id} value={id}>
-                {departmentNames[id]}
-              </option>
-            ))}
-          </select>
-        </div>
+        <FilterBar
+          search={{ value: query, onChange: setQuery, placeholder: "اسم العميل أو رقم الهاتف أو الخدمة…" }}
+          selects={[
+            { id: "dept", label: "القسم", value: dept, onChange: setDept, allLabel: "كل الأقسام", primary: true, options: departmentIds.map((id) => ({ value: id, label: departmentNames[id] })) },
+            { id: "state", label: "حالة التعاقد", value: fState, onChange: setFState, allLabel: "كل الحالات", primary: true, options: [{ value: "pending", label: "لسه ما اتسلّمش" }, { value: "delivered", label: "تم التسليم" }, { value: "cancelled", label: "ملغي" }] },
+            { id: "branch", label: "الفرع", value: fBranch, onChange: setFBranch, allLabel: "كل الفروع", options: uniq(visible.map((b) => b.branchId)).map((id) => ({ value: id, label: visible.find((b) => b.branchId === id)?.branchName || branches.find((x) => x.id === id)?.name || id })) },
+            { id: "agent", label: "الموظف", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", options: uniq(visible.map((b) => b.agentId)).map((id) => ({ value: id, label: visible.find((b) => b.agentId === id)?.agentName || id })) },
+          ]}
+          dates={{ from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, label: "تاريخ التعاقد" }}
+          count={{ shown: rows.length, noun: "تعاقد" }}
+          onReset={resetFilters}
+        />
         {rows.length ? (
           <div className="overflow-x-auto">
             <table className="data-table">

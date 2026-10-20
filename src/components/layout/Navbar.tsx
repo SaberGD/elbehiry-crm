@@ -323,7 +323,7 @@ export function Navbar({
             aria-label="تغيير كلمة المرور"
             onClick={(e) => e.stopPropagation()}
             dir="rtl"
-            style={{ width: "min(380px,100%)", background: "#181c24", color: "#dfe2ee", borderRadius: 16, padding: 24 }}
+            style={{ width: "min(380px,100%)", background: "#1d1d1c", color: "#dfe2ee", borderRadius: 16, padding: 24 }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <strong>تغيير كلمة المرور</strong>

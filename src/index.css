@@ -2133,7 +2133,7 @@
   transform-origin: bottom left; animation: zaki-open .38s cubic-bezier(.2,1.2,.4,1) both;
 }
 @keyframes zaki-open { from { opacity: 0; transform: translateY(24px) scale(.82); } to { opacity: 1; transform: none; } }
-:root.dark .zaki-panel { background: #181c24; }
+:root.dark .zaki-panel { background: #1d1d1c; }
 .zaki-head { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 1rem; background: #c8232b; color: #fff; }
 .zaki-head div { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
 .zaki-head small { opacity: .85; font-size: .72rem; }
@@ -2192,7 +2192,7 @@
 .zaki-panel { border-radius: 22px; border: 1px solid var(--line, rgba(128,128,128,.3)); box-shadow: 0 24px 70px rgba(8,14,32,.38); }
 .zaki-head {
   position: relative; min-height: 108px; padding: 0.9rem 1.1rem 0; align-items: flex-start; gap: .8rem; overflow: hidden;
-  background: radial-gradient(120% 140% at 100% 100%, rgba(200,35,43,.55) 0%, rgba(200,35,43,0) 55%), linear-gradient(135deg, #0e1730, #1a2748);
+  background: radial-gradient(120% 140% at 100% 100%, rgba(200,35,43,.6) 0%, rgba(200,35,43,0) 55%), linear-gradient(135deg, #131010, #26201f);
 }
 .zaki-head::after { content: ""; position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: #c8232b; }
 .zaki-head-art { order: -1; align-self: flex-end; background: none !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; margin-bottom: 0; margin-inline-end: -4px; flex-shrink: 0; }
@@ -2247,3 +2247,6 @@
 .review-title { font-size: 1rem; font-weight: 700; margin: .5rem 0 .1rem; }
 .review-input { width: 100%; padding: .55rem .75rem; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: inherit; font: inherit; }
 .review-input:focus { outline: none; border-color: #c8232b; box-shadow: 0 0 0 3px rgba(200,35,43,.12); }
+
+/* Zaki's floating button: white disc, then the character, then the red label, then the name on top */
+.zaki-fab-label { position: relative; z-index: 3; margin-top: -20px; }

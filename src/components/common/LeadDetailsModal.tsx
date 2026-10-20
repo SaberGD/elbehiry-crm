@@ -43,6 +43,7 @@ import {
 } from "../../lib/presentation";
 import { useDialog } from "./useDialog";
 import { CustomerRatingModal } from "./CustomerRatingModal";
+import { NameWithTitle } from "./NameWithTitle";
 import { ReviewCard } from "../reviews/ReviewCard";
 import { VoiceNoteField } from "./VoiceNoteField";
 import { PurchaseOutcomeDialog } from "./PurchaseOutcomeDialog";
@@ -339,7 +340,6 @@ export function LeadDetailsModal({
     followups: `المتابعات (${leadFollowUps.length})`,
     visits: `الزيارات (${leadVisits.length})`,
     bookings: `التعاقدات (${leadBookings.length})`,
-    invoices: `الفواتير (${invoices.length})`,
     reviews: `التقييمات (${leadReviews.length})`,
   };
   return (
@@ -568,16 +568,7 @@ export function LeadDetailsModal({
               <div className="field-grid">
                 {action === "edit" && (
                   <>
-                    <label className="field">
-                      <span>
-                        اسم العميل <em>مطلوب</em>
-                      </span>
-                      <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        autoComplete="name"
-                      />
-                    </label>
+                    <NameWithTitle value={name} onChange={setName} required fieldName="editCustomerName" />
                     <label className="field">
                       <span>
                         رقم الهاتف <em>مطلوب</em>
@@ -1012,38 +1003,6 @@ export function LeadDetailsModal({
                 <div className="empty-state">
                   <h3>لسه ما اتطلبش تقييم من العميل</h3>
                   <p>اضغط «طلب تقييم» من الأزرار فوق، وهيوصله لينك على واتساب عن زيارته أو تعاقده.</p>
-                </div>
-              ))}
-            {tab === "invoices" &&
-              (invoices.length ? (
-                invoices.map((i) => (
-                  <article className="profile-record" key={i.id}>
-                    <span className="status-pill">
-                      {
-                        {
-                          recorded: "مسجلة",
-                          draft: "مسجلة",
-                          paid: "مسجلة",
-                          partial: "مسجلة",
-                          cancelled: "ملغاة",
-                        }[i.status]
-                      }
-                    </span>
-                    <h3>{i.invoiceNumber}</h3>
-                    <p>
-                      {formatMoney(i.totalAmount)} ج.م · {i.date}
-                    </p>
-                    {i.items.map((item, index) => (
-                      <p key={index}>
-                        {item.categoryName}: {formatMoney(item.amount)} ج.م
-                      </p>
-                    ))}
-                  </article>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <h3>مفيش فواتير مرتبطة بالعميل</h3>
-                  <p>الفواتير المتاحة لك والمرتبطة بهذا العميل تظهر هنا.</p>
                 </div>
               ))}
           </div>

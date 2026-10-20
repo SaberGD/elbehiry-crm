@@ -16,6 +16,7 @@ import { followUpStatus, phoneNumber } from "../lib/presentation";
 import type { FollowUp } from "../types/crm";
 import { useDialog } from "../components/common/useDialog";
 import { milestoneLabel } from "../lib/postSale";
+import { FilterBar, inDateRange } from "../components/common/FilterBar";
 import { ReviewCard } from "../components/reviews/ReviewCard";
 import { reviewPhase } from "../lib/reviews";
 import { VoiceNoteField } from "../components/common/VoiceNoteField";
@@ -38,11 +39,21 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
   const [rating, setRating] = useState(0);
   const [ratingComment, setRatingComment] = useState("");
   const [referralNote, setReferralNote] = useState("");
+  const [q, setQ] = useState("");
+  const [fBranch, setFBranch] = useState("all");
+  const [fAgent, setFAgent] = useState("all");
+  const [fFrom, setFFrom] = useState("");
+  const [fTo, setFTo] = useState("");
   const isPostSale = (f: FollowUp) => f.category === "post_sale";
   const visible = followUps.filter(
     (f) =>
-      kind === "all" || (kind === "post_sale" ? isPostSale(f) : !isPostSale(f)),
+      (kind === "all" || (kind === "post_sale" ? isPostSale(f) : !isPostSale(f))) &&
+      (!q.trim() || f.leadName.includes(q.trim()) || (f.leadPhone || "").includes(q.trim()) || (f.reason || "").includes(q.trim())) &&
+      (fBranch === "all" || f.branchId === fBranch) &&
+      (fAgent === "all" || f.assignedAgentId === fAgent) &&
+      inDateRange(f.scheduledAt, fFrom, fTo),
   );
+  const uniq = (l: string[]) => [...new Set(l.filter(Boolean))];
   const rated = followUps.filter(
     (f) => isPostSale(f) && f.status === "completed" && f.satisfactionRating,
   );
@@ -120,6 +131,21 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
         </section>
       )}
       <section className="panel">
+        <FilterBar
+          search={{ value: q, onChange: setQ, placeholder: "ابحث باسم العميل أو رقمه أو سبب المتابعة…" }}
+          selects={[
+            { id: "branch", label: "الفرع", value: fBranch, onChange: setFBranch, allLabel: "كل الفروع", primary: true, options: uniq(followUps.map((f) => f.branchId)).map((id) => ({ value: id, label: branches.find((b) => b.id === id)?.name || id })) },
+            { id: "agent", label: "الموظف", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", primary: !isSales(effectiveUser), options: uniq(followUps.map((f) => f.assignedAgentId)).map((id) => ({ value: id, label: followUps.find((f) => f.assignedAgentId === id)?.assignedAgentName || id })) },
+          ]}
+          dates={{ from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, label: "موعد المتابعة" }}
+          onReset={() => {
+            setQ("");
+            setFBranch("all");
+            setFAgent("all");
+            setFFrom("");
+            setFTo("");
+          }}
+        />
         <div
           className="tab-filter"
           role="group"

@@ -5,6 +5,7 @@ import {
   isSales,
 } from "../lib/access";
 import { useEffect, useState } from "react";
+import { FilterBar } from "../components/common/FilterBar";
 import {
   Plus,
   Search,
@@ -142,102 +143,23 @@ export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
         )}
       </div>
       <section className="panel">
-        <div className="filter-toolbar">
-          <label className="directory-search">
-            <Search size={18} />
-            <input
-              type="search"
-              aria-label="البحث في العملاء"
-              placeholder="اسم العميل أو رقم الهاتف…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <select
-            aria-label="حالة العميل"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="all">كل الحالات</option>
-            {Object.entries(statusNames).map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            className="btn-secondary"
-            onClick={exportCsv}
-            disabled={!filtered.length}
-            aria-label="تصدير العملاء CSV"
-          >
-            <Download size={16} />
-            <span className="desktop-only">تصدير</span>
-          </button>
-        </div>
-        <details className="advanced-filters">
-          <summary>
-            <SlidersHorizontal size={14} />
-            تصفية إضافية
-            <ChevronDown size={13} />
-          </summary>
-          <div className="field-grid">
-            {isManagement(effectiveUser) && (
-              <label className="field">
-                <span>الفرع</span>
-                <select
-                  value={branch}
-                  onChange={(e) => setBranch(e.target.value)}
-                >
-                  <option value="all">كل الفروع المتاحة</option>
-                  {branches
-                    .filter((b) => visible.some((l) => l.branchId === b.id))
-                    .map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            )}
-            <label className="field">
-              <span>الموظف المسؤول</span>
-              <select value={agent} onChange={(e) => setAgent(e.target.value)}>
-                <option value="all">كل الموظفين المتاحين</option>
-                {users
-                  .filter((u) =>
-                    visible.some((l) => l.assignedAgentId === u.id),
-                  )
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>مصدر العميل</span>
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-              >
-                <option value="all">كل المصادر</option>
-                {Object.entries(sourceNames).map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </details>
-        <div className="filter-count">
-          <span>
-            {filtered.length} عميل{" "}
-            {hasFilters ? "مطابق للبحث" : "داخل نطاق عملك"}
-          </span>
-          {hasFilters && <button onClick={clear}>مسح الفلاتر</button>}
-        </div>
+        <FilterBar
+          search={{ value: query, onChange: setQuery, placeholder: "اسم العميل أو رقم الهاتف…" }}
+          selects={[
+            { id: "status", label: "حالة العميل", value: status, onChange: setStatus, allLabel: "كل الحالات", primary: true, options: Object.entries(statusNames).map(([id, label]) => ({ value: id, label })) },
+            { id: "branch", label: "الفرع", value: branch, onChange: setBranch, allLabel: "كل الفروع المتاحة", options: isManagement(effectiveUser) ? branches.filter((b) => visible.some((l) => l.branchId === b.id)).map((b) => ({ value: b.id, label: b.name })) : [] },
+            { id: "agent", label: "الموظف المسؤول", value: agent, onChange: setAgent, allLabel: "كل الموظفين المتاحين", options: users.filter((u) => visible.some((l) => l.assignedAgentId === u.id)).map((u) => ({ value: u.id, label: u.name })) },
+            { id: "source", label: "مصدر العميل", value: source, onChange: setSource, allLabel: "كل المصادر", options: Object.entries(sourceNames).map(([id, label]) => ({ value: id, label })) },
+          ]}
+          count={{ shown: filtered.length, noun: "عميل" }}
+          onReset={clear}
+          actions={
+            <button className="btn-secondary" onClick={exportCsv} disabled={!filtered.length} aria-label="تصدير العملاء CSV">
+              <Download size={16} />
+              <span className="desktop-only">تصدير</span>
+            </button>
+          }
+        />
         {notice && (
           <div className="notice" role="status">
             {notice}

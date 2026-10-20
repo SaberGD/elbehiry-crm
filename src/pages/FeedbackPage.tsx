@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useCRM } from "../context/CRMContext";
 import { ReviewCard } from "../components/reviews/ReviewCard";
+import { FilterBar, inDateRange } from "../components/common/FilterBar";
 import { averageRating, complaintState, isComplaint, reviewPhase } from "../lib/reviews";
 
 type Tab = "complaints" | "all" | "waiting";
@@ -9,6 +10,12 @@ type Tab = "complaints" | "all" | "waiting";
 export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void }) {
   const { reviewRequests, reviewNotes, effectiveUser } = useCRM();
   const [tab, setTab] = useState<Tab>("complaints");
+  const [q, setQ] = useState("");
+  const [fBranch, setFBranch] = useState("all");
+  const [fAgent, setFAgent] = useState("all");
+  const [fRating, setFRating] = useState("all");
+  const [fFrom, setFFrom] = useState("");
+  const [fTo, setFTo] = useState("");
   const manager = ["admin", "general_manager", "regional_manager", "branch_manager"].includes(effectiveUser.role);
 
   const data = useMemo(() => {
@@ -21,7 +28,26 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
   }, [reviewRequests, reviewNotes]);
 
   const dueReminders = data.waiting.filter((r) => reviewPhase(r) === "reminder_due").length;
-  const list = tab === "complaints" ? data.complaints : tab === "waiting" ? data.waiting : data.sorted;
+  const base = tab === "complaints" ? data.complaints : tab === "waiting" ? data.waiting : data.sorted;
+  const list = base.filter((r) => {
+    const stars = r.response?.rating;
+    return (
+      (!q.trim() || r.leadName.includes(q.trim()) || r.subjectLabel.includes(q.trim()) || (r.response?.comment || "").includes(q.trim())) &&
+      (fBranch === "all" || r.branchId === fBranch) &&
+      (fAgent === "all" || r.agentId === fAgent) &&
+      (fRating === "all" || (stars !== undefined && (fRating === "low" ? stars <= 2 : fRating === "mid" ? stars === 3 : stars >= 4))) &&
+      inDateRange(r.answeredAt || r.sentAt, fFrom, fTo)
+    );
+  });
+  const uniq = (l: string[]) => [...new Set(l.filter(Boolean))];
+  const resetFilters = () => {
+    setQ("");
+    setFBranch("all");
+    setFAgent("all");
+    setFRating("all");
+    setFFrom("");
+    setFTo("");
+  };
   const rate = reviewRequests.length ? Math.round((data.answered.length / reviewRequests.filter((r) => r.status !== "cancelled").length || 0) * 100) : 0;
 
   return (
@@ -76,6 +102,19 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
               {label}
             </button>
           ))}
+        </div>
+        <div style={{ padding: "0 16px" }}>
+          <FilterBar
+            search={{ value: q, onChange: setQ, placeholder: "ابحث باسم العميل أو نص التعليق…" }}
+            selects={[
+              { id: "branch", label: "الفرع", value: fBranch, onChange: setFBranch, allLabel: "كل الفروع", primary: true, options: uniq(reviewRequests.map((r) => r.branchId)).map((id) => ({ value: id, label: reviewRequests.find((r) => r.branchId === id)?.branchName || id })) },
+              { id: "rating", label: "التقييم", value: fRating, onChange: setFRating, allLabel: "كل التقييمات", primary: true, options: [{ value: "low", label: "ضعيف (1–2)" }, { value: "mid", label: "متوسط (3)" }, { value: "high", label: "ممتاز (4–5)" }] },
+              { id: "agent", label: "الموظف", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", options: uniq(reviewRequests.map((r) => r.agentId)).map((id) => ({ value: id, label: reviewRequests.find((r) => r.agentId === id)?.agentName || id })) },
+            ]}
+            dates={{ from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, label: "التاريخ" }}
+            count={{ shown: list.length, noun: "طلب" }}
+            onReset={resetFilters}
+          />
         </div>
         {list.length === 0 ? (
           <div className="empty-state">

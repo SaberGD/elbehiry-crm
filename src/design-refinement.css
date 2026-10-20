@@ -21,16 +21,16 @@
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 .dark {
-  --canvas: #0b0f1a;
-  --surface: #131a2a;
-  --surface-soft: #1a2336;
-  --surface-hover: #222d44;
-  --ink: #eef1f8;
-  --muted: #a6b0c5;
-  --line: #2c3850;
-  --brand: #ec7774;
-  --brand-hover: #f58e8a;
-  --brand-soft: #2a1f2c;
+  --canvas: #121211;
+  --surface: #1d1d1c;
+  --surface-soft: #242423;
+  --surface-hover: #2c2c2a;
+  --ink: #f2f0ec;
+  --muted: #a8a6a0;
+  --line: #363533;
+  --brand: #e3444b;
+  --brand-hover: #ee5960;
+  --brand-soft: #3a1f22;
   --brand-text: #f2aaa2;
   --department-construction: #e28c84;
   --department-decor: #c5a77f;
@@ -47,7 +47,11 @@
   border-inline-end: 1px solid var(--line);
 }
 .dark .behery-sidebar {
-  background: #0e1424;
+  background: #0e0e0d;
+}
+.dark body {
+  background-image: radial-gradient(ellipse 70% 38% at 50% 0%, rgba(200, 35, 43, 0.16), transparent 70%);
+  background-attachment: fixed;
 }
 .side-link {
   border-radius: 10px;
@@ -238,9 +242,9 @@ button:disabled {
   min-height: 285px;
   position: relative;
   overflow: hidden;
-  background: #14203b;
-  color: #f1f4fb;
-  border: 1px solid #23325a;
+  background: #e6ebf6;
+  color: #1c2a47;
+  border: 1px solid #d3dbec;
   border-radius: var(--panel-radius);
   padding: 30px 34px;
   isolation: isolate;
@@ -249,8 +253,9 @@ button:disabled {
   justify-content: space-between;
 }
 .dark .performance-hero {
-  background: #17264a;
-  border-color: #2d3f6e;
+  background: #1d1d1c;
+  color: #f2f0ec;
+  border-color: #363533;
 }
 .hero-copy {
   position: relative;
@@ -261,8 +266,9 @@ button:disabled {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #dfe5f4;
+  color: #3b4a6b;
 }
+.dark .hero-kicker { color: #dcd8d2; }
 .hero-kicker > span {
   width: 7px;
   height: 7px;
@@ -283,13 +289,17 @@ button:disabled {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
+.dark .hero-amount > span { color: #c9c4bc; }
+.dark .hero-copy > p { color: #bdb8b0; }
+.dark .hero-link { color: #f2f0ec; }
+.dark .hero-footnote { color: #b4b0a8; }
 .hero-amount > span {
-  color: #d4cdc0;
+  color: #4a5878;
   font-size: 13px;
 }
 .hero-copy > p {
   max-width: 420px;
-  color: #c3c9c3;
+  color: #4a5878;
   font-size: 12px;
   line-height: 1.9;
 }
@@ -298,7 +308,7 @@ button:disabled {
   align-items: center;
   gap: 18px;
   font-size: 13px;
-  color: #eaf0fb;
+  color: #1c2a47;
   margin-top: 23px;
   min-height: 32px;
 }
@@ -312,7 +322,7 @@ button:disabled {
   position: absolute;
   inset-inline-end: 26px;
   bottom: 24px;
-  color: #c2c5ba;
+  color: #5b677e;
   font-size: 10px;
   max-width: 35%;
   text-align: end;
@@ -331,14 +341,14 @@ button:disabled {
 .hero-mark div {
   position: absolute;
   inset: 10px;
-  border: 1px solid #e4d4b91c;
+  border: 1px solid rgba(28, 42, 71, 0.14);
   border-radius: 22px;
   transform: rotate(15deg);
 }
 .hero-mark div:nth-child(2) {
   inset: 35px;
-  background: #bb66650e;
-  border-color: #e4d4b926;
+  background: rgba(200, 35, 43, 0.05);
+  border-color: rgba(28, 42, 71, 0.16);
   transform: rotate(-15deg);
 }
 .hero-mark > span {
@@ -347,7 +357,7 @@ button:disabled {
   left: 34px;
   font-size: 38px;
   font-weight: 600;
-  color: #e4d4b924;
+  color: rgba(28, 42, 71, 0.12);
 }
 .attention-card {
   border-radius: var(--panel-radius);
@@ -359,9 +369,9 @@ button:disabled {
   flex-direction: column;
 }
 .dark .attention-card {
-  background: #182340;
-  color: #dbe3f5;
-  border-color: #2b3a62;
+  background: #1d1d1c;
+  color: #e9e6e1;
+  border-color: #363533;
 }
 .attention-card.needs-attention {
   background: #fbece9;
@@ -369,9 +379,9 @@ button:disabled {
   border-color: #efcdc7;
 }
 .dark .attention-card.needs-attention {
-  background: #3a1d28;
+  background: #2e1a1c;
   color: #f1c4c0;
-  border-color: #5e2a36;
+  border-color: #5a2a2d;
 }
 .attention-top {
   display: flex;
@@ -1653,3 +1663,6 @@ html[dir="ltr"] .client-sheet {
     scroll-behavior: auto !important;
   }
 }
+.dark .hero-mark div { border-color: rgba(255, 255, 255, 0.1); }
+.dark .hero-mark div:nth-child(2) { background: rgba(200, 35, 43, 0.08); border-color: rgba(255, 255, 255, 0.12); }
+.dark .hero-mark > span { color: rgba(255, 255, 255, 0.1); }
