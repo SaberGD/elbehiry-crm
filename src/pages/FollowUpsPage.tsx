@@ -1,5 +1,5 @@
 import { REFERRAL_MIN_STARS, isReferralPhone } from "../lib/referrals";
-import { canCompleteFollowUp, canAccessPage, isSales } from "../lib/access";
+import { canCompleteFollowUp, canAccessPage, isSales, worksOwnCustomers } from "../lib/access";
 import { hasPermission } from "../lib/permissions";
 import { useState } from "react";
 import {
@@ -128,7 +128,7 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
           <span className="eyebrow">كل تواصل له خطوة جاية</span>
           <h1>المتابعات</h1>
           <p>
-            {isSales(effectiveUser)
+            {worksOwnCustomers(effectiveUser)
               ? "ابدأ بالمستحق وسجّل نتيجة التواصل."
               : "راجع التأخير والموظف المسؤول عن كل متابعة داخل نطاقك."}
           </p>
@@ -154,7 +154,7 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
           search={{ value: q, onChange: setQ, placeholder: "ابحث باسم العميل أو رقمه أو سبب المتابعة…" }}
           selects={[
             { id: "branch", label: "الفرع", value: fBranch, onChange: setFBranch, allLabel: "كل الفروع", primary: true, options: uniq(followUps.map((f) => f.branchId)).map((id) => ({ value: id, label: branches.find((b) => b.id === id)?.name || id })) },
-            { id: "agent", label: "الموظف", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", primary: !isSales(effectiveUser), options: uniq(followUps.map((f) => f.assignedAgentId)).map((id) => ({ value: id, label: followUps.find((f) => f.assignedAgentId === id)?.assignedAgentName || id })) },
+            { id: "agent", label: "الموظف", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", primary: !worksOwnCustomers(effectiveUser), options: uniq(followUps.map((f) => f.assignedAgentId)).map((id) => ({ value: id, label: followUps.find((f) => f.assignedAgentId === id)?.assignedAgentName || id })) },
           ]}
           dates={{ from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, label: "موعد المتابعة" }}
           onReset={() => {

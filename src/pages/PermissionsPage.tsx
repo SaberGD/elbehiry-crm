@@ -5,21 +5,24 @@ import {
   togglePermission,
   isDirector,
   permissionDefinitions,
+  permissionProfile,
   profileNames,
   type PermissionMatrix,
   type PermissionProfile,
   type Permission,
 } from "../lib/permissions";
 export function PermissionsPage() {
-  const { effectiveUser, permissionMatrix, updatePermissionMatrix } = useCRM();
+  const { effectiveUser, permissionMatrix, updatePermissionMatrix, users } = useCRM();
   const [draft, setDraft] = useState<PermissionMatrix>(() =>
     structuredClone(permissionMatrix || defaultPermissionMatrix),
   );
   const [selectedProfile, setSelectedProfile] =
-    useState<PermissionProfile>("employee");
+    useState<PermissionProfile>("branch");
   const [saved, setSaved] = useState(false);
   if (!isDirector(effectiveUser)) return null;
-  const profiles = Object.keys(profileNames) as PermissionProfile[];
+  // The three current positions, plus an older one only while someone still holds it.
+  const inUse = new Set<PermissionProfile>(['director', 'general', 'branch', ...users.map(permissionProfile)]);
+  const profiles = (Object.keys(profileNames) as PermissionProfile[]).filter((p) => inUse.has(p));
   const toggle = (profile: PermissionProfile, permission: Permission) => {
     setSaved(false);
     setDraft((prev) => ({
@@ -61,10 +64,10 @@ export function PermissionsPage() {
       <section className="panel">
         <div className="panel-header">
           <div>
-            <h2>خمسة مناصب، وصلاحيات حسب الاختصاص</h2>
+            <h2>صلاحيات كل منصب</h2>
             <p>
-              «سيلز بالفرع» منصب صلاحيات؛ المسمى الوظيفي مثل سيلز أو محاسب يُحدّد
-              بشكل مستقل في ملف الموظف.
+              صاحب البيزنس ومدير المبيعات العام ومدير مبيعات الفرع. أي منصب قديم
+              بيظهر هنا بس لو لسه فيه موظف عليه.
             </p>
           </div>
         </div>

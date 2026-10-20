@@ -21,8 +21,7 @@ import {
   canAccessPage,
   canCreateCustomer,
   isSales,
-  scopeLabel,
-} from "../lib/access";
+  scopeLabel, worksOwnCustomers } from "../lib/access";
 import {
   hasPermission,
   isDirector,
@@ -59,7 +58,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const [sort, setSort] = useState("amount");
   const [showAllBranches, setShowAllBranches] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
-  const sales = isSales(u),
+  const sales = worksOwnCustomers(u),
     has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
   const validSort =
     (sort === "amount" && has("bookings.view")) ||
@@ -146,8 +145,10 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
     : isDirector(u)
       ? "نظرة على المؤسسة"
       : u.role === "branch_manager"
-        ? "أداء الفرع وفريقك"
-        : "نطاق الإشراف";
+        ? "عملاؤك ومبيعات فرعك"
+        : u.role === "regional_manager"
+          ? "مبيعات كل الفروع"
+          : "نطاق الإشراف";
   const metric = (
     page: string,
     label: string,

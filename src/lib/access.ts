@@ -31,6 +31,8 @@ export const defaultAgent = (users: User[], me: User, branchId: string) => {
   if (here.some((u) => u.id === me.id)) return me.id;
   return (here.find((u) => u.role === "branch_manager") ?? here.find((u) => u.role === "sales_agent") ?? here[0])?.id ?? me.id;
 };
+/** Works their own customers day to day: salespeople and the branch sales manager (who is the branch's salesperson). */
+export const worksOwnCustomers = (u: User) => isSales(u) || u.role === "branch_manager";
 export const canCreateCustomer = (u: User) => has(u, "customers.create");
 export const canManageOrganization = (u: User) => has(u, "organization.manage");
 export const canManageCatalog = (u: User) => has(u, "catalog.manage");

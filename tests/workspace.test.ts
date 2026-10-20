@@ -257,7 +257,9 @@ test("only director can modify matrix; saving a policy changes both navigation a
   );
 });
 test("reassignment rejects outside-branch employees and permitted assignment uses target team", () => {
-  const { view, calls } = fixture(manager);
+  // the general sales manager moves customers between salespeople; a branch sales manager only sells
+  const gsm = { ...manager, id: "test-gsm", role: "regional_manager" as const, branchId: undefined };
+  const { view, calls } = fixture(gsm);
   const lead = view.leads[0];
   assert.ok(lead);
   assert.throws(() => view.reassignLead(lead.id, other.id));

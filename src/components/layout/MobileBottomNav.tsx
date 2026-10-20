@@ -1,5 +1,5 @@
 import { useCRM } from "../../context/CRMContext";
-import { canAccessPage, isSales } from "../../lib/access";
+import { canAccessPage, isSales, worksOwnCustomers } from "../../lib/access";
 import { LayoutDashboard, Users, PhoneCall, Plus, Menu } from "lucide-react";
 interface Props {
   activeTab: string;
@@ -20,7 +20,7 @@ export function MobileBottomNav({
       : { id: "reports", label: "التقارير", Icon: LayoutDashboard },
     {
       id: "followups",
-      label: isSales(effectiveUser) ? "متابعاتي" : "المتابعات",
+      label: worksOwnCustomers(effectiveUser) ? "متابعاتي" : "المتابعات",
       Icon: PhoneCall,
     },
   ];

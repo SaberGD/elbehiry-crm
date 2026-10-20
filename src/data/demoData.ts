@@ -102,11 +102,37 @@ export const demoAgents: User[] = [
   agent("usr-demo-agent-giza-2", "سلمى وائل (مبيعات الجيزة)", "br-giza", "فرع الجيزة"),
 ];
 
-export const demoUsers: User[] = [
-  ...initialUsers.filter((u) => u.role !== "admin"),
-  ...demoStaffExtras,
-  ...demoAgents,
+// The business model: an owner, a general sales manager, and one sales manager per branch who sells for it.
+// Every customer, visit and follow-up in the sample data belongs to the sales manager of its branch.
+const modelRoles: User["role"][] = ["general_manager", "regional_manager", "branch_manager"];
+export const demoUsers: User[] = [...initialUsers.filter((u) => u.role !== "admin"), ...demoStaffExtras, ...demoAgents].filter((u) =>
+  modelRoles.includes(u.role),
+);
+const managerOf: Record<string, User> = Object.fromEntries(demoUsers.filter((u) => u.role === "branch_manager").map((u) => [u.branchId!, u]));
+// Old salespeople and supervisors in the sample set map to their branch's sales manager.
+const toManager: Record<string, User> = Object.fromEntries(
+  [...initialUsers, ...demoStaffExtras, ...demoAgents]
+    .filter((u) => !modelRoles.includes(u.role) && u.role !== "admin" && u.branchId && managerOf[u.branchId])
+    .map((u) => [u.id, managerOf[u.branchId!]]),
+);
+const ID_NAME: [string, string][] = [
+  ["assignedAgentId", "assignedAgentName"],
+  ["receivedByAgentId", "receivedByAgentName"],
+  ["agentId", "agentName"],
+  ["followUpAgentId", ""],
+  ["authorId", "authorName"],
+  ["leadOwnerId", ""],
 ];
+function modelled<T extends object>(item: T): T {
+  const out = { ...item } as Record<string, unknown>;
+  for (const [idKey, nameKey] of ID_NAME) {
+    const m = toManager[out[idKey] as string];
+    if (!m) continue;
+    out[idKey] = m.id;
+    if (nameKey) out[nameKey] = m.name;
+  }
+  return out as T;
+}
 // ---------------------------------------------------------------------------
 // Scenario customers: every row is a different story so each screen has
 // something to show (big buyers, garden-only, partial buys, delivered work with
@@ -243,7 +269,8 @@ rows.forEach((r, i) => {
     r.notBought?.ago ?? 0,
     5,
   ) + 3;
-  const agentName = [...demoAgents, ...initialUsers].find((u) => u.id === r.agent)?.name;
+  const manager = managerOf[r.branch];
+  const agentName = manager.name;
   const lead: Lead = {
     id,
     name: r.name,
@@ -253,7 +280,7 @@ rows.forEach((r, i) => {
     source: r.source ?? (r.broker ? "referral" : "walk_in"),
     branchId: r.branch,
     branchName: branchName[r.branch],
-    assignedAgentId: r.agent,
+    assignedAgentId: manager.id,
     assignedAgentName: agentName,
     createdAt: `${iso(firstSeen)}T10:00:00.000Z`,
     status: r.status ?? "new",
@@ -276,7 +303,7 @@ rows.forEach((r, i) => {
     time: "12:30",
     branchId: r.branch,
     branchName: branchName[r.branch],
-    receivedByAgentId: r.agent,
+    receivedByAgentId: manager.id,
     receivedByAgentName: agentName,
     source: lead.source,
     department: r.dept,
@@ -300,7 +327,7 @@ rows.forEach((r, i) => {
       leadPhone: phone,
       branchId: r.branch,
       branchName: branchName[r.branch],
-      agentId: r.agent,
+      agentId: manager.id,
       agentName,
       department: primary,
       courseId: Object.keys(p.amounts).length > 1 ? "ps-multi" : `ps-${primary}`,
@@ -325,7 +352,7 @@ rows.forEach((r, i) => {
           leadId: id,
           leadName: r.name,
           leadPhone: phone,
-          assignedAgentId: r.agent,
+          assignedAgentId: manager.id,
           assignedAgentName: agentName,
           branchId: r.branch,
           scheduledAt: m.date,
@@ -361,7 +388,7 @@ rows.forEach((r, i) => {
       leadId: id,
       leadName: r.name,
       branchId: r.branch,
-      agentId: r.agent,
+      agentId: manager.id,
       agentName,
       createdAt: `${iso(r.notBought.ago)}T14:00:00.000Z`,
       reasons: r.notBought.reasons,
@@ -376,7 +403,7 @@ rows.forEach((r, i) => {
       leadId: id,
       leadName: r.name,
       leadPhone: phone,
-      assignedAgentId: r.agent,
+      assignedAgentId: manager.id,
       assignedAgentName: agentName,
       branchId: r.branch,
       scheduledAt: date,
@@ -395,13 +422,13 @@ rows.forEach((r, i) => {
   gen.leads.push(lead);
 });
 
-export const demoLeads: Lead[] = [...initialLeads, ...gen.leads];
-export const demoVisits = [...initialVisits, ...gen.visits];
-export const demoFollowUps = [...initialFollowUps, ...gen.followUps];
-export const demoBookings = [...initialBookings, ...gen.bookings];
+export const demoLeads: Lead[] = [...initialLeads.map(modelled), ...gen.leads];
+export const demoVisits = [...initialVisits.map(modelled), ...gen.visits];
+export const demoFollowUps = [...initialFollowUps.map(modelled), ...gen.followUps];
+export const demoBookings = [...initialBookings.map(modelled), ...gen.bookings];
 export const demoNotBought: NotBoughtRecord[] = gen.notBought;
-export const demoTimeline = initialTimelineEvents;
-export const demoInvoices = initialPurchaseInvoices;
+export const demoTimeline = initialTimelineEvents.map(modelled);
+export const demoInvoices = initialPurchaseInvoices.map(modelled);
 export const demoBrokers = [...initialBrokers, ...demoExtraBrokers];
 
 // A spread of review situations: answered with praise, a fresh complaint, a handled complaint, waiting, due for the 48h nudge, expired.

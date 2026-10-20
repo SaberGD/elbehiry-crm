@@ -90,5 +90,6 @@ export function employeeRatings(users: User[], reviews: ReviewRequest[], followU
         trend: r30 === null || rBefore === null || recent.length < 2 || before.length < 2 ? null : r30 - rBefore >= 0.3 ? "up" : rBefore - r30 >= 0.3 ? "down" : "flat",
       } as EmployeeRating;
     })
-    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.count - a.count);
+    // Ranked on the score; people with fewer than three ratings are listed after those who can be judged.
+    .sort((a, b) => Number(a.level === "new") - Number(b.level === "new") || (b.score ?? -1) - (a.score ?? -1) || b.count - a.count);
 }

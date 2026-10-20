@@ -2,7 +2,7 @@ import { departmentIds, splitTotals } from "../lib/purchases";
 import { notBoughtReasons } from "../lib/notBought";
 import { useCRM } from "../context/CRMContext";
 import { hasPermission } from "../lib/permissions";
-import { isSales, scopeLabel } from "../lib/access";
+import { isSales, scopeLabel, worksOwnCustomers } from "../lib/access";
 import {
   followUpStatus,
   formatMoney,
@@ -66,7 +66,7 @@ export function ReportsPage() {
       <div className="page-heading">
         <div>
           <span className="eyebrow">الأرقام في سياقها</span>
-          <h1>{isSales(u) ? "أدائي" : "تقارير نطاق العمل"}</h1>
+          <h1>{worksOwnCustomers(u) ? "أدائي" : "تقارير نطاق العمل"}</h1>
           <p>{scopeLabel(u)} · جميع الفترات · المؤشرات المتاحة لصلاحياتك</p>
         </div>
       </div>
@@ -183,7 +183,7 @@ export function ReportsPage() {
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-header">
           <div>
-            <h2>{isSales(u) ? "سجلاتي حسب الفرع" : "مؤشرات الفروع المتاحة"}</h2>
+            <h2>{worksOwnCustomers(u) ? "سجلاتي حسب الفرع" : "مؤشرات الفروع المتاحة"}</h2>
             <p>
               {isSales(u)
                 ? "يعرض سجلاتك وتكليفاتك فقط."

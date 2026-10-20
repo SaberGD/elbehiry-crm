@@ -1,4 +1,4 @@
-import { canAccessPage, scopeLabel, isSales } from "../../lib/access";
+import { canAccessPage, scopeLabel, isSales, worksOwnCustomers } from "../../lib/access";
 import { useEffect } from "react";
 import {
   Users,
@@ -115,7 +115,7 @@ export function Sidebar({
           {nav("clients", "العملاء", Users)}
           {nav(
             "followups",
-            isSales(effectiveUser) ? "متابعاتي" : "متابعة أداء الموظفين",
+            worksOwnCustomers(effectiveUser) ? "متابعاتي" : "متابعة أداء الموظفين",
             PhoneCall,
             count,
           )}

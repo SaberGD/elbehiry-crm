@@ -152,16 +152,9 @@ export const defaultPermissionMatrix: PermissionMatrix = {
     "teams.view",
     "branches.view",
   ],
-  branch: [
-    ...daily,
-    "customers.assign",
-    "staff.view",
-    "staff.manage",
-    "teams.view",
-    "teams.manage",
-    "branches.view",
-    "brokers.view",
-  ],
+  // The branch sales manager is the branch's salesperson: customers, visits, follow-ups, purchases, reviews.
+  // Staff and structure screens come back when salespeople are added under them.
+  branch: [...daily, "brokers.view"],
   employee: daily,
 };
 export const normalizeUser = (user: User): User => ({
