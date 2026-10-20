@@ -103,7 +103,21 @@ function gemini(array $cfg, array $parts, array $generation = []): string {
 [$cfg, $configHint] = load_secrets();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    echo json_encode(['configured' => $cfg !== null, 'hint' => $configHint]);
+    $out = ['configured' => $cfg !== null, 'hint' => $configHint];
+    if (isset($_GET['find']) && $cfg === null) {
+        // Setup helper: where (relative to the account home) is the secrets file, if anywhere?
+        $home = dirname(__DIR__, 5);
+        $bases = [$home, "$home/domains", dirname(__DIR__, 3), dirname(__DIR__, 2), dirname(__DIR__, 1)];
+        $found = [];
+        foreach ($bases as $base) {
+            foreach ([$base, ...(glob("$base/*", GLOB_ONLYDIR) ?: [])] as $dir) {
+                if (is_file("$dir/crm-ai-secrets.php")) $found[] = ltrim(str_replace($home, '', "$dir/crm-ai-secrets.php"), '/');
+            }
+        }
+        $out['found'] = array_values(array_unique($found));
+        $out['expected'] = ltrim(str_replace($home, '', dirname(__DIR__, 3) . '/crm-ai-secrets.php'), '/');
+    }
+    echo json_encode($out, JSON_UNESCAPED_SLASHES);
     exit;
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail(405, 'method_not_allowed');
