@@ -1,4 +1,4 @@
-import { branchQuota } from "../lib/license";
+import { branchQuota, userQuota } from "../lib/license";
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, Code2, RefreshCw, Server } from "lucide-react";
 import { auth } from "../lib/firebase";
@@ -67,6 +67,9 @@ export function DeveloperPage() {
   const [maxBranches, setMaxBranches] = useState<number>(license.maxBranches);
   useEffect(() => setMaxBranches(license.maxBranches), [license.maxBranches]);
   const quota = branchQuota(branches, license);
+  const uQuota = userQuota(staff, license);
+  const [maxUsers, setMaxUsers] = useState<number>(uQuota.max);
+  useEffect(() => setMaxUsers(uQuota.max), [uQuota.max]);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -221,16 +224,17 @@ export function DeveloperPage() {
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-header">
           <div>
-            <h2>باقة الشركة (عدد الفروع)</h2>
-            <p>الحد الأقصى للفروع الفعلية المسموح بها. الفروع التجريبية مش بتتحسب. أنت بس اللي تقدر تغيّره.</p>
+            <h2>باقة الشركة (الفروع والمستخدمين)</h2>
+            <p>الحدود المتاحة لصاحب البيزنس. الفروع والمستخدمين التجريبيين وحساب المطوّر مش بيتحسبوا. أنت بس اللي تقدر تغيّرها.</p>
           </div>
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap", padding: "0 22px 20px" }}>
           <Num label="أقصى عدد فروع" value={maxBranches} onChange={setMaxBranches} hint={`مستخدم دلوقتي: ${quota.used} من ${quota.max}`} />
+          <Num label="أقصى عدد مستخدمين" value={maxUsers} onChange={setMaxUsers} hint={`مستخدم دلوقتي: ${uQuota.used} من ${uQuota.max}`} />
           <button
             className="btn-primary"
-            disabled={maxBranches < 1 || maxBranches === license.maxBranches}
-            onClick={() => setLicense({ maxBranches })}
+            disabled={maxBranches < 1 || maxUsers < 1 || (maxBranches === license.maxBranches && maxUsers === uQuota.max)}
+            onClick={() => setLicense({ maxBranches, maxUsers })}
           >
             حفظ الباقة
           </button>

@@ -1,4 +1,4 @@
-import { branchLimitMessage, branchQuota } from "./license";
+import { branchLimitMessage, branchQuota, userLimitMessage, userQuota } from "./license";
 import { hasPermission, isDirector, withPermissions } from "./permissions";
 import type { CRMContextType } from "../context/CRMContext";
 import type { Lead, User, UserRole } from "../types/crm";
@@ -531,6 +531,10 @@ export function createWorkspace(raw: CRMContextType) {
     }) as CRMContextType["updateBroker"],
     addUser: ((data) => {
       validateStaff(data);
+      if (data.role !== "admin") {
+        const q = userQuota(raw.users, raw.license);
+        if (q.full) throw new Error(userLimitMessage(q));
+      }
       require(
         access.canManageStaff(actor) &&
           access.assignableRoles(actor).includes(data.role),
@@ -574,6 +578,11 @@ export function createWorkspace(raw: CRMContextType) {
     toggleUserActive: ((id) => {
       const target = staff.find((u) => u.id === id);
       require(!!target && access.canEditStaff(actor, target, raw.branches));
+      // Switching a stopped user back on counts against the plan too.
+      if (target!.active === false && target!.role !== "admin") {
+        const q = userQuota(raw.users, raw.license);
+        if (q.full) throw new Error(userLimitMessage(q));
+      }
       raw.toggleUserActive(id);
     }) as CRMContextType["toggleUserActive"],
     updateUserPermissions: ((...args) => {
@@ -581,7 +590,8 @@ export function createWorkspace(raw: CRMContextType) {
     }) as CRMContextType["updateUserPermissions"],
     setLicense: ((l) => {
       require(raw.currentUser.role === "admin" && Number.isInteger(l.maxBranches) && l.maxBranches >= 1 && l.maxBranches <= 1000);
-      raw.setLicense({ maxBranches: l.maxBranches });
+      require(l.maxUsers === undefined || (Number.isInteger(l.maxUsers) && l.maxUsers >= 1 && l.maxUsers <= 10000));
+      raw.setLicense({ maxBranches: l.maxBranches, ...(l.maxUsers !== undefined ? { maxUsers: l.maxUsers } : {}) });
     }) as CRMContextType["setLicense"],
     addBranch: ((data) => {
       require(access.canManageOrganization(actor));

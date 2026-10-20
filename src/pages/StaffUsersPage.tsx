@@ -1,5 +1,6 @@
 import { RatingBadge } from "../components/reviews/EmployeeRatings";
 import { employeeRatings } from "../lib/employeeRating";
+import { userLimitMessage, userQuota } from "../lib/license";
 import { FilterBar } from "../components/common/FilterBar";
 import { authErrorMessage } from "../context/AuthContext";
 import { resetStaffPassword } from "../lib/adminClient";
@@ -56,7 +57,9 @@ export const StaffUsersPage: React.FC = () => {
     addJobPosition,
     reviewRequests,
     followUps,
+    license,
   } = useCRM();
+  const uQuota = userQuota(users, license);
   const ratings = useMemo(() => employeeRatings(users, reviewRequests, followUps), [users, reviewRequests, followUps]);
 
   const { t } = useLanguage();
@@ -340,9 +343,20 @@ export const StaffUsersPage: React.FC = () => {
           <span className="eyebrow">فريق العمل</span>
           <h1>الموظفون</h1>
           <p>إضافة الموظفين وتحديد أدوارهم وفروعهم وأقسامهم ومسمياتهم الوظيفية.</p>
+          {canManageStaff(effectiveUser) && (
+            <p className="table-secondary">
+              الباقة: مستخدم {uQuota.used} من {uQuota.max}
+              {uQuota.full && ". وصلت للحد الأقصى، للتوسعة كلّم المطوّر."}
+            </p>
+          )}
         </div>
         {canManageStaff(effectiveUser) && (
-          <button className="btn-primary" onClick={openAddEmployeeModal}>
+          <button
+            className="btn-primary"
+            onClick={openAddEmployeeModal}
+            disabled={uQuota.full}
+            title={uQuota.full ? userLimitMessage(uQuota) : undefined}
+          >
             <Plus size={16} />
             إضافة موظف
           </button>
@@ -495,7 +509,13 @@ export const StaffUsersPage: React.FC = () => {
 
                           {canEditStaff(effectiveUser, u, branches) && (
                             <button
-                              onClick={() => toggleUserActive(u.id)}
+                              onClick={() => {
+                                try {
+                                  toggleUserActive(u.id);
+                                } catch (e) {
+                                  window.alert(e instanceof Error ? e.message : "تعذر التنفيذ");
+                                }
+                              }}
                               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                                 u.active
                                   ? "bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 hover:bg-red-100"
