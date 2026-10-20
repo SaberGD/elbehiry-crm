@@ -259,10 +259,10 @@ export function ZakiChat() {
       {open && (
         <div className="zaki-panel" role="dialog" aria-label="زكي، المساعد الذكي">
           <div className="zaki-head">
-            <ZakiAvatar mood={busy ? (slow ? "watch" : "thinking") : mood} size={52} className="zaki-head-art" />
+            <ZakiAvatar mood={busy ? (slow ? "watch" : "thinking") : mood} size={104} className="zaki-head-art" />
             <div>
               <strong>زكي</strong>
-              <small>مساعد البحيري · بيجاوب من بيانات نظامك</small>
+              <small><i className="zaki-online" />متاح · بيجاوب من بيانات نظامك</small>
             </div>
             <button className="icon-button" onClick={() => setOpen(false)} aria-label="إغلاق">
               <X size={18} />
@@ -271,8 +271,7 @@ export function ZakiChat() {
           <div className="zaki-body">
             {turns.length === 0 && !busy && (
               <div className="zaki-demo" aria-hidden="true">
-                <ZakiAvatar mood="offer" size={150} className="zaki-demo-art" />
-                <small>جرّب تسألني، مثلًا:</small>
+                                <small>جرّب تسألني، مثلًا:</small>
                 <div className="zaki-demo-line">
                   <span>{typed}</span>
                   <i className="zaki-caret" />

@@ -2187,3 +2187,33 @@
 .zaki-img { object-fit: contain; object-position: 50% 100%; }
 .zaki-head-art .zaki-img { object-fit: cover; object-position: 50% 12%; transform: scale(1.7) translateY(12%); }
 .zaki-fab .zaki-img { filter: drop-shadow(0 4px 6px rgba(0,0,0,.2)); }
+
+/* Zaki panel, v2: navy header with the character, soft bubbles, pill input */
+.zaki-panel { border-radius: 22px; border: 1px solid var(--line, rgba(128,128,128,.3)); box-shadow: 0 24px 70px rgba(8,14,32,.38); }
+.zaki-head {
+  position: relative; min-height: 96px; padding: 0.9rem 1.1rem 0; align-items: flex-start; gap: .8rem; overflow: hidden;
+  background: radial-gradient(120% 140% at 100% 100%, rgba(200,35,43,.55) 0%, rgba(200,35,43,0) 55%), linear-gradient(135deg, #0e1730, #1a2748);
+}
+.zaki-head::after { content: ""; position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: #c8232b; }
+.zaki-head-art { order: -1; align-self: flex-end; background: none !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; margin-bottom: 0; margin-inline-end: -4px; flex-shrink: 0; }
+.zaki-head-art .zaki-svg, .zaki-head-art .zaki-img { transform: none !important; object-position: 50% 100%; animation: zaki-breathe 3.2s ease-in-out infinite !important; }
+.zaki-head > div { padding-top: .2rem; }
+.zaki-head strong { font-size: 1.15rem; letter-spacing: .2px; }
+.zaki-head small { display: flex; align-items: center; gap: .4rem; }
+.zaki-online { width: 8px; height: 8px; border-radius: 50%; background: #3ddc84; box-shadow: 0 0 0 3px rgba(61,220,132,.25); display: inline-block; }
+.zaki-head .icon-button { align-self: flex-start; border: none; background: rgba(255,255,255,.12); border-radius: 12px; width: 36px; height: 36px; }
+.zaki-head .icon-button:hover { background: rgba(255,255,255,.22); }
+.zaki-body { background: var(--canvas, #f2f4f9); padding: 1.1rem 1rem; gap: .7rem; }
+.zaki-msg { border-radius: 18px; padding: .65rem .95rem; box-shadow: 0 1px 2px rgba(10,20,50,.06); }
+.zaki-msg.bot { background: var(--surface, #fff); border: 1px solid var(--line, #dde3ee); border-start-start-radius: 6px; }
+.zaki-msg.me { background: linear-gradient(135deg, #c8232b, #a51a21); border-start-end-radius: 6px; }
+.zaki-foot { background: var(--surface, #fff); border-top: 1px solid var(--line, #dde3ee); padding: .75rem .8rem .8rem; align-items: stretch; }
+.zaki-foot textarea { border-radius: 16px !important; border: 1.5px solid var(--line, #dde3ee) !important; padding: .6rem .85rem !important; background: var(--canvas, #f2f4f9) !important; }
+.zaki-foot textarea:focus { border-color: #c8232b !important; outline: none; box-shadow: 0 0 0 3px rgba(200,35,43,.14); }
+.zaki-foot .voice-actions button { border-radius: 99px; }
+.zaki-send { width: 46px; height: 46px; padding: 0; border-radius: 15px; display: inline-flex; align-items: center; justify-content: center; align-self: flex-start; background: #c8232b; box-shadow: 0 6px 14px rgba(200,35,43,.35); }
+.zaki-send:not(:disabled):hover { transform: translateY(-1px) rotate(-6deg); }
+.zaki-demo { margin: auto 0; align-items: flex-start; text-align: start; }
+.zaki-demo small { font-weight: 700; color: #c8232b; opacity: 1; }
+.zaki-demo-line { font-size: 1.2rem; }
+:root.dark .zaki-panel { background: var(--surface); }
