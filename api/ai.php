@@ -26,7 +26,9 @@ const RATE_LIMIT_PER_HOUR = 60;
 
 function fail(int $code, string $error, ?string $detail = null): void {
     http_response_code($code);
-    echo json_encode(array_filter(['error' => $error, 'detail' => $detail], fn($v) => $v !== null), JSON_UNESCAPED_UNICODE);
+    // Technical detail is for the developer only; everyone else gets the short error code.
+    $showDetail = ($GLOBALS['AI_ROLE'] ?? '') === 'admin';
+    echo json_encode(array_filter(['error' => $error, 'detail' => $showDetail ? $detail : null], fn($v) => $v !== null), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -236,20 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['usage'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $out = ['configured' => $cfg !== null, 'hint' => $configHint];
-    if (isset($_GET['find']) && $cfg === null) {
-        // Setup helper: where (relative to the account home) is the secrets file, if anywhere?
-        $home = dirname(__DIR__, 5);
-        $bases = [$home, "$home/domains", dirname(__DIR__, 3), dirname(__DIR__, 2), dirname(__DIR__, 1)];
-        $found = [];
-        foreach ($bases as $base) {
-            foreach ([$base, ...(glob("$base/*", GLOB_ONLYDIR) ?: [])] as $dir) {
-                if (is_file("$dir/crm-ai-secrets.php")) $found[] = ltrim(str_replace($home, '', "$dir/crm-ai-secrets.php"), '/');
-            }
-        }
-        $out['found'] = array_values(array_unique($found));
-        $out['expected'] = ltrim(str_replace($home, '', dirname(__DIR__, 3) . '/crm-ai-secrets.php'), '/');
-    }
+    $out = ['configured' => $cfg !== null];
     echo json_encode($out, JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -259,6 +248,7 @@ if ($cfg === null) fail(503, 'not_configured');
 $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 if (!preg_match('/^Bearer\s+(.+)$/i', $auth, $m)) fail(401, 'unauthorized');
 [$uid, $why, $callerRole] = verify_active_staff($m[1]);
+$GLOBALS['AI_ROLE'] = (string) $callerRole;
 if ($uid === null) fail(401, 'unauthorized', $why);
 rate_limit($uid);
 
