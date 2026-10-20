@@ -1,6 +1,7 @@
 import { departmentIds, splitTotals } from "../lib/purchases";
 import { notBoughtReasons } from "../lib/notBought";
 import { useCRM } from "../context/CRMContext";
+import { ReportDownloads } from "../components/common/ReportDownloads";
 import { hasPermission } from "../lib/permissions";
 import { isSales, scopeLabel, worksOwnCustomers } from "../lib/access";
 import {
@@ -244,6 +245,7 @@ export function ReportsPage() {
           </table>
         </div>
       </section>
+      <ReportDownloads />
     </div>
   );
 }
