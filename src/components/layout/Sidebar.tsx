@@ -126,7 +126,6 @@ export function Sidebar({
           {[
             "users",
             "branches",
-            "teams",
             "audit",
             "dept_dashboard",
             "permissions",
@@ -138,7 +137,6 @@ export function Sidebar({
                 [
                   "users",
                   "branches",
-                  "teams",
                   "audit",
                   "dept_dashboard",
                   "permissions",
@@ -150,10 +148,9 @@ export function Sidebar({
                 إدارة المؤسسة
                 <ChevronDown size={15} />
               </summary>
-              {nav("dept_dashboard", "الأقسام والفروع", Building2)}
               {nav("users", "الموظفون", Users)}
               {nav("branches", "الهيكل الإداري", Network)}
-              {nav("teams", "فرق العمل", Users)}
+              {nav("dept_dashboard", "الأقسام والفروع", Building2)}
               {nav("audit", "سجل العمليات", ShieldCheck)}
               {nav("permissions", "مصفوفة الصلاحيات", ShieldCheck)}
               {nav("developer", "قسم المطورين", Code2)}
