@@ -92,7 +92,7 @@ export function BookingsPage({ onOpenLead }: Props) {
         />
         {rows.length ? (
           <div className="overflow-x-auto">
-            <table className="data-table">
+            <table className="data-table stack-table">
               <thead>
                 <tr>
                   <th>العميل والخدمة</th>
@@ -106,7 +106,7 @@ export function BookingsPage({ onOpenLead }: Props) {
               <tbody>
                 {rows.map((b) => (
                   <tr key={b.id}>
-                    <td>
+                    <td data-label="العميل والخدمة">
                       {canAccessPage(effectiveUser, "clients") && (
                         <button
                           className="customer-name"
@@ -117,10 +117,10 @@ export function BookingsPage({ onOpenLead }: Props) {
                       )}
                       <span className="table-secondary">{b.courseName}</span>
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td data-label="إجمالي المشتريات" style={{ whiteSpace: "nowrap" }}>
                       {formatMoney(b.amount)} ج.م
                     </td>
-                    <td>
+                    <td data-label="التوزيع">
                       {b.bookingStatus === "cancelled" ? (
                         <span className="status-pill is-new">ملغى</span>
                       ) : (
@@ -134,8 +134,8 @@ export function BookingsPage({ onOpenLead }: Props) {
                           ))
                       )}
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>{b.bookingDate}</td>
-                    <td>
+                    <td data-label="التاريخ" style={{ whiteSpace: "nowrap" }}>{b.bookingDate}</td>
+                    <td data-label="التسليم">
                       {(() => {
                         if (b.bookingStatus === "cancelled") return "—";
                         const post = followUps.filter(
@@ -173,7 +173,7 @@ export function BookingsPage({ onOpenLead }: Props) {
                         );
                       })()}
                     </td>
-                    <td>
+                    <td data-label="الملف">
                       {canAccessPage(effectiveUser, "clients") && (
                         <button
                           className="table-link"

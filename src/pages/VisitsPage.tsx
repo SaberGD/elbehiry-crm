@@ -141,7 +141,7 @@ export function VisitsPage({ onOpenLead }: Props) {
     if (!agents.some((u) => u.id === validAgent) && validAgent !== effectiveUser.id) return setError("اختار موظف نشط من نفس الفرع.");
 
     // The broker: pick the existing one or register the new one.
-    const broker = hasBroker ? (brokerMode === "existing" ? pickedBroker : addBroker({ name: brokerName.trim(), phone: brokerPhone.trim(), type: "individual", active: true, notes: "" })) : undefined;
+    const broker = hasBroker ? (brokerMode === "existing" ? pickedBroker : addBroker({ name: brokerName.trim(), phone: brokerPhone.trim(), type: "individual", active: true, notes: "", branchIds: [branchId] })) : undefined;
     const now = new Date();
     const date = now.toISOString().slice(0, 10);
     const bits = [notes.trim()];
@@ -238,7 +238,7 @@ export function VisitsPage({ onOpenLead }: Props) {
           />
           {rows.length ? (
             <div className="overflow-x-auto">
-              <table className="data-table">
+              <table className="data-table stack-table">
                 <thead>
                   <tr>
                     <th>الزائر</th>
@@ -254,7 +254,7 @@ export function VisitsPage({ onOpenLead }: Props) {
                     const t = v.visitorType || "client";
                     return (
                       <tr key={v.id}>
-                        <td>
+                        <td data-label="الزائر">
                           <strong>{v.visitorName}</strong>
                           <span className="table-secondary" dir="ltr" style={{ textAlign: "end" }}>
                             {v.phone || "—"}
@@ -264,17 +264,17 @@ export function VisitsPage({ onOpenLead }: Props) {
                             {t === "both" && v.brokerName ? `: ${v.brokerName}` : ""}
                           </span>
                         </td>
-                        <td style={{ whiteSpace: "nowrap" }}>
+                        <td data-label="التاريخ" style={{ whiteSpace: "nowrap" }}>
                           {v.date}
                           <span className="table-secondary">{v.time}</span>
                         </td>
-                        <td>{v.branchName}</td>
-                        <td>
+                        <td data-label="الفرع">{v.branchName}</td>
+                        <td data-label="السبب والنتيجة">
                           {v.reason}
                           <span className="table-secondary">{v.outcome}</span>
                         </td>
-                        <td>{v.receivedByAgentName}</td>
-                        <td>
+                        <td data-label="استقبله">{v.receivedByAgentName}</td>
+                        <td data-label="الملف">
                           {v.linkedLeadId ? (
                             <button className="btn-text" onClick={() => onOpenLead(v.linkedLeadId!)}>
                               ملف العميل

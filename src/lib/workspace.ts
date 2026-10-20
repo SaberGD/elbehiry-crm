@@ -66,14 +66,20 @@ export function createWorkspace(raw: CRMContextType) {
     : [];
   const companyIds = new Set(branches.map((b) => b.companyId));
   const governorateIds = new Set(branches.map((b) => b.governorateId));
+  // A broker is visible when it belongs to a branch in the viewer's scope, or when it is tied to a customer, visit or invoice they can see.
   const visibleBrokerIds = new Set(
-    invoices.map((i) => i.brokerId).filter(Boolean),
+    [
+      ...invoices.map((i) => i.brokerId),
+      ...leads.map((l) => l.brokerId),
+      ...visits.map((v) => v.brokerId),
+    ].filter(Boolean),
   );
   const brokers = raw.brokers
     .filter(
       (b) =>
-        hasPermission(actor, "brokers.view") &&
-        (access.isGlobalManager(actor) || visibleBrokerIds.has(b.id)),
+        access.isGlobalManager(actor) ||
+        visibleBrokerIds.has(b.id) ||
+        !!b.branchIds?.some((id) => branchIds.has(id)),
     )
     .map((b) =>
       access.isGlobalManager(actor)
@@ -493,7 +499,10 @@ export function createWorkspace(raw: CRMContextType) {
     addBroker: ((data) => {
       // Registering a broker is part of taking a visit or a customer, so anyone who can register customers may do it.
       require(access.canManageCatalog(actor) || access.canCreateCustomer(actor));
-      return raw.addBroker(data);
+      return raw.addBroker({
+        ...data,
+        branchIds: data.branchIds?.length ? data.branchIds : actor.branchId ? [actor.branchId] : undefined,
+      });
     }) as CRMContextType["addBroker"],
     updateBroker: ((...args) => {
       require(access.canManageCatalog(actor));

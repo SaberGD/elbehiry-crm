@@ -414,6 +414,8 @@ export interface BrokerEntity {
   totalVolume: number;
   active: boolean;
   notes?: string;
+  /** Branches that registered or work with this broker; staff see the brokers of their own branch. */
+  branchIds?: string[];
 }
 
 export interface NotificationItem {
