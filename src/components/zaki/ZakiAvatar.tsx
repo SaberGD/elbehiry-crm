@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 
-export type ZakiMood = "idle" | "wave" | "thinking" | "happy" | "talking" | "listening" | "sorry" | "surprised" | "sleepy";
+export type ZakiMood =
+  | "idle" | "wave" | "thinking" | "happy" | "talking" | "listening" | "sorry" | "surprised" | "sleepy"
+  | "offer" | "cheer" | "confused" | "thanks" | "watch" | "point" | "bye";
+
+/** Moods that only exist as artwork; the built-in drawing shows the closest basic one. */
+const drawingFallback: Partial<Record<ZakiMood, ZakiMood>> = {
+  offer: "talking", cheer: "happy", confused: "thinking", thanks: "happy", watch: "thinking", point: "talking", bye: "wave",
+};
 
 /** Drop PNG/WebP files named after each mood into public/zaki/ and they replace the built-in drawing automatically. */
 const FILE_BASE = "/zaki/";
@@ -197,10 +204,10 @@ export function ZakiAvatar({ mood = "idle", size = 64, className = "" }: { mood?
   const art = useArt(mood);
   return (
     <span className={`zaki-avatar-art ${className}`} style={{ width: size, height: size }}>
-      {art === "ok" ? (
+      {art === "loading" ? null : art === "ok" ? (
         <img src={`${FILE_BASE}${mood}.png`} alt="زكي" draggable={false} className={`zaki-img zaki-mood-${mood}`} />
       ) : (
-        <ZakiDrawing mood={mood} />
+        <ZakiDrawing mood={drawingFallback[mood] ?? mood} />
       )}
     </span>
   );

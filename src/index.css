@@ -2181,3 +2181,9 @@
 .zaki-caret { display: inline-block; width: 2px; height: 1.15em; margin-inline-start: 3px; vertical-align: text-bottom; background: #c8232b; animation: zaki-caret 1s steps(1) infinite; }
 @keyframes zaki-caret { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .zaki-caret { animation: none !important; } }
+
+.zaki-demo { align-items: center; text-align: center; }
+.zaki-demo-line { text-align: start; align-self: stretch; }
+.zaki-img { object-fit: contain; object-position: 50% 100%; }
+.zaki-head-art .zaki-img { object-fit: cover; object-position: 50% 12%; transform: scale(1.7) translateY(12%); }
+.zaki-fab .zaki-img { filter: drop-shadow(0 4px 6px rgba(0,0,0,.2)); }

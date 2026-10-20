@@ -130,6 +130,7 @@ export function ZakiChat() {
   const [greet, setGreet] = useState(false);
   const [mood, setMood] = useState<ZakiMood>("idle");
   const [line, setLine] = useState(0);
+  const [slow, setSlow] = useState(false);
   const [freshIdx, setFreshIdx] = useState(-1);
   const end = useRef<HTMLDivElement>(null);
   const typed = useTypedExamples(open && turns.length === 0 && !busy);
@@ -171,8 +172,13 @@ export function ZakiChat() {
   useEffect(() => {
     if (!busy) return;
     setLine(0);
+    setSlow(false);
+    const slowId = window.setTimeout(() => setSlow(true), 9000);
     const id = window.setInterval(() => setLine((l) => (l + 1) % thinkingLines.length), 1800);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(slowId);
+    };
   }, [busy]);
   // Doze off after a while without use.
   useEffect(() => {
@@ -245,7 +251,7 @@ export function ZakiChat() {
             }}
             aria-label="افتح زكي، المساعد الذكي"
           >
-            <ZakiAvatar mood={mood} size={74} />
+            <ZakiAvatar mood={mood} size={96} />
             <span className="zaki-fab-label">زكي</span>
           </button>
         </div>
@@ -253,7 +259,7 @@ export function ZakiChat() {
       {open && (
         <div className="zaki-panel" role="dialog" aria-label="زكي، المساعد الذكي">
           <div className="zaki-head">
-            <ZakiAvatar mood={busy ? "thinking" : mood} size={52} className="zaki-head-art" />
+            <ZakiAvatar mood={busy ? (slow ? "watch" : "thinking") : mood} size={52} className="zaki-head-art" />
             <div>
               <strong>زكي</strong>
               <small>مساعد البحيري · بيجاوب من بيانات نظامك</small>
@@ -265,6 +271,7 @@ export function ZakiChat() {
           <div className="zaki-body">
             {turns.length === 0 && !busy && (
               <div className="zaki-demo" aria-hidden="true">
+                <ZakiAvatar mood="offer" size={150} className="zaki-demo-art" />
                 <small>جرّب تسألني، مثلًا:</small>
                 <div className="zaki-demo-line">
                   <span>{typed}</span>
