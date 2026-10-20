@@ -24,10 +24,23 @@ const MAX_TEXT_CHARS = 4000;
 const MAX_SNAPSHOT_BYTES = 200 * 1024;
 const RATE_LIMIT_PER_HOUR = 60;
 
-function fail(int $code, string $error): void {
+function fail(int $code, string $error, ?string $detail = null): void {
     http_response_code($code);
-    echo json_encode(['error' => $error], JSON_UNESCAPED_UNICODE);
+    echo json_encode(array_filter(['error' => $error, 'detail' => $detail], fn($v) => $v !== null), JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+/** JSON objects must stay objects: PHP turns an empty {} into [] which the AI API rejects. */
+function as_object($v) {
+    return is_array($v) && count($v) === 0 ? new stdClass() : $v;
+}
+
+function normalize_parts(array $parts): array {
+    foreach ($parts as &$p) {
+        if (isset($p['functionCall'])) $p['functionCall']['args'] = as_object($p['functionCall']['args'] ?? []);
+        if (isset($p['functionResponse'])) $p['functionResponse']['response'] = as_object($p['functionResponse']['response'] ?? []);
+    }
+    return $parts;
 }
 
 /** Folders searched for crm-ai-secrets.php, all outside the web root. */
@@ -78,9 +91,10 @@ const FIREBASE_PROJECT_ID = 'albehairy-group';
  * only let a user read their own profile, and Firestore itself rejects forged
  * or expired tokens. Anyone who merely signed up (no profile) is refused.
  */
-function verify_active_staff(string $idToken): ?string {
+/** @return array{0: ?string, 1: string} uid (or null) and a short reason */
+function verify_active_staff(string $idToken): array {
     $parts = explode('.', $idToken);
-    if (count($parts) !== 3) return null;
+    if (count($parts) !== 3) return [null, 'bad_token'];
     $payload = json_decode((string) base64_decode(strtr($parts[1], '-_', '+/')), true);
     $uid = is_array($payload) ? (string) ($payload['user_id'] ?? $payload['sub'] ?? '') : '';
     if ($uid === '' || !preg_match('/^[A-Za-z0-9_\-]{6,128}$/', $uid)) return null;
@@ -95,9 +109,9 @@ function verify_active_staff(string $idToken): ?string {
     $raw = curl_exec($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    if ($status !== 200 || !is_string($raw)) return null;
+    if ($status !== 200 || !is_string($raw)) return [null, 'profile_http_' . $status];
     $doc = json_decode($raw, true);
-    return ($doc['fields']['active']['booleanValue'] ?? false) === true ? $uid : null;
+    return ($doc['fields']['active']['booleanValue'] ?? false) === true ? [$uid, 'ok'] : [null, 'profile_inactive'];
 }
 
 function rate_limit(string $uid): void {
@@ -113,6 +127,10 @@ function rate_limit(string $uid): void {
     file_put_contents($file, json_encode($hits), LOCK_EX);
 }
 
+function gemini_error(int $status, array $data): string {
+    return 'gemini_' . $status . ': ' . mb_substr((string) ($data['error']['message'] ?? 'no_message'), 0, 220);
+}
+
 function gemini(array $cfg, array $parts, array $generation = [], ?string $system = null, array $history = []): string {
     $model = preg_match('/^[a-z0-9.\-]+$/i', (string) ($cfg['model'] ?? '')) ? $cfg['model'] : 'gemini-flash-latest';
     [$status, $data] = http_json(
@@ -124,7 +142,7 @@ function gemini(array $cfg, array $parts, array $generation = [], ?string $syste
             'generationConfig' => array_merge(['temperature' => 0], $generation),
         ])
     );
-    if ($status !== 200) fail(502, 'ai_unavailable');
+    if ($status !== 200) fail(502, 'ai_unavailable', gemini_error($status, $data));
     $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
     return is_string($text) ? trim($text) : '';
 }
@@ -154,8 +172,8 @@ if ($cfg === null) fail(503, 'not_configured');
 
 $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 if (!preg_match('/^Bearer\s+(.+)$/i', $auth, $m)) fail(401, 'unauthorized');
-$uid = verify_active_staff($m[1]);
-if ($uid === null) fail(401, 'unauthorized');
+[$uid, $why] = verify_active_staff($m[1]);
+if ($uid === null) fail(401, 'unauthorized', $why);
 rate_limit($uid);
 
 $json = null;
@@ -217,10 +235,15 @@ if ($mode === 'agent') {
             if (!is_array($part) || array_diff(array_keys($part), $allowedPart)) fail(400, 'bad_request');
         }
     }
+    foreach ($contents as &$c) $c['parts'] = normalize_parts($c['parts']);
+    unset($c);
     $decls = [];
     foreach ($tools as $t) {
         if (!is_array($t) || !preg_match('/^[a-z_]{1,40}$/', (string) ($t['name'] ?? ''))) fail(400, 'bad_request');
-        $decls[] = ['name' => $t['name'], 'description' => mb_substr((string) ($t['description'] ?? ''), 0, 700), 'parameters' => $t['parameters'] ?? ['type' => 'OBJECT', 'properties' => new stdClass()]];
+        $params = is_array($t['parameters'] ?? null) ? $t['parameters'] : ['type' => 'OBJECT'];
+        $params['properties'] = as_object($params['properties'] ?? []);
+        if (empty($params['required'])) unset($params['required']);
+        $decls[] = ['name' => $t['name'], 'description' => mb_substr((string) ($t['description'] ?? ''), 0, 700), 'parameters' => $params];
     }
     $today = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($json['today'] ?? '')) ? $json['today'] : date('Y-m-d');
     $system = "أنت «زكي»، موظف ذكي وسريع في إدارة شركة «البحيري للدهانات والديكور»، شغال جوه نظام إدارة العملاء (CRM)، "
@@ -244,11 +267,12 @@ if ($mode === 'agent') {
         ], fn($v) => $v !== null)
     );
     $content = $data['candidates'][0]['content'] ?? null;
-    if ($status !== 200 || !is_array($content) || !isset($content['parts'])) fail(502, 'ai_unavailable');
+    if ($status !== 200 || !is_array($content) || !isset($content['parts'])) fail(502, 'ai_unavailable', $status !== 200 ? gemini_error($status, $data) : 'empty_reply');
+    $content['parts'] = normalize_parts($content['parts']);
     $calls = [];
     $text = '';
     foreach ($content['parts'] as $part) {
-        if (isset($part['functionCall']['name'])) $calls[] = ['name' => (string) $part['functionCall']['name'], 'args' => $part['functionCall']['args'] ?? new stdClass()];
+        if (isset($part['functionCall']['name'])) $calls[] = ['name' => (string) $part['functionCall']['name'], 'args' => as_object($part['functionCall']['args'] ?? [])];
         elseif (isset($part['text']) && empty($part['thought'])) $text .= $part['text'];
     }
     echo json_encode(
