@@ -26,6 +26,8 @@ export interface AuthProfile {
   userId: string; // id of the matching document in `users`
   role: UserRole;
   branchId?: string;
+  /** Branches a supervisor / regional manager covers; the security rules read this. */
+  supervisedBranchIds?: string[];
   active: boolean;
   loginId?: string; // mobile number / username shown to the person
   mustChangePassword?: boolean; // set after an admin reset

@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
+import { initializeFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -14,7 +14,14 @@ export const db = initializeFirestore(
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-if (firebaseConfig.measurementId) {
+// Local end-to-end tests run the real app against the Firebase emulators (never set in production builds).
+const useEmulators = import.meta.env.VITE_FIREBASE_EMULATORS === '1';
+if (useEmulators) {
+  connectFirestoreEmulator(db, '127.0.0.1', 8181);
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+}
+
+if (firebaseConfig.measurementId && !useEmulators) {
   isSupported().then((ok) => ok && getAnalytics(app)).catch(() => {});
 }
 

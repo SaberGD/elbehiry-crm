@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { collection, doc, onSnapshot, writeBatch, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, writeBatch, setDoc, query, where, type WhereFilterOp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
 
 const BATCH_SIZE = 400;
@@ -28,6 +28,17 @@ function sortNewestFirst<T>(items: T[]): T[] {
   );
 }
 
+/** One Firestore filter: [field, operator, value]. */
+export type ScopeFilter = [string, WhereFilterOp, unknown];
+/**
+ * What part of a collection this person may read. The security rules enforce the same thing on the
+ * server; the app only asks for what it is allowed to see.
+ *  - "all": the whole collection
+ *  - "none": nothing (no listener)
+ *  - a list of queries (each a list of filters); results are merged by id.
+ */
+export type Scope = 'all' | 'none' | ScopeFilter[][];
+
 /**
  * Keeps a React state array and a Firestore collection in sync.
  * Firestore is the source of truth: incoming snapshots replace local state,
@@ -39,43 +50,73 @@ export function useFirestoreCollection<T extends { id: string }>(
   name: string,
   items: T[],
   setItems: (items: T[]) => void,
-  options: { seedIfEmpty?: boolean; transform?: (item: T) => T } = {}
+  options: { seedIfEmpty?: boolean; transform?: (item: T) => T; scope?: Scope } = {}
 ) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const prevRef = useRef<Map<string, T>>(new Map());
   const readyRef = useRef(false);
+  const scope = options.scope ?? 'all';
+  const scopeKey = JSON.stringify(scope);
 
   useEffect(() => {
-    return onSnapshot(
-      collection(db, name),
-      (snap) => {
-        if (snap.empty && !readyRef.current) {
-          if (snap.metadata.fromCache) return; // wait for the server's answer
-          if (options.seedIfEmpty) {
-            const seed = itemsRef.current;
-            prevRef.current = new Map(seed.map((i) => [i.id, i]));
-            readyRef.current = true;
-            commitInBatches(name, seed.map((item) => ({ id: item.id, item }))).catch((e) =>
-              handleFirestoreError(e, OperationType.WRITE, name)
-            );
-            return;
+    readyRef.current = false;
+    prevRef.current = new Map();
+    if (scope === 'none') {
+      readyRef.current = true;
+      setItems([]);
+      return;
+    }
+    const sources = scope === 'all'
+      ? [collection(db, name)]
+      : scope.map((filters) => query(collection(db, name), ...filters.map(([f, op, v]) => where(f, op, v))));
+    // Each listener's latest rows; the state is their union.
+    const parts: Map<string, T>[] = sources.map(() => new Map());
+    const answered = sources.map(() => false);
+    const publish = () => {
+      const merged = new Map<string, T>();
+      for (const part of parts) for (const [id, item] of part) merged.set(id, item);
+      const data = sortNewestFirst([...merged.values()]);
+      prevRef.current = new Map(data.map((i) => [i.id, i]));
+      readyRef.current = answered.every(Boolean);
+      setItems(data);
+    };
+    const stops = sources.map((source, index) =>
+      onSnapshot(
+        source,
+        (snap) => {
+          if (scope === 'all' && snap.empty && !readyRef.current) {
+            if (snap.metadata.fromCache) return; // wait for the server's answer
+            if (options.seedIfEmpty) {
+              const seed = itemsRef.current;
+              prevRef.current = new Map(seed.map((i) => [i.id, i]));
+              readyRef.current = true;
+              commitInBatches(name, seed.map((item) => ({ id: item.id, item }))).catch((e) =>
+                handleFirestoreError(e, OperationType.WRITE, name)
+              );
+              return;
+            }
           }
+          parts[index] = new Map(
+            snap.docs.map((d) => {
+              const item = { ...d.data(), id: d.id } as T;
+              return [d.id, options.transform ? options.transform(item) : item];
+            })
+          );
+          answered[index] = true;
+          publish();
+        },
+        (err) => {
+          // A query the rules refuse means "nothing here for you", not a broken app.
+          answered[index] = true;
+          publish();
+          handleFirestoreError(err, OperationType.GET, name);
         }
-        const data = sortNewestFirst(
-          snap.docs.map((d) => {
-            const item = { ...d.data(), id: d.id } as T;
-            return options.transform ? options.transform(item) : item;
-          })
-        );
-        prevRef.current = new Map(data.map((i) => [i.id, i]));
-        readyRef.current = true;
-        setItems(data);
-      },
-      (err) => handleFirestoreError(err, OperationType.GET, name)
+      )
     );
+    return () => stops.forEach((stop) => stop());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name]);
+  }, [name, scopeKey]);
 
   useEffect(() => {
     if (!readyRef.current) return;
@@ -96,8 +137,10 @@ export function useFirestoreCollection<T extends { id: string }>(
 export function useFirestoreDocument<T extends object>(
   path: [string, string],
   value: T,
-  setValue: (v: T) => void
+  setValue: (v: T) => void,
+  options: { canWrite?: boolean } = {}
 ) {
+  const canWrite = options.canWrite ?? true;
   const lastRef = useRef<string>('');
   const readyRef = useRef(false);
 
@@ -121,7 +164,7 @@ export function useFirestoreDocument<T extends object>(
   }, [path[0], path[1]]);
 
   useEffect(() => {
-    if (!readyRef.current) return;
+    if (!readyRef.current || !canWrite) return;
     const json = JSON.stringify(value);
     if (json === lastRef.current) return;
     lastRef.current = json;

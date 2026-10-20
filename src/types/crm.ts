@@ -195,6 +195,8 @@ export interface Lead {
   classification: LeadClassification;
   department: Department;
   departmentName?: string;
+  /** Salespeople handling a follow-up on this customer for its owner (they may read and update it). */
+  delegatedTo?: string[];
   /** Everything the customer is interested in; `department` is the first of them. */
   interests?: Department[];
   courseOfInterest?: string; // alias for department / service details
@@ -346,6 +348,9 @@ export interface TimelineEvent {
   type: TimelineEventType;
   title: string;
   details: string;
+  /** Copied from the customer so the security rules can scope history without reading the customer. */
+  branchId?: string;
+  leadOwnerId?: string;
 }
 
 export interface AuditLog {
@@ -503,6 +508,8 @@ export interface ReviewRequest {
 export interface ReviewNote {
   id: string;
   requestId: string;
+  branchId?: string;
+  agentId?: string;
   text: string;
   kind: "note" | "resolved";
   byId: string;

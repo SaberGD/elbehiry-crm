@@ -5,6 +5,7 @@ import {
 } from "../lib/permissions";
 import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
+import { scopesFor, seesAll } from "../lib/scopes";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
 import {
   demoUsers,
@@ -35,6 +36,7 @@ import React, {
   useState,
   useEffect,
   useMemo,
+  useRef,
 } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
@@ -351,36 +353,53 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
-  // Firestore is the single source of truth (localStorage is only a warm cache)
+  // What this person may read. The security rules enforce the same scope on the server.
+  const authForScope = useAuth().profile;
+  const scope = useMemo(
+    () =>
+      scopesFor(
+        authForScope
+          ? { role: authForScope.role, userId: authForScope.userId, branchId: authForScope.branchId, supervisedBranchIds: authForScope.supervisedBranchIds }
+          : null,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [authForScope?.role, authForScope?.userId, authForScope?.branchId, JSON.stringify(authForScope?.supervisedBranchIds ?? [])],
+  );
+
+  // Only top management may write the shared setup (structure, catalogue, settings), so only they seed it.
+  const topWriter = !!authForScope && ["admin", "general_manager"].includes(authForScope.role);
+
+  // Firestore is the single source of truth
   useFirestoreCollection("users", users, setUsers, {
-    seedIfEmpty: true,
+    scope: scope.users,
+    seedIfEmpty: topWriter,
     transform: normalizeUser,
   });
-  useFirestoreCollection("companies", companies, setCompanies, { seedIfEmpty: true });
-  useFirestoreCollection("governorates", governorates, setGovernorates, { seedIfEmpty: true });
-  useFirestoreCollection("warehouses", warehouses, setWarehouses, { seedIfEmpty: true });
-  useFirestoreCollection("branches", branches, setBranches, { seedIfEmpty: true });
-  useFirestoreCollection("teams", teams, setTeams, { seedIfEmpty: true });
-  useFirestoreCollection("departments", departmentEntities, setDepartmentEntities, { seedIfEmpty: true });
-  useFirestoreCollection("jobPositions", jobPositions, setJobPositions, { seedIfEmpty: true });
-  useFirestoreCollection("purchaseCategories", purchaseCategories, setPurchaseCategories, { seedIfEmpty: true });
-  useFirestoreCollection("courses", courses, setCourses, { seedIfEmpty: true });
-  useFirestoreCollection("brokers", brokers, setBrokers);
-  useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices);
-  useFirestoreCollection("notifications", notifications, setNotifications);
-  useFirestoreCollection("leads", leads, setLeads);
-  useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords);
-  useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests);
-  useFirestoreCollection("reviewNotes", reviewNotes, setReviewNotes);
-  useFirestoreCollection("visits", visits, setVisits);
-  useFirestoreCollection("followUps", followUps, setFollowUps);
-  useFirestoreCollection("bookings", bookings, setBookings);
-  useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents);
-  useFirestoreCollection("activityLogs", auditLogs, setAuditLogs);
-  useFirestoreDocument(["settings", "distribution"], distributionRule, setDistributionRule);
+  useFirestoreCollection("companies", companies, setCompanies, { seedIfEmpty: topWriter });
+  useFirestoreCollection("governorates", governorates, setGovernorates, { seedIfEmpty: topWriter });
+  useFirestoreCollection("warehouses", warehouses, setWarehouses, { seedIfEmpty: topWriter });
+  useFirestoreCollection("branches", branches, setBranches, { seedIfEmpty: topWriter });
+  useFirestoreCollection("teams", teams, setTeams, { seedIfEmpty: topWriter });
+  useFirestoreCollection("departments", departmentEntities, setDepartmentEntities, { seedIfEmpty: topWriter });
+  useFirestoreCollection("jobPositions", jobPositions, setJobPositions, { seedIfEmpty: topWriter });
+  useFirestoreCollection("purchaseCategories", purchaseCategories, setPurchaseCategories, { seedIfEmpty: topWriter });
+  useFirestoreCollection("courses", courses, setCourses, { seedIfEmpty: topWriter });
+  useFirestoreCollection("brokers", brokers, setBrokers, { scope: scope.brokers });
+  useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices, { scope: scope.invoices });
+  useFirestoreCollection("notifications", notifications, setNotifications, { scope: scope.notifications });
+  useFirestoreCollection("leads", leads, setLeads, { scope: scope.leads });
+  useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: scope.notBought });
+  useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests, { scope: scope.reviews });
+  useFirestoreCollection("reviewNotes", reviewNotes, setReviewNotes, { scope: scope.reviewNotes });
+  useFirestoreCollection("visits", visits, setVisits, { scope: scope.visits });
+  useFirestoreCollection("followUps", followUps, setFollowUps, { scope: scope.followUps });
+  useFirestoreCollection("bookings", bookings, setBookings, { scope: scope.bookings });
+  useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents, { scope: scope.timeline });
+  useFirestoreCollection("activityLogs", auditLogs, setAuditLogs, { scope: scope.audit });
+  useFirestoreDocument(["settings", "distribution"], distributionRule, setDistributionRule, { canWrite: topWriter });
   useFirestoreDocument(["settings", "permissions"], permissionMatrix, (m) =>
     setPermissionMatrix(sanitizeMatrix(m)),
-  );
+  { canWrite: topWriter });
 
   // The signed-in user comes from Firebase Auth; role/branch/active are the
   // server-trusted values from authProfiles, not whatever the users doc says.
@@ -413,6 +432,55 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       ...missing.map((e) => ({ id: e.id, name: `محافظة ${e.name}`, code: e.key.toUpperCase(), region: e.region, phone: "", active: true })),
     ]);
   }, [currentUser.role, governorates]);
+
+  const profilesBackfilled = useRef(false);
+  // One-time backfill, run by top management: older rows get the fields the security rules scope on.
+  // Safe to run repeatedly; it only fills what is missing.
+  useEffect(() => {
+    if (!authForScope || !seesAll({ role: authForScope.role, userId: authForScope.userId, supervisedBranchIds: authForScope.supervisedBranchIds })) return;
+    if (!leads.length) return;
+    const byLead = new Map(leads.map((l) => [l.id, l]));
+    if (timelineEvents.some((e) => !e.branchId && byLead.has(e.leadId)))
+      setTimelineEvents((prev) =>
+        prev.map((e) => {
+          const l = byLead.get(e.leadId);
+          return !e.branchId && l ? { ...e, branchId: l.branchId, leadOwnerId: l.assignedAgentId } : e;
+        }),
+      );
+    const byReq = new Map(reviewRequests.map((r) => [r.id, r]));
+    if (reviewNotes.some((n) => !n.branchId && byReq.has(n.requestId)))
+      setReviewNotes((prev) =>
+        prev.map((n) => {
+          const r = byReq.get(n.requestId);
+          return !n.branchId && r ? { ...n, branchId: r.branchId, agentId: r.agentId } : n;
+        }),
+      );
+    const brokerBranches = new Map<string, Set<string>>();
+    const note = (id: string | undefined, branch: string | undefined) => {
+      if (!id || !branch) return;
+      if (!brokerBranches.has(id)) brokerBranches.set(id, new Set());
+      brokerBranches.get(id)!.add(branch);
+    };
+    leads.forEach((l) => note(l.brokerId, l.branchId));
+    visits.forEach((v) => note(v.brokerId, v.branchId));
+    purchaseInvoices.forEach((i) => note(i.brokerId, i.branchId));
+    if (brokers.some((b) => [...(brokerBranches.get(b.id) || [])].some((x) => !(b.branchIds || []).includes(x))))
+      setBrokers((prev) =>
+        prev.map((b) => {
+          const want = [...new Set([...(b.branchIds || []), ...(brokerBranches.get(b.id) || [])])];
+          return want.length !== (b.branchIds || []).length ? { ...b, branchIds: want } : b;
+        }),
+      );
+    // Supervisors' branch lists must be on their server-trusted profile for the rules to see them.
+    if (!profilesBackfilled.current && users.length) {
+      profilesBackfilled.current = true;
+      users.forEach((u) => {
+        if (u.authUid && u.supervisedBranchIds?.length)
+          updateDoc(doc(db, "authProfiles", u.authUid), { supervisedBranchIds: u.supervisedBranchIds }).catch(() => {});
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authForScope?.role, leads.length > 0, timelineEvents.length, reviewNotes.length, brokers.length]);
 
   const [viewAsUser, setViewAsUser] = useState<User | null>(null);
 
@@ -476,8 +544,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
+  // Customers created in this render are not in `leads` yet; remember where they belong.
+  const justCreated = useRef(new Map<string, { branchId: string; assignedAgentId?: string }>());
   const addTimelineEvent = (event: Omit<TimelineEvent, "id" | "timestamp">) => {
+    const lead = leads.find((l) => l.id === event.leadId) || justCreated.current.get(event.leadId);
     const newEv: TimelineEvent = {
+      branchId: lead?.branchId,
+      leadOwnerId: lead?.assignedAgentId,
       ...event,
       id: `tle-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       timestamp: new Date().toISOString(),
@@ -521,7 +594,17 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   const addReviewNote = (requestId: string, text: string, kind: ReviewNote["kind"]) => {
     // The signed-in person writes the note (the rules check this), even while previewing another role.
     setReviewNotes((prev) => [
-      { id: `rvn-${Date.now()}-${Math.floor(Math.random() * 1000)}`, requestId, text, kind, byId: currentUser.id, byName: currentUser.name, at: new Date().toISOString() },
+      {
+        id: `rvn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        requestId,
+        branchId: reviewRequests.find((r) => r.id === requestId)?.branchId,
+        agentId: reviewRequests.find((r) => r.id === requestId)?.agentId,
+        text,
+        kind,
+        byId: currentUser.id,
+        byName: currentUser.name,
+        at: new Date().toISOString(),
+      },
       ...prev,
     ]);
   };
@@ -552,21 +635,25 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const branch = branches.find((b) => b.id === leadData.branchId);
     const agent = users.find((u) => u.id === leadData.assignedAgentId);
 
-    const randomCode = Math.floor(100000 + Math.random() * 900000);
-    const generatedEvalUrl =
-      leadData.uniqueEvaluationUrl ||
-      `https://eval.beherypaints.com/rate?leadId=${id}&client=${encodeURIComponent(leadData.name)}&code=${randomCode}`;
-
     const newLead: Lead = {
       ...leadData,
       id,
       branchName: branch ? branch.name : leadData.branchName,
       assignedAgentName: agent ? agent.name : leadData.assignedAgentName,
       createdAt: new Date().toISOString(),
-      uniqueEvaluationUrl: generatedEvalUrl,
     };
 
     setLeads((prev) => [newLead, ...prev]);
+    justCreated.current.set(id, { branchId: newLead.branchId, assignedAgentId: newLead.assignedAgentId });
+    // A broker linked from another branch now works with this branch too.
+    if (newLead.brokerId)
+      setBrokers((prev) =>
+        prev.map((b) =>
+          b.id === newLead.brokerId && !(b.branchIds || []).includes(newLead.branchId)
+            ? { ...b, branchIds: [...(b.branchIds || []), newLead.branchId] }
+            : b,
+        ),
+      );
 
     addTimelineEvent({
       leadId: id,
@@ -635,6 +722,12 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       }),
     );
 
+    // The customer's history stays readable by the new owner.
+    setTimelineEvents((prev) =>
+      prev.map((e) =>
+        e.leadId === leadId ? { ...e, leadOwnerId: newAgentId, branchId: newBranchId || e.branchId } : e,
+      ),
+    );
     // Outstanding work follows the new owner; completed history keeps its original author.
     setFollowUps((prev) =>
       prev.map((task) => {
@@ -795,8 +888,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
     setFollowUps((prev) => [newFollowUp, ...prev]);
 
+    // A follow-up given to someone other than the owner lets them open that customer.
+    const owner = leads.find((l) => l.id === followUpData.leadId);
+    const delegatedTo =
+      owner && followUpData.assignedAgentId && followUpData.assignedAgentId !== owner.assignedAgentId && !(owner.delegatedTo || []).includes(followUpData.assignedAgentId)
+        ? [...(owner.delegatedTo || []), followUpData.assignedAgentId]
+        : undefined;
+
     // Update Lead's nextFollowUpDate & status
     updateLead(followUpData.leadId, {
+      ...(delegatedTo ? { delegatedTo } : {}),
       nextFollowUpDate: [
         ...followUps
           .filter(
@@ -1079,7 +1180,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   // Keep the server-trusted access record in step with the user document.
   const syncAuthProfile = (
     userId: string,
-    patch: { role?: User["role"]; branchId?: string; active?: boolean; name?: string },
+    patch: { role?: User["role"]; branchId?: string; active?: boolean; name?: string; supervisedBranchIds?: string[] },
   ) => {
     const authUid = users.find((u) => u.id === userId)?.authUid;
     if (!authUid) return;
@@ -1099,6 +1200,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       role: updates.role,
       branchId: updates.branchId,
       name: updates.name,
+      supervisedBranchIds: updates.supervisedBranchIds,
     });
     logAudit("تعديل موظف", "مستخدم", id, `تعديل بيانات الحساب رقم ${id}`);
   };
@@ -1397,7 +1499,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   ): BrokerEntity => {
     const newBroker: BrokerEntity = {
       ...brokerData,
-      id: `brk-${Date.now().toString().slice(-5)}`,
+      id: `brk-${crypto.randomUUID()}`,
       totalReferrals: 0,
       totalVolume: 0,
     };
