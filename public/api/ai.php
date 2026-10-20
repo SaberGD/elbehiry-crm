@@ -401,16 +401,21 @@ if ($mode === 'weekly') {
         . "أعد JSON فقط بالشكل: {\"headline\": \"جملة واحدة تلخص الأسبوع\", "
         . "\"improved\": [{\"title\": \"...\", \"detail\": \"...\"}], "
         . "\"dropped\": [{\"title\": \"...\", \"why\": \"السبب مدعوم بأرقام من البيانات\"}], "
-        . "\"next_week\": [{\"action\": \"...\", \"reason\": \"...\"}]}. "
-        . "حد أقصى 4 عناصر في كل قسم، ولو مفيش تحسن أو تراجع واضح اترك القسم فارغًا بدل ما تختلق. "
+        . "\"next_week\": [{\"action\": \"...\", \"reason\": \"...\"}], "
+        . "\"team\": [{\"name\": \"اسم الموظف\", \"verdict\": \"ممتاز|كويس|محتاج متابعة\", \"detail\": \"أرقامه this_week مقارنة بـ last_week في agents\"}], "
+        . "\"lost\": [{\"customer\": \"...\", \"responsible\": \"الموظف المسؤول\", \"why\": \"السبب من lostOpportunities\"}], "
+        . "\"complaints\": {\"headline\": \"جملة عن الشكاوى ووقت حلها من customerReviews\", \"items\": [{\"customer\": \"...\", \"state\": \"...\", \"detail\": \"...\"}]}}. "
+        . "team: كل موظف له أرقام في agents (حد أقصى 8، الأهم أولًا). lost: أهم الفرص الضايعة الأسبوع ده ومين المسؤول عنها. "
+        . "complaints.items: الشكاوى المفتوحة وخصوصًا اللي lateOver24hWithoutFollowUp. "
+        . "حد أقصى 4 عناصر في improved وdropped وnext_week و6 في lost وcomplaints.items، ولو مفيش تحسن أو تراجع واضح اترك القسم فارغًا بدل ما تختلق. "
         . "اذكر أسماء الموظفين والفروع والعملاء الحقيقية الموجودة في البيانات عند اللزوم. جمل قصيرة بالعامية.";
     $out = gemini($cfg, [['text' => "بيانات النظام (JSON):\n" . $snapJson]], ['responseMimeType' => 'application/json', 'temperature' => 0.2], $system);
     $r = json_decode($out, true);
     if (!is_array($r)) fail(502, 'ai_unavailable');
     $clip = fn($v) => is_string($v) ? mb_substr(trim($v), 0, 400) : '';
-    $list = function ($items, array $keys) use ($clip) {
+    $list = function ($items, array $keys, int $max = 4) use ($clip) {
         $res = [];
-        foreach (array_slice((array) $items, 0, 4) as $it) {
+        foreach (array_slice((array) $items, 0, $max) as $it) {
             if (!is_array($it)) continue;
             $row = [];
             foreach ($keys as $k) $row[$k] = $clip($it[$k] ?? '');
@@ -423,6 +428,12 @@ if ($mode === 'weekly') {
         'improved' => $list($r['improved'] ?? [], ['title', 'detail']),
         'dropped' => $list($r['dropped'] ?? [], ['title', 'why']),
         'next_week' => $list($r['next_week'] ?? [], ['action', 'reason']),
+        'team' => $list($r['team'] ?? [], ['name', 'verdict', 'detail'], 8),
+        'lost' => $list($r['lost'] ?? [], ['customer', 'responsible', 'why'], 6),
+        'complaints' => [
+            'headline' => $clip($r['complaints']['headline'] ?? ''),
+            'items' => $list($r['complaints']['items'] ?? [], ['customer', 'state', 'detail'], 6),
+        ],
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }

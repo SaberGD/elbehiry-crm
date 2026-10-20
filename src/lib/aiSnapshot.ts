@@ -5,6 +5,8 @@ import type {
   FollowUp,
   Lead,
   NotBoughtRecord,
+  ReviewNote,
+  ReviewRequest,
   User,
   Visit,
 } from "../types/crm";
@@ -13,6 +15,7 @@ import { departmentIds } from "./purchases";
 import { brokerRows, customerRows, departmentLeaders, feedbackSummary } from "./overview";
 import { departmentNames, followUpStatus, today } from "./presentation";
 import { reasonLabel } from "./notBought";
+import { complaintOpenedAt, complaintState, complaintStateLabel, isComplaint, isLateComplaint, reviewStats } from "./reviews";
 
 export interface SnapshotInput {
   user: User;
@@ -25,6 +28,8 @@ export interface SnapshotInput {
   brokers: BrokerEntity[];
   users: User[];
   branches: Branch[];
+  reviewRequests?: ReviewRequest[];
+  reviewNotes?: ReviewNote[];
 }
 
 const inRange = (date: string | undefined, from: string, to: string) =>
@@ -39,6 +44,8 @@ const sum = (nums: number[]) => nums.reduce((s, n) => s + n, 0);
  */
 export function buildSnapshot(input: SnapshotInput) {
   const { leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches } = input;
+  const reviews = input.reviewRequests ?? [];
+  const notes = input.reviewNotes ?? [];
   const t = today();
   const weekFrom = addToDate(t, { days: -6 });
   const prevTo = addToDate(t, { days: -7 });
@@ -72,6 +79,22 @@ export function buildSnapshot(input: SnapshotInput) {
   const reasonCounts = new Map<string, number>();
   for (const r of notBoughtRecords)
     for (const id of r.reasons) reasonCounts.set(reasonLabel(id), (reasonCounts.get(reasonLabel(id)) ?? 0) + 1);
+
+  const agentPeriod = (id: string, from: string, to: string) => {
+    const mineIds = new Set(leads.filter((l) => l.assignedAgentId === id).map((l) => l.id));
+    const bk = active.filter((b) => mineIds.has(b.leadId) && inRange(b.bookingDate, from, to));
+    return {
+      newCustomers: leads.filter((l) => l.assignedAgentId === id && inRange(l.createdAt, from, to)).length,
+      visitsReceived: visits.filter((v) => v.receivedByAgentId === id && inRange(v.date, from, to)).length,
+      purchases: bk.length,
+      purchasesEGP: sum(bk.map((b) => b.amount)),
+      followUpsCompleted: followUps.filter((f) => f.assignedAgentId === id && f.status === "completed" && inRange(f.completedAt, from, to)).length,
+      notBought: notBoughtRecords.filter((r) => r.agentId === id && inRange(r.createdAt, from, to)).length,
+    };
+  };
+  const weekReviews = reviews.filter((r) => inRange(r.answeredAt || r.sentAt, weekFrom, t));
+  const prevReviews = reviews.filter((r) => inRange(r.answeredAt || r.sentAt, prevFrom, prevTo));
+  const boughtIds = new Set(active.map((b) => b.leadId));
 
   const split = (s: Record<string, number>) =>
     Object.fromEntries(departmentIds.filter((d) => s[d] > 0).map((d) => [departmentNames[d], s[d]]));
@@ -121,9 +144,15 @@ export function buildSnapshot(input: SnapshotInput) {
           completedThisWeek: followUps.filter(
             (x) => x.assignedAgentId === u.id && x.status === "completed" && inRange(x.completedAt, weekFrom, t),
           ).length,
+          this_week: agentPeriod(u.id, weekFrom, t),
+          last_week: agentPeriod(u.id, prevFrom, prevTo),
+          reviews: (() => {
+            const st = reviewStats(reviews.filter((r) => r.agentId === u.id), notes);
+            return { answered: st.answered, average: st.average, complaints: st.complaints.total, openComplaints: st.complaints.open + st.complaints.followedUp };
+          })(),
         };
       })
-      .filter((a) => a.customers > 0 || a.overdueFollowUps > 0),
+      .filter((a) => a.customers > 0 || a.overdueFollowUps > 0 || a.this_week.visitsReceived > 0 || a.last_week.visitsReceived > 0),
     topCustomers: customers.slice(0, 15).map((c) => ({
       name: c.name,
       totalEGP: c.total,
@@ -185,6 +214,44 @@ export function buildSnapshot(input: SnapshotInput) {
         .filter((l) => (l.customerRatingStars ?? 5) <= 3 && l.customerRatingStars)
         .slice(0, 8)
         .map((l) => ({ customer: l.name, stars: l.customerRatingStars, comment: l.customerRatingComment ?? null })),
+    },
+    // Customers who left this week without buying, and who was responsible for them.
+    lostOpportunities: {
+      this_week: notBoughtRecords.filter((r) => inRange(r.createdAt, weekFrom, t)).length,
+      last_week: notBoughtRecords.filter((r) => inRange(r.createdAt, prevFrom, prevTo)).length,
+      list: notBoughtRecords
+        .filter((r) => inRange(r.createdAt, weekFrom, t) && !boughtIds.has(r.leadId))
+        .slice(0, 20)
+        .map((r) => ({
+          customer: r.leadName,
+          responsible: r.agentName ?? userName(r.agentId),
+          branch: branchOf(r.branchId),
+          reasons: r.reasons.map(reasonLabel),
+          note: r.note ?? r.otherText ?? null,
+        })),
+      notInterested: leads
+        .filter((l) => l.status === "not_interested" && !boughtIds.has(l.id))
+        .slice(0, 10)
+        .map((l) => ({ customer: l.name, responsible: userName(l.assignedAgentId), branch: branchOf(l.branchId) })),
+    },
+    customerReviews: {
+      this_week: reviewStats(weekReviews, notes),
+      last_week: reviewStats(prevReviews, notes),
+      allTime: reviewStats(reviews, notes),
+      openComplaints: reviews
+        .filter((r) => isComplaint(r) && complaintState(r, notes) !== "resolved")
+        .sort((a, b) => complaintOpenedAt(a).localeCompare(complaintOpenedAt(b)))
+        .slice(0, 15)
+        .map((r) => ({
+          customer: r.leadName,
+          branch: branchOf(r.branchId),
+          agent: r.agentName ?? userName(r.agentId),
+          since: complaintOpenedAt(r).slice(0, 10),
+          state: complaintStateLabel[complaintState(r, notes)],
+          lateOver24hWithoutFollowUp: isLateComplaint(r, notes),
+          stars: r.response?.rating ?? null,
+          comment: r.response?.comment?.slice(0, 200) ?? null,
+        })),
     },
     customers: leads.slice(0, 150).map((l) => {
       const c = customers.find((x) => x.leadId === l.id);

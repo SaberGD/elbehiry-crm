@@ -4,7 +4,7 @@ import { buildSnapshot } from "../../lib/aiSnapshot";
 
 /** Builds the AI snapshot from exactly what the signed-in user can see. */
 export function useSnapshotBuilder() {
-  const { effectiveUser, leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches } = useCRM();
+  const { effectiveUser, leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches, reviewRequests, reviewNotes } = useCRM();
   return () =>
     buildSnapshot({
       user: effectiveUser,
@@ -17,5 +17,7 @@ export function useSnapshotBuilder() {
       brokers,
       users,
       branches,
+      reviewRequests,
+      reviewNotes,
     });
 }

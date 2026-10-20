@@ -117,10 +117,10 @@ function Rich({ text }: { text: string }) {
 
 /** Zaki: a floating assistant that answers questions about the data the user can see. */
 export function ZakiChat() {
-  const { currentUser, leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches } = useCRM();
+  const { currentUser, leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches, reviewRequests, reviewNotes } = useCRM();
   // Always the latest data: the ref is refreshed on every render, and Firestore keeps the state live.
   const dataRef = useRef<ToolData | null>(null);
-  dataRef.current = { today: today(), leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches };
+  dataRef.current = { today: today(), leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches, reviewRequests, reviewNotes };
   const [steps, setSteps] = useState<string[]>([]);
   const [available, setAvailable] = useState(false);
   const [open, setOpen] = useState(false);

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useCRM } from "../context/CRMContext";
 import { ReviewCard } from "../components/reviews/ReviewCard";
 import { FilterBar, inDateRange } from "../components/common/FilterBar";
-import { averageRating, complaintState, isComplaint, reviewPhase } from "../lib/reviews";
+import { averageRating, complaintState, isComplaint, isLateComplaint, resolutionHours, reviewPhase } from "../lib/reviews";
 
 type Tab = "complaints" | "all" | "waiting";
 
@@ -24,11 +24,16 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
     const open = complaints.filter((r) => complaintState(r, reviewNotes) !== "resolved");
     const waiting = sorted.filter((r) => r.status === "sent");
     const answered = sorted.filter((r) => r.status === "answered");
-    return { sorted, complaints, open, waiting, answered, avg: averageRating(sorted) };
+    const late = open.filter((r) => isLateComplaint(r, reviewNotes));
+    const hours = complaints.map((r) => resolutionHours(r, reviewNotes)).filter((h): h is number => h !== null);
+    const avgHours = hours.length ? Math.round(hours.reduce((a, b) => a + b, 0) / hours.length) : null;
+    return { sorted, complaints, open, late, avgHours, waiting, answered, avg: averageRating(sorted) };
   }, [reviewRequests, reviewNotes]);
 
   const dueReminders = data.waiting.filter((r) => reviewPhase(r) === "reminder_due").length;
-  const base = tab === "complaints" ? data.complaints : tab === "waiting" ? data.waiting : data.sorted;
+  // Late complaints come first so they get picked up.
+  const lateIds = new Set(data.late.map((r) => r.id));
+  const base = tab === "complaints" ? [...data.complaints].sort((a, b) => Number(lateIds.has(b.id)) - Number(lateIds.has(a.id))) : tab === "waiting" ? data.waiting : data.sorted;
   const list = base.filter((r) => {
     const stars = r.response?.rating;
     return (
@@ -75,7 +80,10 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
           <strong className="metric-value" style={data.open.length ? { color: "#c8232b" } : undefined}>
             {data.open.length}
           </strong>
-          <span className="metric-note">من إجمالي {data.complaints.length}</span>
+          <span className="metric-note" style={data.late.length ? { color: "#c8232b", fontWeight: 600 } : undefined}>
+            {data.late.length ? `${data.late.length} متأخرة +24 ساعة من غير متابعة` : `من إجمالي ${data.complaints.length}`}
+            {data.avgHours !== null && ` · متوسط الحل ${data.avgHours < 48 ? `${data.avgHours} ساعة` : `${Math.round(data.avgHours / 24)} يوم`}`}
+          </span>
         </div>
         <div className="metric">
           <span className="metric-top">مستنية رد العميل</span>

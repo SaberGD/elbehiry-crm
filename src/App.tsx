@@ -28,6 +28,7 @@ import { VisitsPage } from "./pages/VisitsPage";
 import { FollowUpsPage } from "./pages/FollowUpsPage";
 import { BookingsPage } from "./pages/BookingsPage";
 import { ReviewWatcher } from "./components/reviews/ReviewWatcher";
+import { LateComplaintsBanner } from "./components/reviews/LateComplaintsBanner";
 import { ZakiChat } from "./components/zaki/ZakiChat";
 import { SaveErrorToast } from "./components/common/SaveErrorToast";
 import { useStackTables } from "./components/common/useStackTables";
@@ -109,6 +110,7 @@ const AppContent: React.FC = () => {
 
         {/* Viewport Content Area */}
         <main id="main-content" className="workspace-main">
+          {activeTab !== "feedback" && <LateComplaintsBanner onOpen={() => setActiveTab("feedback")} />}
           <div key={activeTab} className="animate-page-enter min-w-0">
             <Suspense fallback={<div className="quiet-note" style={{ padding: 30 }}>جاري التحميل…</div>}>
             {activeTab === "dept_dashboard" && (

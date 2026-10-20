@@ -6,6 +6,7 @@ import {
   complaintState,
   complaintStateLabel,
   isComplaint,
+  isLateComplaint,
   reminderMessage,
   reviewLink,
   reviewPhase,
@@ -64,6 +65,11 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
         {complaint && (
           <span className="status-pill" style={{ background: state === "resolved" ? "#e4f4e9" : "#fbeceb", color: state === "resolved" ? "#1b6b3a" : "#a51a21" }}>
             شكوى · {complaintStateLabel[state]}
+          </span>
+        )}
+        {isLateComplaint(r, reviewNotes) && (
+          <span className="status-pill" style={{ background: "#c8232b", color: "#fff" }}>
+            متأخرة +24 ساعة
           </span>
         )}
       </div>

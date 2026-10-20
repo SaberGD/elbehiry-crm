@@ -72,3 +72,57 @@ export function averageRating(list: ReviewRequest[]): number | null {
   const rated = list.filter((r) => r.status === "answered" && r.response).map((r) => r.response!.rating);
   return rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
 }
+
+/** A complaint nobody has followed up on for this long is escalated to the managers. */
+export const COMPLAINT_ESCALATION_HOURS = 24;
+
+export function complaintOpenedAt(r: ReviewRequest): string {
+  return r.answeredAt || r.sentAt;
+}
+
+/** Open, with no follow-up at all, for more than a day. */
+export function isLateComplaint(r: ReviewRequest, notes: ReviewNote[], now = Date.now()): boolean {
+  return (
+    isComplaint(r) &&
+    complaintState(r, notes) === "open" &&
+    now - new Date(complaintOpenedAt(r)).getTime() >= COMPLAINT_ESCALATION_HOURS * HOUR
+  );
+}
+
+/** Hours from the customer's complaint to the note that closed it; null while it is still open. */
+export function resolutionHours(r: ReviewRequest, notes: ReviewNote[]): number | null {
+  const done = notes.filter((n) => n.requestId === r.id && n.kind === "resolved").sort((a, b) => a.at.localeCompare(b.at))[0];
+  if (!done) return null;
+  return Math.max(0, Math.round((new Date(done.at).getTime() - new Date(complaintOpenedAt(r)).getTime()) / HOUR));
+}
+
+export interface ReviewStats {
+  sent: number;
+  answered: number;
+  responseRatePercent: number;
+  average: number | null;
+  complaints: { total: number; open: number; followedUp: number; resolved: number; late: number; avgResolutionHours: number | null };
+}
+
+export function reviewStats(list: ReviewRequest[], notes: ReviewNote[], now = Date.now()): ReviewStats {
+  const sent = list.filter((r) => r.status !== "cancelled");
+  const answered = sent.filter((r) => r.status === "answered");
+  const complaints = answered.filter(isComplaint);
+  const states = complaints.map((r) => complaintState(r, notes));
+  const hours = complaints.map((r) => resolutionHours(r, notes)).filter((h): h is number => h !== null);
+  const avg = averageRating(answered);
+  return {
+    sent: sent.length,
+    answered: answered.length,
+    responseRatePercent: sent.length ? Math.round((answered.length / sent.length) * 100) : 0,
+    average: avg === null ? null : Number(avg.toFixed(1)),
+    complaints: {
+      total: complaints.length,
+      open: states.filter((s) => s === "open").length,
+      followedUp: states.filter((s) => s === "followed_up").length,
+      resolved: states.filter((s) => s === "resolved").length,
+      late: complaints.filter((r) => isLateComplaint(r, notes, now)).length,
+      avgResolutionHours: hours.length ? Math.round(hours.reduce((a, b) => a + b, 0) / hours.length) : null,
+    },
+  };
+}

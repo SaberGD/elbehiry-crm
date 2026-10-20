@@ -8,6 +8,9 @@ import { defaultPermissionMatrix, normalizeUser, tempOverrides } from "../src/li
 import {
   complaintState,
   isComplaint,
+  isLateComplaint,
+  resolutionHours,
+  reviewStats,
   newReviewToken,
   requestMessage,
   reviewPhase,
@@ -139,4 +142,23 @@ test("cancelling a request needs a reason and a visible request", () => {
   assert.throws(() => e.v.cancelReviewRequest(complaint.id, ""));
   e.v.cancelReviewRequest(complaint.id, "العميل مش مهتم");
   assert.throws(() => view(otherManager).v.cancelReviewRequest(complaint.id, "x"));
+});
+
+test("a complaint with no follow-up for 24h is late; any note or resolution stops the escalation", () => {
+  const c = req({ status: "answered", sentAt: sentAt(40), answeredAt: sentAt(30), response: { rating: 1 } });
+  const fresh = req({ id: "f".repeat(24), status: "answered", sentAt: sentAt(10), answeredAt: sentAt(5), response: { rating: 1 } });
+  assert.equal(isLateComplaint(c, []), true);
+  assert.equal(isLateComplaint(fresh, []), false);
+  const note = (kind: ReviewNote["kind"], hoursAgo: number): ReviewNote => ({ id: kind + hoursAgo, requestId: c.id, text: "x", kind, byId: "m", byName: "مدير", at: sentAt(hoursAgo) });
+  assert.equal(isLateComplaint(c, [note("note", 2)]), false);
+  assert.equal(resolutionHours(c, []), null);
+  assert.equal(resolutionHours(c, [note("note", 20), note("resolved", 10)]), 20);
+  const st = reviewStats([c, fresh, req({ id: "s".repeat(24) })], [note("resolved", 10)]);
+  assert.equal(st.sent, 3);
+  assert.equal(st.answered, 2);
+  assert.equal(st.complaints.total, 2);
+  assert.equal(st.complaints.resolved, 1);
+  assert.equal(st.complaints.open, 1);
+  assert.equal(st.complaints.late, 0);
+  assert.equal(st.complaints.avgResolutionHours, 20);
 });

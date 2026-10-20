@@ -136,6 +136,10 @@ export interface WeeklyReport {
   improved: { title: string; detail: string }[];
   dropped: { title: string; why: string }[];
   next_week: { action: string; reason: string }[];
+  /** Added in the second version of the report; older cached reports lack them. */
+  team?: { name: string; verdict: string; detail: string }[];
+  lost?: { customer: string; responsible: string; why: string }[];
+  complaints?: { headline: string; items: { customer: string; state: string; detail: string }[] };
 }
 
 export async function weeklySummary(snapshot: unknown): Promise<WeeklyReport> {

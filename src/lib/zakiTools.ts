@@ -1,9 +1,10 @@
-import type { Booking, Branch, BrokerEntity, Department, FollowUp, Lead, NotBoughtRecord, User, Visit } from "../types/crm";
+import type { Booking, Branch, BrokerEntity, Department, FollowUp, Lead, NotBoughtRecord, ReviewNote, ReviewRequest, User, Visit } from "../types/crm";
 import { addToDate } from "./postSale";
 import { bookingSplit, departmentIds } from "./purchases";
 import { brokerRows, customerRows, feedbackSummary } from "./overview";
 import { departmentNames, followUpStatus, sourceNames, statusNames } from "./presentation";
 import { notBoughtReasons, reasonLabel } from "./notBought";
+import { complaintOpenedAt, complaintState, complaintStateLabel, isComplaint, isLateComplaint, resolutionHours, reviewStats } from "./reviews";
 
 /** Live, role-scoped data the assistant may query. Built from the workspace (never raw database access). */
 export interface ToolData {
@@ -16,6 +17,8 @@ export interface ToolData {
   brokers: BrokerEntity[];
   users: User[];
   branches: Branch[];
+  reviewRequests?: ReviewRequest[];
+  reviewNotes?: ReviewNote[];
 }
 
 type Args = Record<string, unknown>;
@@ -313,6 +316,44 @@ export function runTool(name: string, a: Args, d: ToolData): unknown {
       return { groupBy, ...page(rows.sort((x, y) => y.purchasesTotalEGP - x.purchasesTotalEGP), limitOf(a)) };
     }
 
+    case "reviews": {
+      const bids = branchIdsFor(a.branch);
+      const aids = agentIdsFor(a.agent);
+      const notes = d.reviewNotes ?? [];
+      const only = str(a.only) ?? "all";
+      const rs = (d.reviewRequests ?? [])
+        .filter((r) => inBranch(r.branchId, bids) && (!aids || aids.includes(r.agentId)))
+        .filter((r) => inRange(r.answeredAt || r.sentAt, from, to));
+      const rows = rs
+        .filter((r) =>
+          only === "complaints" ? isComplaint(r)
+          : only === "open_complaints" ? isComplaint(r) && complaintState(r, notes) !== "resolved"
+          : only === "late" ? isLateComplaint(r, notes)
+          : only === "low" ? r.status === "answered" && (r.response?.rating ?? 5) <= 3
+          : r.status === "answered",
+        )
+        .sort((x, y) => complaintOpenedAt(y).localeCompare(complaintOpenedAt(x)))
+        .map((r) => {
+          const mine = notes.filter((n) => n.requestId === r.id).sort((x, y) => x.at.localeCompare(y.at));
+          return {
+            customer: r.leadName,
+            branch: branchName(r.branchId),
+            agent: r.agentName ?? userName(r.agentId) ?? null,
+            about: r.subjectLabel,
+            date: (r.answeredAt || r.sentAt).slice(0, 10),
+            stars: r.response?.rating ?? null,
+            comment: r.response?.comment?.slice(0, 300) ?? null,
+            complaint: isComplaint(r),
+            complaintState: isComplaint(r) ? complaintStateLabel[complaintState(r, notes)] : null,
+            lateOver24h: isLateComplaint(r, notes),
+            resolutionHours: resolutionHours(r, notes),
+            aiSummary: r.ai?.summary ?? null,
+            lastFollowUp: mine.length ? { by: mine[mine.length - 1].byName, text: mine[mine.length - 1].text.slice(0, 200) } : null,
+          };
+        });
+      return { stats: reviewStats(rs, notes), ...page(rows, limitOf(a)) };
+    }
+
     default:
       return { error: `أداة غير معروفة: ${name}` };
   }
@@ -331,6 +372,7 @@ export const toolLabels: Record<string, string> = {
   not_bought: "بشوف أسباب عدم الشراء",
   feedback: "بقرا تقييمات العملاء",
   performance: "بقارن الفروع والموظفين",
+  reviews: "بقرا التقييمات والشكاوى",
 };
 
 export const defaultToolDate = (daysAgo: number, today: string) => addToDate(today, { days: -daysAgo });
