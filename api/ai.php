@@ -24,6 +24,7 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_TEXT_CHARS = 4000;
 const MAX_SNAPSHOT_BYTES = 200 * 1024;
 const RATE_LIMIT_PER_HOUR = 120;
+const RATE_LIMIT_PER_DAY = 600;
 
 function fail(int $code, string $error, ?string $detail = null): void {
     http_response_code($code);
@@ -192,18 +193,46 @@ function usage_report(): array {
     ];
 }
 
-function rate_limit(string $uid): void {
+/** Per-account caps set by the developer in settings/license (aiPerHour, aiPerDay). Read with the caller's own token and cached for a minute. */
+function ai_limits(string $idToken): array {
+    $limits = ['hour' => RATE_LIMIT_PER_HOUR, 'day' => RATE_LIMIT_PER_DAY];
+    $cache = sys_get_temp_dir() . '/crm-ai-limits.json';
+    if (is_file($cache) && filemtime($cache) > time() - 60) {
+        $c = json_decode((string) file_get_contents($cache), true);
+        if (is_array($c) && isset($c['hour'], $c['day'])) return ['hour' => (int) $c['hour'], 'day' => (int) $c['day']];
+    }
+    $ch = curl_init('https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
+        . '/databases/' . rawurlencode('(default)') . '/documents/settings/license');
+    curl_setopt_array($ch, [CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $idToken], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
+    $raw = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($status === 200 && is_string($raw)) {
+        $f = (json_decode($raw, true)['fields'] ?? []);
+        foreach (['hour' => 'aiPerHour', 'day' => 'aiPerDay'] as $k => $name) {
+            $v = isset($f[$name]['integerValue']) ? (int) $f[$name]['integerValue'] : (isset($f[$name]['doubleValue']) ? (int) $f[$name]['doubleValue'] : 0);
+            if ($v >= 1) $limits[$k] = min($v, 100000);
+        }
+    }
+    @file_put_contents($cache, json_encode($limits), LOCK_EX);
+    return $limits;
+}
+
+function rate_limit(string $uid, string $idToken): void {
+    $limits = ai_limits($idToken);
     $file = sys_get_temp_dir() . '/crm-ai-' . md5($uid) . '.json';
     $now = time();
     $hits = [];
     if (is_file($file)) {
         $hits = json_decode((string) file_get_contents($file), true) ?: [];
-        $hits = array_values(array_filter($hits, fn($t) => $t > $now - 3600));
+        $hits = array_values(array_filter($hits, fn($t) => $t > $now - 86400));
     }
-    if (count($hits) >= RATE_LIMIT_PER_HOUR) fail(429, 'rate_limited');
+    if (count($hits) >= $limits['day']) fail(429, 'rate_limited', 'day');
+    if (count(array_filter($hits, fn($t) => $t > $now - 3600)) >= $limits['hour']) fail(429, 'rate_limited', 'hour');
     $hits[] = $now;
     file_put_contents($file, json_encode($hits), LOCK_EX);
 }
+
 
 function gemini_error(int $status, array $data): string {
     return 'gemini_' . $status . ': ' . mb_substr((string) ($data['error']['message'] ?? 'no_message'), 0, 220);
@@ -251,7 +280,7 @@ if (!preg_match('/^Bearer\s+(.+)$/i', $auth, $m)) fail(401, 'unauthorized');
 [$uid, $why, $callerRole] = verify_active_staff($m[1]);
 $GLOBALS['AI_ROLE'] = (string) $callerRole;
 if ($uid === null) fail(401, 'unauthorized', $why);
-rate_limit($uid);
+rate_limit($uid, $m[1]);
 
 $json = null;
 if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== false) {
