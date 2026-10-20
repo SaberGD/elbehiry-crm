@@ -7,6 +7,7 @@ import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
 import { isReferralPhone, phoneKey } from "../lib/referrals";
 import { scopesFor, seesAll } from "../lib/scopes";
+import { defaultLicense, type License } from "../lib/license";
 import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
 import { today, followUpStatus, statusNames, sourceNames, followUpTypeNames } from "../lib/presentation";
@@ -120,6 +121,9 @@ export interface CRMContextType {
   timelineEvents: TimelineEvent[];
   auditLogs: AuditLog[];
   distributionRule: DistributionRule;
+  /** The plan the company is on (how many branches it may have). Only the developer changes it. */
+  license: License;
+  setLicense: (l: License) => void;
   departmentEntities: DepartmentEntity[];
   jobPositions: JobPosition[];
   purchaseCategories: PurchaseCategory[];
@@ -302,6 +306,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() =>
     loadStorage("audit", []),
   );
+  const [license, setLicense] = useState<License>(defaultLicense);
   const [distributionRule, setDistributionRule] = useState<DistributionRule>(
     () =>
       loadStorage("dist_rule", {
@@ -370,6 +375,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   useFirestoreCollection("bookings", bookings, setBookings, { scope: scope.bookings });
   useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents, { scope: scope.timeline });
   useFirestoreCollection("activityLogs", auditLogs, setAuditLogs, { scope: scope.audit });
+  useFirestoreDocument(["settings", "license"], license, setLicense, { canWrite: authForScope?.role === "admin" });
   useFirestoreDocument(["settings", "distribution"], distributionRule, setDistributionRule, { canWrite: topWriter });
   useFirestoreDocument(["settings", "permissions"], permissionMatrix, (m) =>
     setPermissionMatrix(sanitizeMatrix(m)),
@@ -1727,6 +1733,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         timelineEvents,
         auditLogs,
         distributionRule,
+        license,
+        setLicense,
 
         addCompany,
         addGovernorate,

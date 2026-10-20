@@ -1,4 +1,5 @@
 import { BrokerSearch } from "./BrokerSearch";
+import { CustomerBrief } from "./CustomerBrief";
 import { buildTimeline, dayLabel, timeLabel, timelineGroupLabels, type TimelineGroup } from "../../lib/timeline";
 import { departmentIds, bookingSplit } from "../../lib/purchases";
 import {
@@ -550,6 +551,7 @@ export function LeadDetailsModal({
               </div>
             )}
           </div>
+          {canEditCustomer(effectiveUser, lead) && <CustomerBrief lead={lead} />}
           {lead.notes && (
             <div className="client-note-preview">
               <FileText size={16} />

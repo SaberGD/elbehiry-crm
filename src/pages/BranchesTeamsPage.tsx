@@ -1,3 +1,4 @@
+import { branchLimitMessage, branchQuota } from "../lib/license";
 import { canManageOrganization } from "../lib/access";
 import React, { useState } from "react";
 import { useCRM } from "../context/CRMContext";
@@ -48,7 +49,9 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
     addBranch,
     addCompany,
     addWarehouse,
+    license,
   } = useCRM();
+  const quota = branchQuota(branches, license);
   const { t } = useLanguage();
 
   const [activeTab, setActiveTab] = useState<
@@ -111,6 +114,7 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
     if (!canManageOrganization(effectiveUser)) return;
 
     if (addType === "branch") {
+      if (quota.full) return;
       addBranch({
         name: formName,
         code: autoCode("BR"),
@@ -166,6 +170,8 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
         {canManageOrganization(effectiveUser) && (
           <button
             className="btn-primary"
+            disabled={quota.full}
+            title={quota.full ? branchLimitMessage(quota) : undefined}
             onClick={() => {
               setAddType("branch");
               setShowAddModal(true);
@@ -176,6 +182,11 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
           </button>
         )}
       </div>
+
+      <p className={`notice${quota.full ? " warning" : ""}`} role="status">
+        الباقة الحالية: {quota.max === 2 ? "فرعين" : `${quota.max} فرع`}. مستخدم {quota.used} من {quota.max}.
+        {quota.full && " وصلت للحد الأقصى، ولإضافة فرع جديد كلّم المطوّر."}
+      </p>
 
       {/* Top Level Category Filter Selector */}
       <div className="flex glass-card p-2 rounded-2xl shadow-xs overflow-x-auto gap-1">
@@ -411,6 +422,8 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
 
             {canManageOrganization(effectiveUser) && (
               <button
+                disabled={quota.full}
+                title={quota.full ? branchLimitMessage(quota) : undefined}
                 onClick={() => {
                   setAddType("branch");
                   setShowAddModal(true);

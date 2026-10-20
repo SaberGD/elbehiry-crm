@@ -200,7 +200,8 @@ service cloud.firestore {
 
     match /settings/{docId} {
       allow read: if isStaff();
-      allow write: if isTop();
+      // The plan (how many branches) is set by the developer only.
+      allow write: if isTop() && (docId != 'license' || role() == 'admin');
     }
 
     // ---------- day-to-day sales data: every row is scoped on the server ----------

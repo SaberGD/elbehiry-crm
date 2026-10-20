@@ -71,6 +71,8 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
     ...Object.fromEntries(
       [
         "addBranch",
+        "updateBranch",
+        "setLicense",
         "addLead",
         "updateLead",
         "deleteLead",
@@ -353,8 +355,24 @@ test("a customer created a moment ago can get its purchase or its not-bought rea
   assert.throws(() => view.addNotBoughtRecord({ leadId: created.id, branchId: employee.branchId!, agentId: employee.id, reasons: [] } as never));
   assert.throws(() => view.addBooking({ leadId: "ghost", branchId: employee.branchId!, agentId: employee.id, amount: 1 } as never));
 });
+test("a branch cannot be added past the company plan, and a stopped branch cannot be switched back on past it", () => {
+  const company = seed.initialCompanies.find((c) => c.active)!,
+    gov = seed.initialGovernorates.find((g) => g.active)!;
+  const branch = (id: string, over = {}) => ({ id, name: id, code: id, active: true, companyId: company.id, governorateId: gov.id, ...over }) as never;
+  const full = fixture(director, { branches: [branch("a"), branch("b"), branch("old", { active: false }), branch("sample", { isDemo: true })], license: { maxBranches: 2 } });
+  const data = { name: "c", code: "C", companyId: company.id, governorateId: gov.id } as never;
+  assert.throws(() => full.view.addBranch(data), /الباقة الحالية/);
+  assert.throws(() => full.view.updateBranch("old", { active: true }), /الباقة الحالية/);
+  assert.deepEqual(full.calls, []);
+  const roomy = fixture(director, { branches: [branch("a")], license: { maxBranches: 2 } });
+  assert.doesNotThrow(() => roomy.view.addBranch(data));
+  // only the developer changes the plan
+  assert.throws(() => roomy.view.setLicense({ maxBranches: 10 }));
+  assert.doesNotThrow(() => fixture(developer, { currentUser: developer, license: { maxBranches: 2 } }).view.setLicense({ maxBranches: 10 }));
+});
+
 test("creating a branch requires a real company and governorate instead of an unscoped branch", () => {
-  const { view } = fixture(director);
+  const { view } = fixture(director, { branches: [] });
   assert.throws(() => view.addBranch({ name: "unscoped", code: "X" } as never));
   const company = seed.initialCompanies.find((c) => c.active)!,
     gov = seed.initialGovernorates.find((g) => g.active)!;

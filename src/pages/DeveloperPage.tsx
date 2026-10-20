@@ -1,3 +1,4 @@
+import { branchQuota } from "../lib/license";
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, Code2, RefreshCw, Server } from "lucide-react";
 import { auth } from "../lib/firebase";
@@ -24,6 +25,8 @@ const MODE_LABELS: Record<string, string> = {
   weekly: "الملخص الأسبوعي",
   transcribe: "تحويل الصوت لنص",
   refine: "تحسين النص",
+  brief: "ملخص العميل",
+  classify: "تصنيف الشكاوى",
   unknown: "غير مصنّف",
 };
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
@@ -60,7 +63,10 @@ function Num({ label, value, onChange, step = 1, hint }: { label: string; value:
 
 /** Developer-only tools: real AI token usage, a what-if cost calculator, and service health. */
 export function DeveloperPage() {
-  const { currentUser, users: staff, clearOrganizationData } = useCRM();
+  const { currentUser, users: staff, clearOrganizationData, license, setLicense, branches } = useCRM();
+  const [maxBranches, setMaxBranches] = useState<number>(license.maxBranches);
+  useEffect(() => setMaxBranches(license.maxBranches), [license.maxBranches]);
+  const quota = branchQuota(branches, license);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -208,6 +214,25 @@ export function DeveloperPage() {
             }}
           >
             تفريغ الهيكل
+          </button>
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <div>
+            <h2>باقة الشركة (عدد الفروع)</h2>
+            <p>الحد الأقصى للفروع الفعلية المسموح بها. الفروع التجريبية مش بتتحسب. أنت بس اللي تقدر تغيّره.</p>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap", padding: "0 22px 20px" }}>
+          <Num label="أقصى عدد فروع" value={maxBranches} onChange={setMaxBranches} hint={`مستخدم دلوقتي: ${quota.used} من ${quota.max}`} />
+          <button
+            className="btn-primary"
+            disabled={maxBranches < 1 || maxBranches === license.maxBranches}
+            onClick={() => setLicense({ maxBranches })}
+          >
+            حفظ الباقة
           </button>
         </div>
       </section>

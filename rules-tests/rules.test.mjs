@@ -189,3 +189,11 @@ test("only the account that set the system up can restore its own developer reco
   await assertFails(setDoc(doc(env.authenticatedContext("uid-founder").firestore(), "authProfiles", "uid-other"), rec("uid-other")));
   await assertSucceeds(setDoc(doc(env.authenticatedContext("uid-founder").firestore(), "authProfiles", "uid-founder"), rec("uid-founder")));
 });
+
+test("the company plan (branch limit) can be changed by the developer only", async () => {
+  await assertSucceeds(setDoc(doc(db("dev"), "settings", "license"), { maxBranches: 5 }));
+  await assertFails(setDoc(doc(db("gm"), "settings", "license"), { maxBranches: 50 }));
+  await assertFails(setDoc(doc(db("agentA"), "settings", "license"), { maxBranches: 50 }));
+  await assertSucceeds(getDoc(doc(db("agentA"), "settings", "license")));
+  await assertSucceeds(setDoc(doc(db("gm"), "settings", "distribution"), { autoDistribute: true }));
+});

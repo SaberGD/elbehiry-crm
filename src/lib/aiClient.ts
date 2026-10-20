@@ -149,3 +149,20 @@ export async function weeklySummary(snapshot: unknown): Promise<WeeklyReport> {
     body: JSON.stringify({ mode: "weekly", snapshot }),
   });
 }
+
+export interface CustomerBriefResult {
+  last_update: string;
+  summary: string;
+  suggestion: string;
+  watch_out: string;
+  tone: "hot" | "warm" | "cold" | "at_risk";
+}
+
+/** A quick brief on one customer: the last update, the picture, and how to deal with them now. */
+export async function customerBrief(customer: unknown): Promise<CustomerBriefResult> {
+  return call({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "brief", customer }),
+  });
+}

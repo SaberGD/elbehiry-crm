@@ -1,3 +1,4 @@
+import { branchLimitMessage, branchQuota } from "./license";
 import { hasPermission, isDirector, withPermissions } from "./permissions";
 import type { CRMContextType } from "../context/CRMContext";
 import type { Lead, User, UserRole } from "../types/crm";
@@ -578,8 +579,14 @@ export function createWorkspace(raw: CRMContextType) {
     updateUserPermissions: ((...args) => {
       deny();
     }) as CRMContextType["updateUserPermissions"],
+    setLicense: ((l) => {
+      require(raw.currentUser.role === "admin" && Number.isInteger(l.maxBranches) && l.maxBranches >= 1 && l.maxBranches <= 1000);
+      raw.setLicense({ maxBranches: l.maxBranches });
+    }) as CRMContextType["setLicense"],
     addBranch: ((data) => {
       require(access.canManageOrganization(actor));
+      const quota = branchQuota(raw.branches, raw.license);
+      if (quota.full) throw new Error(branchLimitMessage(quota));
       require(
         !data.companyId ||
           raw.companies.some((c) => c.id === data.companyId && c.active),
@@ -592,6 +599,13 @@ export function createWorkspace(raw: CRMContextType) {
     }) as CRMContextType["addBranch"],
     updateBranch: ((...args) => {
       require(access.canManageOrganization(actor));
+      // Switching a stopped branch back on counts against the plan too.
+      const [id, updates] = args;
+      const was = raw.branches.find((b) => b.id === id);
+      if (updates.active === true && was && was.active === false) {
+        const quota = branchQuota(raw.branches, raw.license);
+        if (quota.full) throw new Error(branchLimitMessage(quota));
+      }
       raw.updateBranch(...args);
     }) as CRMContextType["updateBranch"],
     addCompany: ((data) => {

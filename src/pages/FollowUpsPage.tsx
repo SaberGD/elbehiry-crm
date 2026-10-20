@@ -1,3 +1,4 @@
+import { CustomerBrief } from "../components/common/CustomerBrief";
 import { REFERRAL_MIN_STARS, isReferralPhone } from "../lib/referrals";
 import { canCompleteFollowUp, canAccessPage, isSales, worksOwnCustomers } from "../lib/access";
 import { hasPermission } from "../lib/permissions";
@@ -349,6 +350,10 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
               </button>
             </div>
             <form onSubmit={complete}>
+              {(() => {
+                const l = leads.find((x) => x.id === selected.leadId);
+                return l ? <CustomerBrief lead={l} compact /> : null;
+              })()}
               <label className="field">
                 <span>
                   إيه اللي حصل؟ <em>مطلوب</em>
