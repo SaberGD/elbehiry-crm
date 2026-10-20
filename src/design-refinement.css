@@ -1,21 +1,21 @@
-/* Behery: warm paint surfaces in light mode, layered graphite in dark mode. */
+/* Behery: cool paper surfaces in light mode, midnight ink in dark mode. */
 :root {
-  --canvas: #f5f2ed;
-  --surface: #fffefa;
-  --surface-soft: #f8f5ef;
-  --surface-hover: #eeebe5;
-  --ink: #282724;
-  --muted: #6f6b63;
-  --line: #e6e1d8;
+  --canvas: #f2f4f9;
+  --surface: #ffffff;
+  --surface-soft: #f6f8fc;
+  --surface-hover: #e8ecf4;
+  --ink: #111a2c;
+  --muted: #5b677e;
+  --line: #dde3ee;
   --brand: #ba292f;
   --brand-hover: #9e2026;
-  --brand-soft: #f9eae6;
+  --brand-soft: #fbeceb;
   --brand-text: #a7252b;
   --department-construction: #aa383d;
   --department-decor: #c5a275;
   --department-garden: #62836b;
   --department-general: #a0a3a1;
-  --card-shadow: 0 2px 3px #47381c03, 0 9px 30px #47381c04;
+  --card-shadow: 0 2px 3px #1a284a05, 0 9px 30px #1a284a08;
   --motion-quick: 160ms;
   --motion-enter: 320ms;
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -43,7 +43,7 @@
   border-bottom-color: var(--line);
 }
 .behery-sidebar {
-  background: #fcfaf5;
+  background: #fafbfe;
   border-inline-end: 1px solid var(--line);
 }
 .dark .behery-sidebar {
