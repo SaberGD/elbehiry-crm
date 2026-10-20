@@ -3,6 +3,8 @@
  * Admin helper for the Behery CRM (runs on the web host; replaces a Cloud Function).
  *   GET  ?ping=1                                  -> {"configured": bool}
  *   POST {"action":"reset_password","userId":"…"} -> a fresh RANDOM password for that staff member
+ *   POST {"action":"create_login","userId":"…","loginId":"…","password":"…"} -> creates the sign-in account
+ *        (so self sign-up can be switched off in Firebase: nobody can make an account from the browser)
  *
  * Why a server: changing someone else's password needs the Firebase Admin credentials,
  * which must never reach the browser. They live in a service-account file OUTSIDE public_html:
@@ -153,10 +155,66 @@ $callerBranch = f($caller, 'branchId');
 if ($sa === null) fail(503, 'not_configured');
 
 $in = json_decode((string) file_get_contents('php://input'), true);
-if (!is_array($in) || ($in['action'] ?? '') !== 'reset_password') fail(400, 'bad_action');
+$action = is_array($in) ? (string) ($in['action'] ?? '') : '';
+if (!in_array($action, ['reset_password', 'create_login'], true)) fail(400, 'bad_action');
 $userId = (string) ($in['userId'] ?? '');
 if (!preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $userId)) fail(400, 'bad_user');
 rate_limit($callerUid);
+
+if ($action === 'create_login') {
+    // The staff record was written by the caller under the security rules, so its role and branch are already
+    // limited to what the caller may grant; the same check is repeated here before an account is made.
+    $userDoc = read_doc('users/' . rawurlencode($userId), $idToken);
+    if (!$userDoc) fail(404, 'user_not_found');
+    if (f($userDoc, 'authUid')) fail(409, 'already_has_login');
+    $role = f($userDoc, 'role') ?? '';
+    $branch = f($userDoc, 'branchId');
+    if (!may_reset($callerRole, $callerBranch, $role, $branch)) fail(403, 'forbidden');
+    $loginId = strtolower(trim((string) ($in['loginId'] ?? '')));
+    $password = (string) ($in['password'] ?? '');
+    if (!preg_match('/^(\d{8,15}|[a-z][a-z0-9._-]{2,30})$/', $loginId)) fail(400, 'bad_login_id');
+    if (strlen($password) < 8 || strlen($password) > 128) fail(400, 'weak_password');
+    $email = $loginId . '@staff.elbehiry.local';
+
+    $token = google_token($sa);
+    if ($token === null) fail(502, 'admin_auth_failed');
+    [$st, $res] = http(
+        'POST',
+        'https://identitytoolkit.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID . '/accounts',
+        ['Authorization: Bearer ' . $token, 'Content-Type: application/json'],
+        json_encode(['email' => $email, 'password' => $password, 'displayName' => f($userDoc, 'name') ?? ''])
+    );
+    if ($st !== 200 || empty($res['localId'])) {
+        $msg = (string) ($res['error']['message'] ?? '');
+        fail(str_contains($msg, 'EMAIL_EXISTS') ? 409 : 502, str_contains($msg, 'EMAIL_EXISTS') ? 'login_taken' : 'create_failed', 'identitytoolkit_' . $st . ': ' . mb_substr($msg, 0, 120));
+    }
+    $uid = (string) $res['localId'];
+    $supervised = [];
+    foreach (($userDoc['supervisedBranchIds']['arrayValue']['values'] ?? []) as $v) {
+        if (isset($v['stringValue'])) $supervised[] = ['stringValue' => (string) $v['stringValue']];
+    }
+    $profile = [
+        'uid' => ['stringValue' => $uid],
+        'email' => ['stringValue' => $email],
+        'loginId' => ['stringValue' => $loginId],
+        'name' => ['stringValue' => f($userDoc, 'name') ?? ''],
+        'userId' => ['stringValue' => $userId],
+        'role' => ['stringValue' => $role],
+        'active' => ['booleanValue' => true],
+    ];
+    if ($branch) $profile['branchId'] = ['stringValue' => $branch];
+    if ($supervised) $profile['supervisedBranchIds'] = ['arrayValue' => ['values' => $supervised]];
+    [$sp] = http('PATCH', fs_url('authProfiles/' . rawurlencode($uid)), ['Authorization: Bearer ' . $token, 'Content-Type: application/json'], json_encode(['fields' => $profile]));
+    [$su] = http(
+        'PATCH',
+        fs_url('users/' . rawurlencode($userId)) . '?updateMask.fieldPaths=authUid',
+        ['Authorization: Bearer ' . $token, 'Content-Type: application/json'],
+        json_encode(['fields' => ['authUid' => ['stringValue' => $uid]]])
+    );
+    if ($sp !== 200) fail(502, 'profile_write_failed');
+    echo json_encode(['uid' => $uid, 'linked' => $su === 200]);
+    exit;
+}
 
 $userDoc = read_doc('users/' . rawurlencode($userId), $idToken);
 $targetUid = f($userDoc, 'authUid');
