@@ -405,7 +405,7 @@ if ($mode === 'weekly') {
         . "\"team\": [{\"name\": \"اسم الموظف\", \"verdict\": \"ممتاز|كويس|محتاج متابعة\", \"detail\": \"أرقامه this_week مقارنة بـ last_week في agents\"}], "
         . "\"lost\": [{\"customer\": \"...\", \"responsible\": \"الموظف المسؤول\", \"why\": \"السبب من lostOpportunities\"}], "
         . "\"complaints\": {\"headline\": \"جملة عن الشكاوى ووقت حلها من customerReviews\", \"items\": [{\"customer\": \"...\", \"state\": \"...\", \"detail\": \"...\"}]}}. "
-        . "team: كل موظف له أرقام في agents (حد أقصى 8، الأهم أولًا). lost: أهم الفرص الضايعة الأسبوع ده ومين المسؤول عنها. "
+        . "team: كل موظف له أرقام في agents (حد أقصى 8، الأهم أولًا)، واذكر تقييم عملائه customerRating (score من 5 وlevel) مع الأرقام. lost: أهم الفرص الضايعة الأسبوع ده ومين المسؤول عنها. "
         . "complaints.items: الشكاوى المفتوحة وخصوصًا اللي lateOver24hWithoutFollowUp. "
         . "حد أقصى 4 عناصر في improved وdropped وnext_week و6 في lost وcomplaints.items، ولو مفيش تحسن أو تراجع واضح اترك القسم فارغًا بدل ما تختلق. "
         . "اذكر أسماء الموظفين والفروع والعملاء الحقيقية الموجودة في البيانات عند اللزوم. جمل قصيرة بالعامية.";

@@ -30,6 +30,8 @@ function render(name,label,branch){
   +'<div class="row"><span>السعر</span>'+stars("price",1)+'</div>'
   +'<div class="row"><span>الجودة والشغل</span>'+stars("quality",1)+'</div></div>'
   +'<div class="q"><span>هترشحنا لأصحابك وأهلك؟</span><div class="yn" id="rec"><button type="button" data-v="1">أكيد</button><button type="button" data-v="0">مش متأكد</button></div></div>'
+  +'<div class="q" id="refbox" hidden><span>حد من أصحابك أو أهلك محتاج دهانات أو تشطيب؟</span><p class="hint">سيب لنا اسمه ورقمه (اختياري) وهنكلمه بلطف ونقوله إنك رشّحتنا.</p>'
+  +'<input id="rn" maxlength="80" placeholder="اسمه" autocomplete="off"><input id="rp" type="tel" dir="ltr" maxlength="20" inputmode="tel" placeholder="01xxxxxxxxx" autocomplete="off"></div>'
   +'<div class="q"><label for="c">عندك ملاحظة أو شكوى؟ اكتبها لنا</label><textarea id="c" maxlength="1500" placeholder="اكتب هنا بحرية…"></textarea>'
   +'<label class="chk"><input type="checkbox" id="cmp"><span>دي شكوى وعايز حد من الإدارة يتواصل معايا بخصوصها</span></label></div>'
   +'<div class="err" id="err"></div><button class="send" id="send" type="button">إرسال التقييم</button></div>';
@@ -38,9 +40,10 @@ function render(name,label,branch){
     var id=box.getAttribute("data-id");
     box.addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;v[id]=Number(b.getAttribute("data-v"));
       box.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",Number(x.getAttribute("data-v"))<=v[id])});
-      if(id==="rating"&&v.rating<=2)document.getElementById("cmp").checked=true});
+      if(id==="rating"&&v.rating<=2)document.getElementById("cmp").checked=true;if(id==="rating")refToggle()});
   });
-  document.getElementById("rec").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;v.rec=b.getAttribute("data-v")==="1";
+  function refToggle(){document.getElementById("refbox").hidden=!(v.rec===true||v.rating>=4)}
+  document.getElementById("rec").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;v.rec=b.getAttribute("data-v")==="1";refToggle();
     this.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x===b)})});
   document.getElementById("send").addEventListener("click",function(){
     var err=document.getElementById("err");err.textContent="";
@@ -50,6 +53,11 @@ function render(name,label,branch){
     ["treatment","price","quality"].forEach(function(k){if(v[k])resp[k]={integerValue:String(v[k])}});
     if(v.rec!==null)resp.wouldRecommend={booleanValue:v.rec};
     if(comment)resp.comment={stringValue:comment};
+    var rn=document.getElementById("rn").value.trim(),rp=document.getElementById("rp").value.trim(),rd=rp.replace(/\D/g,"");
+    if(!document.getElementById("refbox").hidden&&(rn||rp)){
+      if(!rn||rd.length<10||rd.length>15){err.textContent="اكتب اسم صديقك ورقم موبايله بشكل صحيح، أو سيب الخانتين فاضيين.";return}
+      resp.referral={mapValue:{fields:{name:{stringValue:rn},phone:{stringValue:rp}}}};
+    }
     var body={fields:{status:{stringValue:"answered"},answeredAt:{stringValue:new Date().toISOString()},isComplaint:{booleanValue:complaint},response:{mapValue:{fields:resp}}}};
     var url=BASE+token+"?currentDocument.exists=true&key="+KEY+"&updateMask.fieldPaths=status&updateMask.fieldPaths=answeredAt&updateMask.fieldPaths=isComplaint&updateMask.fieldPaths=response";
     var btn=document.getElementById("send");btn.disabled=true;btn.textContent="بنبعت…";
