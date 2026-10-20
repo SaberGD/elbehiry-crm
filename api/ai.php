@@ -8,7 +8,7 @@
  * The Gemini key never reaches the browser. It lives in a PHP file OUTSIDE public_html:
  *   <account>/domains/<site>/crm-ai-secrets.php (next to public_html)
  *   <?php return ['gemini_key' => '...', 'model' => 'gemini-flash-latest'];
- * Every request must carry a valid Firebase ID token (a signed-in staff member).
+ * Every request must carry the Firebase ID token of an ACTIVE staff member (authProfiles/{uid}.active == true).
  */
 declare(strict_types=1);
 
@@ -16,7 +16,6 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
-const FIREBASE_WEB_API_KEY = 'AIzaSyAQdI3hTzx-LFgANKnIzeeYiKuUgCeqZUE'; // public web key of the Firebase project
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_TEXT_CHARS = 4000;
 const RATE_LIMIT_PER_HOUR = 60;
@@ -67,13 +66,34 @@ function http_json(string $url, array $headers, array $body): array {
     return [$status, is_array($data) ? $data : []];
 }
 
-function verify_firebase_user(string $idToken): ?string {
-    [$status, $data] = http_json(
-        'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' . FIREBASE_WEB_API_KEY,
-        [],
-        ['idToken' => $idToken]
-    );
-    return $status === 200 && !empty($data['users'][0]['localId']) ? (string) $data['users'][0]['localId'] : null;
+const FIREBASE_PROJECT_ID = 'albehairy-group';
+
+/**
+ * Returns the uid only when the caller is an ACTIVE staff member. The user's own
+ * ID token is used to read authProfiles/{uid} from Firestore; the security rules
+ * only let a user read their own profile, and Firestore itself rejects forged
+ * or expired tokens. Anyone who merely signed up (no profile) is refused.
+ */
+function verify_active_staff(string $idToken): ?string {
+    $parts = explode('.', $idToken);
+    if (count($parts) !== 3) return null;
+    $payload = json_decode((string) base64_decode(strtr($parts[1], '-_', '+/')), true);
+    $uid = is_array($payload) ? (string) ($payload['user_id'] ?? $payload['sub'] ?? '') : '';
+    if ($uid === '' || !preg_match('/^[A-Za-z0-9_\-]{6,128}$/', $uid)) return null;
+    $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
+        . '/databases/' . rawurlencode('(default)') . '/documents/authProfiles/' . rawurlencode($uid);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $idToken],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20,
+    ]);
+    $raw = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($status !== 200 || !is_string($raw)) return null;
+    $doc = json_decode($raw, true);
+    return ($doc['fields']['active']['booleanValue'] ?? false) === true ? $uid : null;
 }
 
 function rate_limit(string $uid): void {
@@ -126,7 +146,7 @@ if ($cfg === null) fail(503, 'not_configured');
 
 $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 if (!preg_match('/^Bearer\s+(.+)$/i', $auth, $m)) fail(401, 'unauthorized');
-$uid = verify_firebase_user($m[1]);
+$uid = verify_active_staff($m[1]);
 if ($uid === null) fail(401, 'unauthorized');
 rate_limit($uid);
 
