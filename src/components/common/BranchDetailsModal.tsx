@@ -1,3 +1,4 @@
+import { bookingSplit } from "../../lib/purchases";
 import { useState } from "react";
 import type { Branch } from "../../types/crm";
 import { useCRM } from "../../context/CRMContext";
@@ -119,15 +120,6 @@ export function BranchDetailsModal({
                     value: tasks.filter((f) => followUpStatus(f) === "overdue")
                       .length,
                   },
-                  {
-                    allowed: has("invoices.view"),
-                    label: "فواتير معلقة",
-                    value: purchaseInvoices.filter(
-                      (i) =>
-                        i.branchId === branch.id &&
-                        ["draft", "partial"].includes(i.status),
-                    ).length,
-                  },
                 ]
                   .filter((m) => m.allowed)
                   .map((m) => (
@@ -139,16 +131,19 @@ export function BranchDetailsModal({
               </div>
               {has("bookings.view") && (
                 <div className="department-list">
-                  <h3>قيمة التعاقدات حسب القسم</h3>
+                  <h3>المشتريات حسب القسم</h3>
                   {Object.entries(departmentNames).map(([id, label]) => (
                     <div className="department-row" key={id}>
                       <div>
                         <span>{label}</span>
                         <strong>
                           {formatMoney(
-                            contracts
-                              .filter((c) => c.department === id)
-                              .reduce((s, c) => s + c.amount, 0),
+                            contracts.reduce(
+                              (s, c) =>
+                                s +
+                                bookingSplit(c)[id as keyof ReturnType<typeof bookingSplit>],
+                              0,
+                            ),
                           )}{" "}
                           ج.م
                         </strong>

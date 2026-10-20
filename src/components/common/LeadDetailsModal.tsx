@@ -1,3 +1,4 @@
+import { departmentIds, bookingSplit } from "../../lib/purchases";
 import {
   canEditCustomer,
   canContactCustomer,
@@ -85,8 +86,12 @@ export function LeadDetailsModal({
   const [note, setNote] = useState("");
   const [date, setDate] = useState(today());
   const [reason, setReason] = useState("");
-  const [amount, setAmount] = useState("");
-  const [payment, setPayment] = useState<Booking["paymentStatus"]>("pending");
+  const [deptAmounts, setDeptAmounts] = useState<Record<Department, string>>({
+    construction: "",
+    decor: "",
+    garden: "",
+    general: "",
+  });
   const [agent, setAgent] = useState("");
   const [feedback, setFeedback] = useState("");
   const allowed = (value: Action) =>
@@ -136,7 +141,7 @@ export function LeadDetailsModal({
       setDate(today());
       setNote(initialAction === "edit" ? lead.notes : "");
       setReason("");
-      setAmount("");
+      setDeptAmounts({ construction: "", decor: "", garden: "", general: "" });
       setAgent(
         lead.assignedAgentId ||
           (isSales(effectiveUser) ? effectiveUser.id : ""),
@@ -259,26 +264,35 @@ export function LeadDetailsModal({
       setTab("visits");
     }
     if (action === "booking") {
-      if (!amount || Number(amount) <= 0 || !Number.isFinite(Number(amount))) {
-        setFeedback("اكتب قيمة تعاقد أكبر من صفر.");
+      const parts = departmentIds
+        .map((id) => [id, Number(deptAmounts[id] || 0)] as const)
+        .filter(([, v]) => v !== 0);
+      if (
+        !parts.length ||
+        parts.some(([, v]) => !Number.isFinite(v) || v < 0)
+      ) {
+        setFeedback("اكتب قيمة أكبر من صفر في قسم واحد على الأقل.");
         return;
       }
+      const total = parts.reduce((s, [, v]) => s + v, 0);
+      const primary = [...parts].sort((a, b) => b[1] - a[1])[0][0];
       addBooking({
         leadId: lead.id,
         leadName: lead.name,
         leadPhone: lead.phone,
         branchId: lead.branchId,
         agentId: agent,
-        department,
-        courseId: `ps-${department}`,
-        courseName: departmentNames[department],
+        department: primary,
+        courseId: parts.length === 1 ? `ps-${primary}` : "ps-multi",
+        courseName: parts.map(([id]) => departmentNames[id]).join(" + "),
         bookingDate: today(),
-        amount: Number(amount),
-        paymentStatus: payment,
-        bookingStatus: payment === "pending" ? "pending_payment" : "confirmed",
+        amount: total,
+        departmentAmounts: Object.fromEntries(parts),
+        bookingStatus: "confirmed",
         source: lead.source,
         notes: note.trim(),
       });
+      setDeptAmounts({ construction: "", decor: "", garden: "", general: "" });
       setTab("bookings");
     }
     if (action === "reassign") {
@@ -549,7 +563,7 @@ export function LeadDetailsModal({
                     </label>
                   </>
                 )}
-                {(action === "edit" || action === "booking") && (
+                {action === "edit" && (
                   <label className="field">
                     <span>القسم</span>
                     <select
@@ -599,31 +613,37 @@ export function LeadDetailsModal({
                 )}
                 {action === "booking" && (
                   <>
-                    <label className="field">
-                      <span>
-                        قيمة التعاقد بالجنيه <em>مطلوب</em>
-                      </span>
-                      <input
-                        type="number"
-                        min=".01"
-                        step=".01"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                      />
-                    </label>
-                    <label className="field">
-                      <span>حالة الدفع</span>
-                      <select
-                        value={payment}
-                        onChange={(e) =>
-                          setPayment(e.target.value as Booking["paymentStatus"])
-                        }
-                      >
-                        <option value="pending">لم يتم الدفع</option>
-                        <option value="deposit">تم استلام مقدم</option>
-                        <option value="full">تم الدفع بالكامل</option>
-                      </select>
-                    </label>
+                    {departmentIds.map((id) => (
+                      <label className="field" key={id}>
+                        <span>{departmentNames[id]} (ج.م)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step=".01"
+                          placeholder="0"
+                          value={deptAmounts[id]}
+                          onChange={(e) =>
+                            setDeptAmounts((prev) => ({
+                              ...prev,
+                              [id]: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    ))}
+                    <p className="table-secondary full-width">
+                      إجمالي المشتريات:{" "}
+                      <strong>
+                        {formatMoney(
+                          departmentIds.reduce(
+                            (s, id) => s + (Number(deptAmounts[id]) || 0),
+                            0,
+                          ),
+                        )}{" "}
+                        ج.م
+                      </strong>{" "}
+                      — اكتب المبلغ في القسم أو الأقسام اللي اشترى منها فقط، وسيب الباقي فاضي.
+                    </p>
                   </>
                 )}
                 {["reassign", "followup", "booking", "visit"].includes(
@@ -914,18 +934,24 @@ export function LeadDetailsModal({
                 leadBookings.map((b) => (
                   <article className="profile-record" key={b.id}>
                     <span className="status-pill">
-                      {b.bookingStatus === "cancelled"
-                        ? "ملغى"
-                        : b.paymentStatus === "full"
-                          ? "مدفوع بالكامل"
-                          : b.paymentStatus === "deposit"
-                            ? "تم استلام مقدم"
-                            : "في انتظار الدفع"}
+                      {b.bookingStatus === "cancelled" ? "ملغى" : "تم الشراء"}
                     </span>
                     <h3>{b.courseName}</h3>
                     <p>
                       {formatMoney(b.amount)} ج.م · {b.bookingDate}
                     </p>
+                    {departmentIds.filter((id) => bookingSplit(b)[id] > 0)
+                      .length > 1 && (
+                      <p>
+                        {departmentIds
+                          .filter((id) => bookingSplit(b)[id] > 0)
+                          .map(
+                            (id) =>
+                              `${departmentNames[id]}: ${formatMoney(bookingSplit(b)[id])}`,
+                          )
+                          .join(" · ")}
+                      </p>
+                    )}
                     <p>{b.notes}</p>
                   </article>
                 ))
@@ -949,9 +975,10 @@ export function LeadDetailsModal({
                     <span className="status-pill">
                       {
                         {
-                          draft: "مسودة",
-                          paid: "مدفوعة",
-                          partial: "مدفوعة جزئيًا",
+                          recorded: "مسجلة",
+                          draft: "مسجلة",
+                          paid: "مسجلة",
+                          partial: "مسجلة",
                           cancelled: "ملغاة",
                         }[i.status]
                       }

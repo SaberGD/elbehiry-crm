@@ -71,8 +71,7 @@ export const InvoicesPage: React.FC = () => {
   const [invoiceDate, setInvoiceDate] = useState(
     new Date().toISOString().split("T")[0],
   );
-  const [invoiceStatus, setInvoiceStatus] =
-    useState<PurchaseInvoice["status"]>("draft");
+  const invoiceStatus: PurchaseInvoice["status"] = "recorded";
   const [invoiceNotes, setInvoiceNotes] = useState("");
 
   // Dynamic invoice items state
@@ -119,7 +118,11 @@ export const InvoicesPage: React.FC = () => {
     const matchBranch = branchFilter === "all" || inv.branchId === branchFilter;
 
     // Status filter
-    const matchStatus = statusFilter === "all" || inv.status === statusFilter;
+    const matchStatus =
+      statusFilter === "all" ||
+      (statusFilter === "active"
+        ? inv.status !== "cancelled"
+        : inv.status === statusFilter);
 
     return matchSearch && matchBranch && matchStatus;
   });
@@ -358,9 +361,7 @@ export const InvoicesPage: React.FC = () => {
                 className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs font-semibold"
               >
                 <option value="all">كافة الحالات</option>
-                <option value="paid">مسددة بالكامل</option>
-                <option value="partial">دفعة جزئية / عربون</option>
-                <option value="draft">مسودة فاتورة</option>
+                <option value="active">مسجلة</option>
                 <option value="cancelled">ملغاة</option>
               </select>
             </div>
@@ -460,7 +461,11 @@ export const InvoicesPage: React.FC = () => {
                         <td className="p-3.5">
                           {hasPermission(effectiveUser, "invoices.manage") ? (
                             <select
-                              value={inv.status}
+                              value={
+                                inv.status === "cancelled"
+                                  ? "cancelled"
+                                  : "recorded"
+                              }
                               onChange={(e) =>
                                 updatePurchaseInvoiceStatus(
                                   inv.id,
@@ -468,28 +473,17 @@ export const InvoicesPage: React.FC = () => {
                                 )
                               }
                               className={`px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
-                                inv.status === "paid"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
-                                  : inv.status === "partial"
-                                    ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
-                                    : "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                                inv.status === "cancelled"
+                                  ? "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
                               }`}
                             >
-                              <option value="paid">مسددة بالكامل</option>
-                              <option value="partial">دفعة جزئية</option>
-                              <option value="draft">مسودة</option>
+                              <option value="recorded">مسجلة</option>
                               <option value="cancelled">ملغاة</option>
                             </select>
                           ) : (
                             <span>
-                              {
-                                {
-                                  draft: "مسودة",
-                                  paid: "مدفوعة",
-                                  partial: "مدفوعة جزئيًا",
-                                  cancelled: "ملغاة",
-                                }[inv.status]
-                              }
+                              {inv.status === "cancelled" ? "ملغاة" : "مسجلة"}
                             </span>
                           )}
                         </td>
@@ -815,20 +809,6 @@ export const InvoicesPage: React.FC = () => {
 
               {/* Status & Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    حالة السداد *
-                  </label>
-                  <select
-                    value={invoiceStatus}
-                    onChange={(e) => setInvoiceStatus(e.target.value as any)}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                  >
-                    <option value="paid">مسددة بالكامل</option>
-                    <option value="partial">دفعة جزئية / عربون</option>
-                    <option value="draft">مسودة فاتورة</option>
-                  </select>
-                </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">

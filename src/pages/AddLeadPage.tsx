@@ -93,7 +93,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
     },
   ]);
   const [invoiceStatus, setInvoiceStatus] =
-    useState<PurchaseInvoice["status"]>("draft");
+    useState<PurchaseInvoice["status"]>("recorded");
   const [error, setError] = useState("");
   const [created, setCreated] = useState<Lead | null>(null);
   const duplicates =
@@ -625,23 +625,9 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
                   <Plus size={15} />
                   بند آخر
                 </button>
-                <label className="field">
-                  <span>حالة الفاتورة</span>
-                  <select
-                    value={invoiceStatus}
-                    onChange={(e) =>
-                      setInvoiceStatus(e.target.value as typeof invoiceStatus)
-                    }
-                  >
-                    <option value="draft">مسودة — لم يتم تأكيد الدفع</option>
-                    <option value="partial">مدفوعة جزئيًا</option>
-                    <option value="paid">مدفوعة بالكامل</option>
-                  </select>
-                  <small>
-                    الإجمالي: {formatMoney(total)} ج.م. اختَر «مدفوعة» فقط بعد
-                    استلام المبلغ.
-                  </small>
-                </label>
+                <p className="table-secondary">
+                  إجمالي المشتريات: <strong>{formatMoney(total)} ج.م</strong>
+                </p>
               </div>
             )}
           </div>

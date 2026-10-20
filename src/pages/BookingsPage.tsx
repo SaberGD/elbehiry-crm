@@ -3,7 +3,8 @@ import { hasPermission } from "../lib/permissions";
 import { useState } from "react";
 import { Search, ArrowUpLeft, ShoppingBag, PackageCheck, X } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
-import { formatMoney, today } from "../lib/presentation";
+import { formatMoney, today, departmentNames } from "../lib/presentation";
+import { departmentIds, bookingSplit } from "../lib/purchases";
 import { useDialog } from "../components/common/useDialog";
 import type { Booking } from "../types/crm";
 interface Props {
@@ -17,12 +18,13 @@ export function BookingsPage({ onOpenLead }: Props) {
   const [deliveredAt, setDeliveredAt] = useState(today());
   const dialogRef = useDialog(!!delivering, () => setDelivering(null));
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("all");
+  const [dept, setDept] = useState("all");
   const visible = bookings;
   const active = visible.filter((b) => b.bookingStatus !== "cancelled");
   const rows = visible.filter(
     (b) =>
-      (status === "all" || b.paymentStatus === status) &&
+      (dept === "all" ||
+        bookingSplit(b)[dept as keyof ReturnType<typeof bookingSplit>] > 0) &&
       [b.leadName, b.leadPhone, b.courseName].some((v) =>
         v.includes(query.trim()),
       ),
@@ -33,7 +35,7 @@ export function BookingsPage({ onOpenLead }: Props) {
         <div>
           <span className="eyebrow">من الاهتمام للتعاقد</span>
           <h1>الحجوزات والتعاقدات</h1>
-          <p>قيمة الاتفاق وحالة الدفع لكل عميل داخل نطاق عملك.</p>
+          <p>اشترى كام، ومتوزع إزاي على الأقسام الأربعة، لكل عميل داخل نطاقك.</p>
         </div>
       </div>
       <div
@@ -41,18 +43,16 @@ export function BookingsPage({ onOpenLead }: Props) {
         style={{ gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}
       >
         <div className="metric">
-          <span className="metric-top">التعاقدات غير الملغاة</span>
+          <span className="metric-top">عمليات الشراء غير الملغاة</span>
           <strong className="metric-value">{active.length}</strong>
         </div>
         <div className="metric">
-          <span className="metric-top">إجمالي قيمة التعاقدات</span>
+          <span className="metric-top">إجمالي المشتريات</span>
           <strong className="metric-value">
             {formatMoney(active.reduce((s, b) => s + b.amount, 0))}
             <small>ج.م</small>
           </strong>
-          <span className="metric-note">
-            قيمة الاتفاقات، وتشمل المبالغ غير المحصلة
-          </span>
+          <span className="metric-note">قيمة المشتريات الكلية لكل الأقسام</span>
         </div>
       </div>
       <section className="panel">
@@ -67,15 +67,16 @@ export function BookingsPage({ onOpenLead }: Props) {
             />
           </label>
           <select
-            aria-label="حالة الدفع"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            aria-label="القسم"
+            value={dept}
+            onChange={(e) => setDept(e.target.value)}
           >
-            <option value="all">كل حالات الدفع</option>
-            <option value="pending">لم يتم الدفع</option>
-            <option value="deposit">تم استلام مقدم</option>
-            <option value="full">مدفوع بالكامل</option>
-            <option value="refunded">مسترد</option>
+            <option value="all">كل الأقسام</option>
+            {departmentIds.map((id) => (
+              <option key={id} value={id}>
+                {departmentNames[id]}
+              </option>
+            ))}
           </select>
         </div>
         {rows.length ? (
@@ -84,8 +85,8 @@ export function BookingsPage({ onOpenLead }: Props) {
               <thead>
                 <tr>
                   <th>العميل والخدمة</th>
-                  <th>قيمة التعاقد</th>
-                  <th>حالة الدفع</th>
+                  <th>إجمالي المشتريات</th>
+                  <th>التوزيع على الأقسام</th>
                   <th>التاريخ</th>
                   <th>التسليم وما بعد البيع</th>
                   <th>الملف</th>
@@ -109,18 +110,18 @@ export function BookingsPage({ onOpenLead }: Props) {
                       {formatMoney(b.amount)} ج.م
                     </td>
                     <td>
-                      <span
-                        className={`status-pill ${b.bookingStatus === "cancelled" ? "is-new" : b.paymentStatus === "full" ? "is-success" : "is-warning"}`}
-                      >
-                        {b.bookingStatus === "cancelled"
-                          ? "ملغى"
-                          : {
-                              full: "مدفوع بالكامل",
-                              deposit: "تم استلام مقدم",
-                              pending: "لم يتم الدفع",
-                              refunded: "مسترد",
-                            }[b.paymentStatus]}
-                      </span>
+                      {b.bookingStatus === "cancelled" ? (
+                        <span className="status-pill is-new">ملغى</span>
+                      ) : (
+                        departmentIds
+                          .filter((id) => bookingSplit(b)[id] > 0)
+                          .map((id) => (
+                            <span className="table-secondary" key={id}>
+                              {departmentNames[id]}:{" "}
+                              {formatMoney(bookingSplit(b)[id])} ج.م
+                            </span>
+                          ))
+                      )}
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{b.bookingDate}</td>
                     <td>

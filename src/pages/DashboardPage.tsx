@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { splitTotals, bookingSplit } from "../lib/purchases";
 import {
   ArrowUpLeft,
   ArrowLeft,
@@ -89,16 +90,17 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
   const taskLeadIds = new Set(tasks.map((f) => f.leadId));
   const total = active.reduce((sum, b) => sum + b.amount, 0);
-  const pendingInvoices = invoices.filter((i) =>
-    ["draft", "partial"].includes(i.status),
+  const notBoughtYet = leads.filter(
+    (l) => !active.some((b) => b.leadId === l.id),
   );
+  const splitByDept = splitTotals(active);
   const departments = Object.entries(departmentNames).map(([id, name]) => ({
     id,
     name,
-    amount: active
-      .filter((b) => b.department === id)
-      .reduce((s, b) => s + b.amount, 0),
-    count: active.filter((b) => b.department === id).length,
+    amount: splitByDept[id as keyof typeof splitByDept],
+    count: active.filter(
+      (b) => bookingSplit(b)[id as keyof typeof splitByDept] > 0,
+    ).length,
   }));
   const branchRows = branches
     .filter((b) => b.active)
@@ -116,7 +118,10 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
         ).length,
         amount: contracts.reduce((s, c) => s + c.amount, 0),
         contracts: contracts.length,
-        pending: pendingInvoices.filter((i) => i.branchId === b.id).length,
+        notBought: leads.filter(
+          (l) =>
+            l.branchId === b.id && !active.some((bk) => bk.leadId === l.id),
+        ).length,
       };
     })
     .sort((a, b) =>
@@ -280,7 +285,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
             </div>
             <p>
               {has("bookings.view")
-                ? `${active.length} تعاقد غير ملغى · قيمة الاتفاقات قبل فصل التحصيل`
+                ? `${active.length} عملية شراء · إجمالي المشتريات على الأقسام الأربعة`
                 : "المؤشرات المتاحة وفق اختصاصك وفروعك."}
             </p>
             {canAccessPage(u, "reports") && (
@@ -379,9 +384,9 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
         )}
         {metric(
           "invoices",
-          "فواتير معلّقة",
-          pendingInvoices.length,
-          "مسودات ومدفوعة جزئيًا",
+          "لم يشتروا بعد",
+          notBoughtYet.length,
+          "عملاء بلا عملية شراء، فرص للمتابعة",
           FileText,
         )}
       </div>
@@ -430,7 +435,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                     {has("bookings.view") && <th>قيمة التعاقدات</th>}
                     {has("followups.view") && <th>متأخرة</th>}
                     {has("customers.view") && <th>بدون خطوة تالية</th>}
-                    {has("invoices.view") && <th>فواتير معلّقة</th>}
+                    {has("customers.view") && <th>لم يشتروا بعد</th>}
                     <th>
                       <span className="sr-only">تفاصيل الفرع</span>
                     </th>
@@ -488,7 +493,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                           </span>
                         </td>
                       )}
-                      {has("invoices.view") && <td>{b.pending}</td>}
+                      {has("customers.view") && <td>{b.notBought}</td>}
                       <td>
                         <button
                           className="branch-open"
@@ -538,7 +543,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                       <span>{b.missing} بدون خطوة تالية</span>
                     )}
                     {has("invoices.view") && (
-                      <span>{b.pending} فاتورة معلّقة</span>
+                      <span>{b.notBought} لم يشتروا بعد</span>
                     )}
                   </div>
                 </article>
@@ -619,7 +624,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
             <div className="department-note">
               <span>ج.م</span>
               <p>
-                القيم تشمل التعاقدات غير الملغاة؛ التحصيل يُراجع بشكل مستقل.
+                القيم هي إجمالي المشتريات غير الملغاة موزّعة على الأقسام الأربعة.
               </p>
             </div>
           </section>

@@ -1,7 +1,13 @@
+import { departmentIds, splitTotals } from "../lib/purchases";
 import { useCRM } from "../context/CRMContext";
 import { hasPermission } from "../lib/permissions";
 import { isSales, scopeLabel } from "../lib/access";
-import { followUpStatus, formatMoney, sourceNames } from "../lib/presentation";
+import {
+  followUpStatus,
+  formatMoney,
+  sourceNames,
+  departmentNames,
+} from "../lib/presentation";
 export function ReportsPage() {
   const {
     effectiveUser: u,
@@ -13,6 +19,7 @@ export function ReportsPage() {
   } = useCRM();
   const has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
   const contracts = bookings.filter((b) => b.bookingStatus !== "cancelled");
+  const totals = splitTotals(contracts);
   const converted = new Set(
     contracts
       .filter((b) => leads.some((l) => l.id === b.leadId))
@@ -35,9 +42,9 @@ export function ReportsPage() {
     },
     {
       allowed: has("bookings.view"),
-      name: "قيمة التعاقدات",
+      name: "إجمالي المشتريات",
       value: `${formatMoney(contracts.reduce((s, b) => s + b.amount, 0))} ج.م`,
-      note: "باستبعاد الملغى · ليست قيمة التحصيل",
+      note: "كل الأقسام · باستبعاد الملغى",
     },
     {
       allowed: has("followups.view"),
@@ -46,12 +53,10 @@ export function ReportsPage() {
       note: `من أصل ${followUps.filter((f) => f.status !== "cancelled").length} متابعة غير ملغاة`,
     },
     {
-      allowed: has("invoices.view"),
-      name: "فواتير في انتظار السداد",
-      value: purchaseInvoices.filter((i) =>
-        ["draft", "partial"].includes(i.status),
-      ).length,
-      note: "مسودات ومدفوعة جزئيًا",
+      allowed: has("customers.view") && has("bookings.view"),
+      name: "لم يشتروا بعد",
+      value: Math.max(leads.length - converted, 0),
+      note: "عملاء بلا عملية شراء، فرص للمتابعة",
     },
   ];
   return (
@@ -108,32 +113,30 @@ export function ReportsPage() {
           <section className="panel">
             <div className="panel-header">
               <div>
-                <h2>حالة الدفع في التعاقدات</h2>
-                <p>عدد التعاقدات، وليس المبالغ المحصلة</p>
+                <h2>المشتريات حسب الأقسام الأربعة</h2>
+                <p>إجمالي قيمة المشتريات ونصيب كل قسم منها</p>
               </div>
             </div>
             <div className="department-list">
-              {Object.entries({
-                full: "مدفوع بالكامل",
-                deposit: "تم استلام مقدم",
-                pending: "في انتظار الدفع",
-                refunded: "مسترد",
-              }).map(([id, label]) => (
-                <div className="department-row" key={id}>
-                  <div>
-                    <span>{label}</span>
-                    <strong>
-                      {contracts.filter((b) => b.paymentStatus === id).length}{" "}
-                      تعاقد
-                    </strong>
+              {departmentIds.map((id) => {
+                const amount = totals[id];
+                const sum = departmentIds.reduce((s, d) => s + totals[d], 0);
+                return (
+                  <div className="department-row" key={id}>
+                    <div>
+                      <span>{departmentNames[id]}</span>
+                      <strong>
+                        {formatMoney(amount)} ج.م{" "}
+                        {sum ? `· ${Math.round((amount / sum) * 100)}٪` : ""}
+                      </strong>
+                    </div>
+                    <div className="department-bar">
+                      <i style={{ width: `${sum ? (amount / sum) * 100 : 0}%` }} />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-            <p className="quiet-note">
-              حساب المحصل والمتبقي بدقة يحتاج تسجيل مبالغ الدفعات، وهي غير متاحة
-              في البيانات الحالية.
-            </p>
           </section>
         )}
       </div>

@@ -323,7 +323,8 @@ export interface Booking {
   courseName: string;
   bookingDate: string;
   amount: number;
-  paymentStatus: PaymentStatus;
+  paymentStatus?: PaymentStatus; // legacy: payments are handled by the accounts team
+  departmentAmounts?: Partial<Record<Department, number>>; // purchase split across the 4 departments
   bookingStatus: BookingStatus;
   source: LeadSource;
   notes: string;
@@ -404,7 +405,7 @@ export interface PurchaseInvoice {
   brokerName?: string;
   items: InvoiceLineItem[];
   totalAmount: number;
-  status: "draft" | "paid" | "partial" | "cancelled";
+  status: "recorded" | "draft" | "paid" | "partial" | "cancelled"; // payment states are legacy
   notes?: string;
   createdAt: string;
 }

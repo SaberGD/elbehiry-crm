@@ -846,7 +846,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       authorName: effectiveUser.name,
       type: "booking_created",
       title: `تأكيد حجز جديد: ${bookingData.courseName}`,
-      details: `المبلغ: ${bookingData.amount} ج.م - حالة الدفع: ${bookingData.paymentStatus} - الملاحظات: ${bookingData.notes}`,
+      details: `إجمالي المشتريات: ${bookingData.amount} ج.م - الملاحظات: ${bookingData.notes}`,
     });
 
     logAudit(

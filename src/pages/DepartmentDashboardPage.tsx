@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { bookingSplit } from "../lib/purchases";
 import { useCRM } from "../context/CRMContext";
 import { hasPermission } from "../lib/permissions";
 import { scopeLabel } from "../lib/access";
@@ -15,7 +16,8 @@ export function DepartmentDashboardPage({ setActiveTab, onOpenLead }: Props) {
   const [branch, setBranch] = useState<Branch | null>(null);
   const has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
   const contracts = bookings.filter(
-    (b) => b.bookingStatus !== "cancelled" && b.department === department,
+    (b) =>
+      b.bookingStatus !== "cancelled" && bookingSplit(b)[department] > 0,
   );
   const clients = leads.filter((l) => l.department === department);
   const visitsInDept = visits.filter((v) => v.department === department);
@@ -45,12 +47,12 @@ export function DepartmentDashboardPage({ setActiveTab, onOpenLead }: Props) {
       <div className="metric-grid" style={{ marginTop: 20 }}>
         {has("bookings.view") && (
           <div className="metric">
-            <span>قيمة التعاقدات في القسم</span>
+            <span>مشتريات القسم</span>
             <strong className="metric-value">
-              {formatMoney(contracts.reduce((s, c) => s + c.amount, 0))} ج.م
+              {formatMoney(contracts.reduce((s, c) => s + bookingSplit(c)[department], 0))} ج.م
             </strong>
             <span className="metric-note">
-              جميع الفترات · لا تشمل الملغى · ليست التحصيل
+              جميع الفترات · لا تشمل الملغى
             </span>
           </div>
         )}
