@@ -2295,3 +2295,45 @@
 
 .save-toast { position: fixed; left: 50%; transform: translateX(-50%); top: 18px; z-index: 120; display: flex; align-items: center; gap: .6rem; max-width: min(560px, calc(100vw - 24px)); width: max-content; padding: .8rem 1rem; border-radius: 14px; background: #2b1214; color: #fde8e6; border: 1px solid #7a2a2d; box-shadow: 0 14px 40px rgba(0,0,0,.35); font-size: .85rem; line-height: 1.6; }
 .save-toast .icon-button { color: inherit; }
+.broker-search input {
+  padding-inline-start: 34px;
+}
+.broker-search-icon {
+  position: absolute;
+  inset-inline-start: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.search-results.broker-results {
+  top: calc(100% + 4px);
+  inset-inline: 0;
+  width: auto;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.broker-results .broker-new strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent, #c8232b);
+}
+.broker-picked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  border-radius: 6px;
+}
+.broker-picked span {
+  display: grid;
+  gap: 2px;
+}
+.broker-picked small {
+  color: var(--muted);
+  text-align: start;
+}

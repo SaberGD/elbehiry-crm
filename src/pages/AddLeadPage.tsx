@@ -1,3 +1,4 @@
+import { BrokerSearch } from "../components/common/BrokerSearch";
 import {
   canCreateCustomer,
   canAssignCustomers,
@@ -442,41 +443,32 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
             <ChevronDown size={16} />
           </summary>
           <div className="optional-content">
-            <label className="field">
-              <span>جهة الترشيح</span>
-              <select
-                value={brokerMode}
-                onChange={(e) =>
-                  setBrokerMode(e.target.value as typeof brokerMode)
+            {brokerMode !== "new" ? (
+              <BrokerSearch
+                label="الوسيط أو جهة الترشيح"
+                brokers={brokers}
+                value={brokerMode === "existing" ? brokerId : ""}
+                onChange={(id) => {
+                  setBrokerId(id);
+                  setBrokerMode(id ? "existing" : "none");
+                }}
+                onCreate={
+                  canCreateCustomer(effectiveUser)
+                    ? (name) => {
+                        setBrokerName(name);
+                        setBrokerId("");
+                        setBrokerMode("new");
+                      }
+                    : undefined
                 }
-              >
-                <option value="none">بدون وسيط</option>
-                <option value="existing">وسيط مسجل عندنا</option>
-                {canCreateCustomer(effectiveUser) && (
-                  <option value="new">إضافة وسيط جديد</option>
-                )}
-              </select>
-            </label>
-            {brokerMode === "existing" && (
-              <label className="field" style={{ marginTop: 18 }}>
-                <span>اختَر الوسيط</span>
-                <select
-                  value={brokerId}
-                  onChange={(e) => setBrokerId(e.target.value)}
-                >
-                  <option value="">اختَر من القائمة</option>
-                  {brokers
-                    .filter((b) => b.active)
-                    .map((b) => (
-                      <option value={b.id} key={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              />
+            ) : (
+              <button type="button" className="btn-text" onClick={() => setBrokerMode("none")}>
+                ← دوّر في الوسطاء المسجلين بدل كده
+              </button>
             )}
             {brokerMode === "new" && (
-              <div className="field-grid" style={{ marginTop: 18 }}>
+              <div className="field-grid" style={{ marginTop: 12 }}>
                 <label className="field">
                   <span>
                     اسم الوسيط <em>مطلوب عند الإضافة</em>

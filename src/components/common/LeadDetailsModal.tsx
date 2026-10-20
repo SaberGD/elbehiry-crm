@@ -1,3 +1,4 @@
+import { BrokerSearch } from "./BrokerSearch";
 import { departmentIds, bookingSplit } from "../../lib/purchases";
 import {
   canEditCustomer,
@@ -690,22 +691,12 @@ export function LeadDetailsModal({
                       </span>
                     </summary>
                     <div className="field-grid">
-                      <label className="field">
-                        <span>الوسيط اللي جاب العميل</span>
-                        <select
-                          value={brokerSel}
-                          onChange={(e) => setBrokerSel(e.target.value)}
-                        >
-                          <option value="">بدون وسيط</option>
-                          {brokers
-                            .filter((b) => b.active)
-                            .map((b) => (
-                              <option key={b.id} value={b.id}>
-                                {b.name}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
+                      <BrokerSearch
+                        label="الوسيط اللي جاب العميل"
+                        brokers={brokers}
+                        value={brokerSel}
+                        onChange={setBrokerSel}
+                      />
                       <label className="field">
                         <span>رقم الواتساب</span>
                         <input

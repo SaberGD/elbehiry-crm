@@ -1,3 +1,4 @@
+import { BrokerSearch } from "../components/common/BrokerSearch";
 import { useMemo, useState } from "react";
 import { ArrowRight, ArrowUpLeft, CheckCircle2, ChevronDown, Handshake, MessageSquare, PlusCircle, ShoppingBag, UserRound, Users, CalendarClock, SlidersHorizontal } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
@@ -134,7 +135,7 @@ export function VisitsPage({ onOpenLead }: Props) {
     const clientName = pickedLead ? pickedLead.name : name.trim();
     const clientPhone = pickedLead ? pickedLead.phone : phone.trim();
     if (hasClient && (!clientName || !/^\+?[\d\s()-]{10,18}$/.test(clientPhone))) return setError("اكتب اسم العميل ورقم هاتف صحيح، أو اختار عميل مسجّل.");
-    if (hasBroker && brokerMode === "existing" && !pickedBroker) return setError("اختار الوسيط من القايمة، أو أضف وسيط جديد.");
+    if (hasBroker && brokerMode === "existing" && !pickedBroker) return setError("اكتب اسم الوسيط واختاره من النتايج، أو أضفه كوسيط جديد.");
     if (hasBroker && brokerMode === "new" && (!brokerName.trim() || !/^\+?[\d\s()-]{10,18}$/.test(brokerPhone.trim()))) return setError("اكتب اسم الوسيط ورقم هاتفه.");
     if (bought && hasClient && (!items.length || items.some((i) => !(i.amount > 0)))) return setError("حدد القسم اللي اشترى منه ومبلغه، أو شيل علامة «اشترى».");
     if (followUp && hasClient && !followUpDate) return setError("حدد تاريخ المتابعة.");
@@ -395,6 +396,46 @@ export function VisitsPage({ onOpenLead }: Props) {
           {hasBroker && (
             <div className="party-block">
               <h3>الوسيط</h3>
+              {brokerMode === "existing" ? (
+                <BrokerSearch
+                  label="دوّر على الوسيط"
+                  brokers={activeBrokers}
+                  value={brokerId}
+                  onChange={setBrokerId}
+                  onCreate={(name) => {
+                    setBrokerName(name);
+                    setBrokerId("");
+                    setBrokerMode("new");
+                  }}
+                />
+              ) : (
+                <div className="field-grid">
+                  <NameWithTitle value={name} onChange={setName} required />
+                  <label className="field">
+                    <span>
+                      رقم الهاتف <em>مطلوب</em>
+                    </span>
+                    <input dir="ltr" type="tel" inputMode="tel" placeholder="01xxxxxxxxx" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  </label>
+                  {duplicate && (
+                    <div className="notice warning full-width" role="status">
+                      الرقم ده موجود عندنا باسم {duplicate.name}، والزيارة هتتسجل على ملفه.
+                      <button type="button" onClick={() => { setPickedLead(duplicate); setClientMode("existing"); }}>
+                        استخدم الملف الموجود
+                      </button>
+                    </div>
+                  )}
+                  <div className="full-width">
+                    <InterestPicker value={interests} onChange={setInterests} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {hasBroker && (
+            <div className="party-block">
+              <h3>الوسيط</h3>
               <div className="tab-filter" role="group" aria-label="الوسيط">
                 <button type="button" aria-pressed={brokerMode === "existing"} onClick={() => setBrokerMode("existing")} disabled={!activeBrokers.length}>
                   وسيط مسجّل
@@ -430,6 +471,11 @@ export function VisitsPage({ onOpenLead }: Props) {
                     <input dir="ltr" type="tel" inputMode="tel" placeholder="01xxxxxxxxx" value={brokerPhone} onChange={(e) => setBrokerPhone(e.target.value)} />
                   </label>
                 </div>
+              )}
+              {brokerMode === "new" && activeBrokers.length > 0 && (
+                <button type="button" className="btn-text" onClick={() => setBrokerMode("existing")}>
+                  ← دوّر في الوسطاء المسجلين بدل كده
+                </button>
               )}
               {type === "both" && <p className="quiet-note">لو العميل اشترى، المبلغ بيتحسب على الوسيط لأنه هو اللي دخّله.</p>}
             </div>
