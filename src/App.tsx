@@ -33,6 +33,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { BrokersPage } from "./pages/BrokersPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { ZakiChat } from "./components/zaki/ZakiChat";
 import { Lead } from "./types/crm";
 
 const AppContent: React.FC = () => {
@@ -191,6 +192,7 @@ const AppContent: React.FC = () => {
           setLeadModalAction(null);
         }}
       />
+      <ZakiChat />
     </div>
   );
 };

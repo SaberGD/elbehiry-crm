@@ -59,3 +59,33 @@ export async function refineText(
   });
   return { text: String(data.text || text), reasonId: data.reasonId || null };
 }
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
+/** Zaki, the manager's assistant: answers from the (role-scoped) system snapshot. */
+export async function askZaki(question: string, history: ChatTurn[], snapshot: unknown): Promise<string> {
+  const data = await call({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "chat", question, history, snapshot }),
+  });
+  return String(data.answer || "").trim();
+}
+
+export interface WeeklyReport {
+  headline: string;
+  improved: { title: string; detail: string }[];
+  dropped: { title: string; why: string }[];
+  next_week: { action: string; reason: string }[];
+}
+
+export async function weeklySummary(snapshot: unknown): Promise<WeeklyReport> {
+  return call({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "weekly", snapshot }),
+  });
+}

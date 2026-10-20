@@ -12,6 +12,7 @@ import {
 } from "../lib/overview";
 import { hasPermission } from "../lib/permissions";
 import type { Department } from "../types/crm";
+import { WeeklySummary } from "../components/zaki/WeeklySummary";
 
 const colors: Record<Department, string> = {
   construction: "#0f766e",
@@ -89,6 +90,8 @@ export function OverviewPage({ onOpenLead }: { onOpenLead: (id: string) => void 
           <p>مين الأقوى من حيث إجمالي المشتريات، ومتوزعة إزاي على الأقسام، ورأي العملاء فينا.</p>
         </div>
       </div>
+
+      <WeeklySummary />
 
       <div className="metric-grid">
         <div className="metric">

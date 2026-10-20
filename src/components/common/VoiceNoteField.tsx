@@ -11,6 +11,9 @@ interface Props {
   /** Reasons offered to the AI so it can suggest one from the note. */
   reasons?: { id: string; label: string }[];
   onSuggestReason?: (id: string) => void;
+  /** Enter (without Shift) calls this, e.g. to send a chat message. */
+  onSubmit?: () => void;
+  hideImprove?: boolean;
 }
 
 const MAX_SECONDS = 90;
@@ -28,6 +31,8 @@ export function VoiceNoteField({
   required,
   reasons,
   onSuggestReason,
+  onSubmit,
+  hideImprove,
 }: Props) {
   const [mode, setMode] = useState<"idle" | "recording" | "working">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -174,6 +179,12 @@ export function VoiceNoteField({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (onSubmit && e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
       />
       <div className="voice-actions">
         {mode === "recording" ? (
@@ -191,7 +202,7 @@ export function VoiceNoteField({
             <Mic size={14} /> تكلّم
           </button>
         )}
-        {server && value.trim().length > 3 && mode !== "recording" && (
+        {server && !hideImprove && value.trim().length > 3 && mode !== "recording" && (
           <button type="button" className="voice-btn" onClick={improve} disabled={mode === "working"}>
             <Sparkles size={14} /> حسّن النص
           </button>

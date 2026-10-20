@@ -1,0 +1,152 @@
+import { useEffect, useRef, useState } from "react";
+import { Send, X, Loader2 } from "lucide-react";
+import { useCRM } from "../../context/CRMContext";
+import { aiStatus, askZaki, type ChatTurn } from "../../lib/aiClient";
+import { VoiceNoteField } from "../common/VoiceNoteField";
+import { useSnapshotBuilder } from "./useSnapshot";
+
+const suggestions = [
+  "ملخص الأسبوع",
+  "مين العملاء اللي لازم أتابعهم النهارده؟",
+  "مين أقوى عملاء البستان؟",
+  "أكتر سبب بيخلي العملاء ما يشتروش؟",
+  "أضعف فرع مين وليه؟",
+];
+
+function Rich({ text }: { text: string }) {
+  const inline = (t: string) =>
+    t.split(/(\*\*[^*]+\*\*)/g).map((p, i) =>
+      p.startsWith("**") && p.endsWith("**") ? <strong key={i}>{p.slice(2, -2)}</strong> : <span key={i}>{p}</span>,
+    );
+  const out: React.ReactNode[] = [];
+  let list: string[] = [];
+  const flush = () => {
+    if (list.length) {
+      out.push(
+        <ul key={`l${out.length}`}>
+          {list.map((l, i) => (
+            <li key={i}>{inline(l)}</li>
+          ))}
+        </ul>,
+      );
+      list = [];
+    }
+  };
+  for (const line of text.split("\n")) {
+    const m = line.match(/^\s*[-•*]\s+(.*)$/);
+    if (m) list.push(m[1]);
+    else {
+      flush();
+      if (line.trim()) out.push(<p key={`p${out.length}`}>{inline(line)}</p>);
+    }
+  }
+  flush();
+  return <>{out}</>;
+}
+
+/** Zaki: a floating assistant that answers questions about the data the user can see. */
+export function ZakiChat() {
+  const { currentUser } = useCRM();
+  const build = useSnapshotBuilder();
+  const [available, setAvailable] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const end = useRef<HTMLDivElement>(null);
+  const first = currentUser.name.replace(/^م\.\s*/, "").split(" ")[0];
+
+  useEffect(() => {
+    aiStatus().then((s) => setAvailable(s === "server"));
+  }, []);
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns, busy, open]);
+
+  if (!available) return null;
+
+  const send = async (text: string) => {
+    const q = text.trim();
+    if (!q || busy) return;
+    setInput("");
+    const history = turns;
+    setTurns((t) => [...t, { role: "user", text: q }]);
+    setBusy(true);
+    try {
+      const answer = await askZaki(q, history, build());
+      setTurns((t) => [...t, { role: "assistant", text: answer }]);
+    } catch {
+      setTurns((t) => [...t, { role: "assistant", text: "حصلت مشكلة وأنا بجهّز الرد. جرّب تسألني تاني بعد شوية." }]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      {!open && (
+        <button className="zaki-fab" onClick={() => setOpen(true)} aria-label="افتح زكي، المساعد الذكي">
+          <span className="zaki-avatar">ز</span>
+          <span className="zaki-fab-label">زكي</span>
+        </button>
+      )}
+      {open && (
+        <div className="zaki-panel" role="dialog" aria-label="زكي، المساعد الذكي">
+          <div className="zaki-head">
+            <span className="zaki-avatar">ز</span>
+            <div>
+              <strong>زكي</strong>
+              <small>مساعد البحيري · بيجاوب من بيانات نظامك</small>
+            </div>
+            <button className="icon-button" onClick={() => setOpen(false)} aria-label="إغلاق">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="zaki-body">
+            <div className="zaki-msg bot">
+              <p>
+                أهلًا {first}! أنا زكي. اسألني عن العملاء والوسطاء والمتابعات والمبيعات، بالكتابة أو بالصوت، وأنا أرد من بيانات النظام اللي
+                بتشوفها.
+              </p>
+            </div>
+            {turns.length === 0 && (
+              <div className="zaki-chips">
+                {suggestions.map((s) => (
+                  <button key={s} onClick={() => send(s)}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+            {turns.map((t, i) => (
+              <div key={i} className={`zaki-msg ${t.role === "user" ? "me" : "bot"}`}>
+                {t.role === "user" ? <p>{t.text}</p> : <Rich text={t.text} />}
+              </div>
+            ))}
+            {busy && (
+              <div className="zaki-msg bot">
+                <p>
+                  <Loader2 size={14} className="spin" /> زكي بيفكّر…
+                </p>
+              </div>
+            )}
+            <div ref={end} />
+          </div>
+          <div className="zaki-foot">
+            <VoiceNoteField
+              value={input}
+              onChange={setInput}
+              rows={1}
+              hideImprove
+              placeholder="اكتب سؤالك أو اضغط تكلّم…"
+              onSubmit={() => send(input)}
+            />
+            <button className="btn-primary zaki-send" onClick={() => send(input)} disabled={busy || !input.trim()} aria-label="إرسال">
+              <Send size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
