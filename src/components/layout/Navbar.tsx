@@ -31,6 +31,7 @@ const titles: Record<string, string> = {
   dashboard: "الرئيسية",
   analytics_dashboard: "نظرة عامة",
   dept_dashboard: "الأقسام والفروع",
+  feedback: "التقييمات والشكاوى",
   clients: "العملاء",
   add_client: "عميل جديد",
   visits: "الزيارات والمعاينات",

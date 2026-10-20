@@ -60,6 +60,23 @@ export async function refineText(
   return { text: String(data.text || text), reasonId: data.reasonId || null };
 }
 
+import type { ReviewAnalysis } from "../types/crm";
+
+/** Is a customer's review a complaint, a remark or praise? Called only for reviews that have a comment. */
+export async function classifyReview(rating: number, comment: string): Promise<ReviewAnalysis> {
+  const data = await call({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "classify", rating, comment }),
+  });
+  return {
+    kind: data.kind,
+    category: data.category || undefined,
+    severity: data.severity,
+    summary: data.summary || undefined,
+  };
+}
+
 export interface ChatTurn {
   role: "user" | "assistant";
   text: string;

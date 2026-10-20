@@ -4,9 +4,11 @@ import {
   type PermissionMatrix,
 } from "../lib/permissions";
 import { createWorkspace } from "../lib/workspace";
+import { newReviewToken } from "../lib/reviews";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
 import {
   demoUsers,
+  demoReviews,
   demoLeads,
   demoVisits,
   demoFollowUps,
@@ -60,6 +62,9 @@ import {
   Warehouse,
   DepartmentEntity,
   JobPosition,
+  ReviewRequest,
+  ReviewNote,
+  ReviewAnalysis,
   PurchaseCategory,
   BrokerEntity,
   PurchaseInvoice,
@@ -95,6 +100,18 @@ export interface FollowUpExtra {
 
 export interface CRMContextType {
   notBoughtRecords: NotBoughtRecord[];
+  reviewRequests: ReviewRequest[];
+  reviewNotes: ReviewNote[];
+  requestReview: (input: {
+    lead: Lead;
+    subjectKind: ReviewRequest["subjectKind"];
+    subjectId?: string;
+    subjectLabel: string;
+  }) => ReviewRequest;
+  markReviewReminderSent: (id: string) => void;
+  cancelReviewRequest: (id: string, reason: string) => void;
+  addReviewNote: (requestId: string, text: string, kind: ReviewNote["kind"]) => void;
+  saveReviewAnalysis: (id: string, ai: ReviewAnalysis) => void;
   currentUser: User;
   logout: () => Promise<void>;
   loadDemoData: () => void;
@@ -295,6 +312,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     () => loadStorage("not_bought", []),
   );
   useEffect(() => saveStorage("not_bought", notBoughtRecords), [notBoughtRecords]);
+  const [reviewRequests, setReviewRequests] = useState<ReviewRequest[]>([]);
+  const [reviewNotes, setReviewNotes] = useState<ReviewNote[]>([]);
   const [leads, setLeads] = useState<Lead[]>(() =>
     loadStorage("leads", []),
   );
@@ -358,6 +377,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   useFirestoreCollection("notifications", notifications, setNotifications);
   useFirestoreCollection("leads", leads, setLeads);
   useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords);
+  useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests);
+  useFirestoreCollection("reviewNotes", reviewNotes, setReviewNotes);
   useFirestoreCollection("visits", visits, setVisits);
   useFirestoreCollection("followUps", followUps, setFollowUps);
   useFirestoreCollection("bookings", bookings, setBookings);
@@ -469,6 +490,47 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       timestamp: new Date().toISOString(),
     };
     setTimelineEvents((prev) => [newEv, ...prev]);
+  };
+
+  // ---- Customer reviews ----
+  const requestReview: CRMContextType["requestReview"] = ({ lead, subjectKind, subjectId, subjectLabel }) => {
+    const req: ReviewRequest = {
+      id: newReviewToken(),
+      leadId: lead.id,
+      leadName: lead.name,
+      branchId: lead.branchId,
+      branchName: lead.branchName,
+      agentId: effectiveUser.id,
+      agentName: effectiveUser.name,
+      subjectKind,
+      subjectId,
+      subjectLabel,
+      sentAt: new Date().toISOString(),
+      status: "sent",
+    };
+    setReviewRequests((prev) => [req, ...prev]);
+    addTimelineEvent({
+      leadId: lead.id,
+      authorId: req.agentId,
+      authorName: req.agentName || "",
+      type: "review_requested",
+      title: "تم إرسال طلب تقييم للعميل",
+      details: subjectLabel,
+    });
+    return req;
+  };
+  const patchReview = (id: string, patch: Partial<ReviewRequest>) =>
+    setReviewRequests((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const markReviewReminderSent = (id: string) => patchReview(id, { reminderSentAt: new Date().toISOString() });
+  const cancelReviewRequest = (id: string, reason: string) =>
+    patchReview(id, { status: "cancelled", cancelReason: reason, cancelledAt: new Date().toISOString() });
+  const saveReviewAnalysis = (id: string, ai: ReviewAnalysis) => patchReview(id, { ai });
+  const addReviewNote = (requestId: string, text: string, kind: ReviewNote["kind"]) => {
+    // The signed-in person writes the note (the rules check this), even while previewing another role.
+    setReviewNotes((prev) => [
+      { id: `rvn-${Date.now()}-${Math.floor(Math.random() * 1000)}`, requestId, text, kind, byId: currentUser.id, byName: currentUser.name, at: new Date().toISOString() },
+      ...prev,
+    ]);
   };
 
   // Duplicate Check
@@ -1143,6 +1205,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setPurchaseInvoices((p) => addMissing(p, demoInvoices));
     setBrokers((p) => addMissing(p, demoBrokers));
     setNotBoughtRecords((p) => addMissing(p, demoNotBought));
+    setReviewRequests((p) => addMissing(p, demoReviews));
     logAudit("تحميل بيانات تجريبية", "إعدادات", "demo", "تحميل موظفين وبيانات تجريبية لكل الأدوار");
   };
   const removeDemoData = () => {
@@ -1161,6 +1224,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setPurchaseInvoices((p) => dropDemo(p, demoInvoices));
     setBrokers((p) => dropDemo(p, demoBrokers));
     setNotBoughtRecords((p) => dropDemo(p, demoNotBought));
+    setReviewRequests((p) => dropDemo(p, demoReviews));
     logAudit("حذف البيانات التجريبية", "إعدادات", "demo", "حذف الموظفين والبيانات التجريبية");
   };
 
@@ -1514,6 +1578,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         completeBooking,
         addNotBoughtRecord,
         notBoughtRecords,
+        reviewRequests,
+        reviewNotes,
+        requestReview,
+        markReviewReminderSent,
+        cancelReviewRequest,
+        addReviewNote,
+        saveReviewAnalysis,
 
         addUser,
         updateUser,

@@ -177,6 +177,7 @@ export function canAccessPage(u: User, page: string) {
     return has(u, "bookings.view") && has(u, "customers.view");
   const key: Record<string, Parameters<typeof has>[1]> = {
     clients: "customers.view",
+    feedback: "customers.view",
     add_client: "customers.create",
     record_visit: "customers.create",
     visits: "visits.view",

@@ -1,4 +1,6 @@
 import type {
+  ReviewNote,
+  ReviewRequest,
   Booking,
   BrokerEntity,
   Department,
@@ -401,3 +403,33 @@ export const demoNotBought: NotBoughtRecord[] = gen.notBought;
 export const demoTimeline = initialTimelineEvents;
 export const demoInvoices = initialPurchaseInvoices;
 export const demoBrokers = [...initialBrokers, ...demoExtraBrokers];
+
+// A spread of review situations: answered with praise, a fresh complaint, a handled complaint, waiting, due for the 48h nudge, expired.
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+const reviewFor = (i: number, over: Partial<ReviewRequest>): ReviewRequest => {
+  const lead = demoLeads[i % demoLeads.length];
+  return {
+    id: `demoreview${String(i).padStart(2, "0")}${"x".repeat(14)}`,
+    leadId: lead.id,
+    leadName: lead.name,
+    branchId: lead.branchId,
+    branchName: lead.branchName,
+    agentId: lead.assignedAgentId || "",
+    agentName: lead.assignedAgentName,
+    subjectKind: "general",
+    subjectLabel: "تجربتك مع البحيري",
+    sentAt: hoursAgo(30),
+    status: "sent",
+    ...over,
+  };
+};
+export const demoReviews: ReviewRequest[] = [
+  reviewFor(0, { status: "answered", answeredAt: hoursAgo(20), response: { rating: 5, treatment: 5, price: 4, quality: 5, wouldRecommend: true, comment: "تعامل محترم والشغل ممتاز، هرشحكم لأصحابي." }, ai: { kind: "praise", category: "تعامل الموظف", severity: "low", summary: "العميل راضي جدًا وهيرشحنا." } }),
+  reviewFor(1, { status: "answered", answeredAt: hoursAgo(3), isComplaint: true, response: { rating: 2, treatment: 2, price: 3, quality: 2, wouldRecommend: false, comment: "الفني اتأخر 3 أيام عن الميعاد ومحدش كلمني يعتذر." }, ai: { kind: "complaint", category: "تأخير", severity: "high", summary: "تأخر الفني 3 أيام من غير أي اعتذار." } }),
+  reviewFor(2, { status: "answered", answeredAt: hoursAgo(90), response: { rating: 3, treatment: 4, price: 2, quality: 4, comment: "الأسعار أعلى من اللي توقعته." }, ai: { kind: "note", category: "السعر", severity: "low", summary: "العميل شايف الأسعار عالية." } }),
+  reviewFor(3, { sentAt: hoursAgo(5) }),
+  reviewFor(4, { sentAt: hoursAgo(60) }),
+  reviewFor(5, { sentAt: hoursAgo(130), reminderSentAt: hoursAgo(70) }),
+  reviewFor(6, { status: "answered", answeredAt: hoursAgo(50), response: { rating: 1, comment: "" } }),
+];
+export const demoReviewNotes: ReviewNote[] = [];

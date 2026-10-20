@@ -2,6 +2,7 @@ import { hasPermission, isDirector, withPermissions } from "./permissions";
 import type { CRMContextType } from "../context/CRMContext";
 import type { User, UserRole } from "../types/crm";
 import * as access from "./access";
+import { isComplaint } from "./reviews";
 
 export function createWorkspace(raw: CRMContextType) {
   const actor = withPermissions(raw.effectiveUser, raw.permissionMatrix);
@@ -209,6 +210,8 @@ export function createWorkspace(raw: CRMContextType) {
         ),
     );
   };
+  const visibleReviews = (raw.reviewRequests ?? []).filter((r) => leadIds.has(r.leadId));
+  const visibleReviewIds = new Set(visibleReviews.map((r) => r.id));
   const view = {
     ...raw,
     effectiveUser: actor,
@@ -406,6 +409,36 @@ export function createWorkspace(raw: CRMContextType) {
       return raw.addBooking(data);
     }) as CRMContextType["addBooking"],
     notBoughtRecords: raw.notBoughtRecords.filter((r) => leadIds.has(r.leadId)),
+    reviewRequests: visibleReviews,
+    reviewNotes: (raw.reviewNotes ?? []).filter((n) => visibleReviewIds.has(n.requestId)),
+    requestReview: ((input) => {
+      const lead = findLead(input.lead.id);
+      require(access.canEditCustomer(actor, lead));
+      return raw.requestReview({ ...input, lead });
+    }) as CRMContextType["requestReview"],
+    markReviewReminderSent: ((id) => {
+      require(visibleReviewIds.has(id));
+      raw.markReviewReminderSent(id);
+    }) as CRMContextType["markReviewReminderSent"],
+    cancelReviewRequest: ((id, reason) => {
+      require(visibleReviewIds.has(id) && reason.trim().length > 0);
+      raw.cancelReviewRequest(id, reason.trim());
+    }) as CRMContextType["cancelReviewRequest"],
+    saveReviewAnalysis: ((id, ai) => {
+      require(visibleReviewIds.has(id));
+      raw.saveReviewAnalysis(id, ai);
+    }) as CRMContextType["saveReviewAnalysis"],
+    // Complaint owners (general manager and branch manager) may add follow-ups only; they cannot edit or remove a complaint.
+    addReviewNote: ((requestId, text, kind) => {
+      const req = visibleReviews.find((r) => r.id === requestId);
+      require(
+        !!req &&
+          isComplaint(req) &&
+          ["admin", "general_manager", "regional_manager", "branch_manager"].includes(actor.role) &&
+          text.trim().length > 0,
+      );
+      raw.addReviewNote(requestId, text.trim(), kind);
+    }) as CRMContextType["addReviewNote"],
     addNotBoughtRecord: ((data) => {
       const lead = findLead(data.leadId);
       require(access.canEditCustomer(actor, lead));

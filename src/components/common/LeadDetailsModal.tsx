@@ -43,6 +43,7 @@ import {
 } from "../../lib/presentation";
 import { useDialog } from "./useDialog";
 import { CustomerRatingModal } from "./CustomerRatingModal";
+import { ReviewCard } from "../reviews/ReviewCard";
 import { VoiceNoteField } from "./VoiceNoteField";
 import { PurchaseOutcomeDialog } from "./PurchaseOutcomeDialog";
 
@@ -81,6 +82,7 @@ export function LeadDetailsModal({
     addVisit,
     reassignLead,
     addTimelineEvent,
+    reviewRequests,
   } = useCRM();
   const [tab, setTab] = useState("timeline");
   const [action, setAction] = useState<Action>(null);
@@ -331,12 +333,14 @@ export function LeadDetailsModal({
     booking: "تسجيل تعاقد",
     reassign: "تغيير الموظف المسؤول",
   };
+  const leadReviews = reviewRequests.filter((r) => r.leadId === lead.id);
   const labels: Record<string, string> = {
     timeline: "سجل التعاملات",
     followups: `المتابعات (${leadFollowUps.length})`,
     visits: `الزيارات (${leadVisits.length})`,
     bookings: `التعاقدات (${leadBookings.length})`,
     invoices: `الفواتير (${invoices.length})`,
+    reviews: `التقييمات (${leadReviews.length})`,
   };
   return (
     <div
@@ -821,6 +825,7 @@ export function LeadDetailsModal({
               .filter(
                 ([id]) =>
                   id === "timeline" ||
+                  id === "reviews" ||
                   hasPermission(
                     effectiveUser,
                     (
@@ -998,6 +1003,15 @@ export function LeadDetailsModal({
                       تسجيل تعاقد
                     </button>
                   )}
+                </div>
+              ))}
+            {tab === "reviews" &&
+              (leadReviews.length ? (
+                leadReviews.map((r) => <ReviewCard key={r.id} request={r} />)
+              ) : (
+                <div className="empty-state">
+                  <h3>لسه ما اتطلبش تقييم من العميل</h3>
+                  <p>اضغط «طلب تقييم» من الأزرار فوق، وهيوصله لينك على واتساب عن زيارته أو تعاقده.</p>
                 </div>
               ))}
             {tab === "invoices" &&

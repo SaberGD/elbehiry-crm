@@ -38,6 +38,8 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { BrokersPage } from "./pages/BrokersPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { FeedbackPage } from "./pages/FeedbackPage";
+import { ReviewWatcher } from "./components/reviews/ReviewWatcher";
 import { DeveloperPage } from "./pages/DeveloperPage";
 import { ZakiChat } from "./components/zaki/ZakiChat";
 import { Lead } from "./types/crm";
@@ -160,6 +162,8 @@ const AppContent: React.FC = () => {
               <DeveloperPage />
             )}
 
+            {activeTab === "feedback" && <FeedbackPage onOpenLead={handleOpenLead} />}
+
             {activeTab === "overview" && (
               <OverviewPage onOpenLead={handleOpenLead} />
             )}
@@ -202,6 +206,7 @@ const AppContent: React.FC = () => {
           setLeadModalAction(null);
         }}
       />
+      <ReviewWatcher />
       <ZakiChat />
     </div>
   );

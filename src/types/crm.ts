@@ -323,6 +323,8 @@ export type TimelineEventType =
   | "agent_reassigned"
   | "branch_transferred"
   | "booking_created"
+  | "review_requested"
+  | "review_received"
   | "admin_action";
 
 export interface TimelineEvent {
@@ -441,4 +443,57 @@ export interface NotBoughtRecord {
   )[];
   otherText?: string;
   note?: string;
+}
+
+// ---------- Customer reviews (a unique link per customer per visit/booking) ----------
+export type ReviewStatus = "sent" | "answered" | "cancelled";
+
+export interface ReviewAnalysis {
+  kind: "complaint" | "note" | "praise";
+  category?: string; // e.g. جودة، تأخير، تعامل، سعر
+  severity?: "low" | "medium" | "high";
+  summary?: string;
+}
+
+export interface ReviewRequest {
+  /** The document id IS the secret token in the customer's link. */
+  id: string;
+  leadId: string;
+  leadName: string;
+  branchId: string;
+  branchName?: string;
+  agentId: string;
+  agentName?: string;
+  subjectKind: "visit" | "booking" | "general";
+  subjectId?: string;
+  subjectLabel: string; // shown to the customer, e.g. "زيارة فرع الإسكندرية يوم 12 أكتوبر"
+  sentAt: string; // ISO
+  status: ReviewStatus;
+  /** The single 48h nudge: when the salesperson sent it. */
+  reminderSentAt?: string;
+  cancelReason?: string;
+  cancelledAt?: string;
+  // Filled by the customer from the public page.
+  answeredAt?: string;
+  isComplaint?: boolean;
+  response?: {
+    rating: number; // 1-5 overall
+    treatment?: number;
+    price?: number;
+    quality?: number;
+    wouldRecommend?: boolean;
+    comment?: string;
+  };
+  ai?: ReviewAnalysis;
+}
+
+/** Managers can only add follow-up notes to a complaint; nothing is ever edited or deleted. */
+export interface ReviewNote {
+  id: string;
+  requestId: string;
+  text: string;
+  kind: "note" | "resolved";
+  byId: string;
+  byName: string;
+  at: string;
 }

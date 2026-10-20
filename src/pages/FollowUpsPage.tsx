@@ -16,6 +16,8 @@ import { followUpStatus, phoneNumber } from "../lib/presentation";
 import type { FollowUp } from "../types/crm";
 import { useDialog } from "../components/common/useDialog";
 import { milestoneLabel } from "../lib/postSale";
+import { ReviewCard } from "../components/reviews/ReviewCard";
+import { reviewPhase } from "../lib/reviews";
 import { VoiceNoteField } from "../components/common/VoiceNoteField";
 import type { LeadQuickAction } from "../components/common/LeadDetailsModal";
 interface Props {
@@ -23,8 +25,10 @@ interface Props {
   initialTab?: "due" | "overdue";
 }
 export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
-  const { effectiveUser, leads, branches, followUps, updateFollowUpResult } =
+  const { effectiveUser, leads, branches, followUps, updateFollowUpResult, reviewRequests } =
     useCRM();
+  // The one 48-hour nudge for review requests the customer has not answered.
+  const dueReviews = reviewRequests.filter((r) => reviewPhase(r) === "reminder_due");
   const [tab, setTab] = useState<string>(initialTab);
   const [selected, setSelected] = useState<FollowUp | null>(null);
   const [result, setResult] = useState("");
@@ -100,6 +104,21 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
           </p>
         </div>
       </div>
+      {dueReviews.length > 0 && (
+        <section className="panel" style={{ marginBottom: 16, borderColor: "#c8232b" }}>
+          <div className="panel-header">
+            <div>
+              <h2>تقييمات محتاجة تذكير ({dueReviews.length})</h2>
+              <p>عدّت 48 ساعة من غير ما العميل يقيّم. ابعتله تذكير واحد، ولو ما ردش اقفل الطلب.</p>
+            </div>
+          </div>
+          <div className="review-list">
+            {dueReviews.map((r) => (
+              <ReviewCard key={r.id} request={r} showCustomer onOpenLead={onOpenLead} />
+            ))}
+          </div>
+        </section>
+      )}
       <section className="panel">
         <div
           className="tab-filter"

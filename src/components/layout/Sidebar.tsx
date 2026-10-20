@@ -18,10 +18,12 @@ import {
   ArrowUpLeft,
   Network,
   ShieldCheck,
+  MessageSquareWarning,
 } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
 import { ElBeheryLogo } from "../common/ElBeheryLogo";
 import { followUpStatus, isManagement } from "../../lib/presentation";
+import { complaintState, isComplaint, reviewPhase } from "../../lib/reviews";
 
 interface Props {
   activeTab: string;
@@ -35,7 +37,12 @@ export function Sidebar({
   sidebarOpen,
   setSidebarOpen,
 }: Props) {
-  const { effectiveUser, followUps, branches, leads } = useCRM();
+  const { effectiveUser, followUps, branches, leads, reviewRequests, reviewNotes } = useCRM();
+  // Managers see open complaints; salespeople see reviews that need their 48-hour nudge.
+  const manager = ["admin", "general_manager", "regional_manager", "branch_manager"].includes(effectiveUser.role);
+  const feedbackCount = reviewRequests.filter((r) =>
+    manager ? isComplaint(r) && complaintState(r, reviewNotes) === "open" : reviewPhase(r) === "reminder_due",
+  ).length;
   const count = followUps.filter((f) =>
     ["due", "overdue"].includes(followUpStatus(f)),
   ).length;
@@ -116,6 +123,7 @@ export function Sidebar({
           <p className="nav-group-label">المبيعات</p>
           {nav("bookings", "الحجوزات والتعاقدات", ShoppingBag)}
           {nav("invoices", "الفواتير", FileText)}
+          {nav("feedback", "التقييمات والشكاوى", MessageSquareWarning, feedbackCount)}
           {nav("overview", "كبار العملاء والوسطاء", Award)}
           {nav("brokers", "الوسطاء والشركاء", UserRound)}
           {nav(

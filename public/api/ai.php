@@ -310,6 +310,31 @@ if ($mode === 'refine') {
     exit;
 }
 
+if ($mode === 'classify') {
+    // A customer's review: is it a complaint, a remark or praise, and how urgent?
+    $comment = trim((string) ($json['comment'] ?? ''));
+    $rating = max(1, min(5, (int) ($json['rating'] ?? 3)));
+    if (mb_strlen($comment) > MAX_TEXT_CHARS) fail(400, 'bad_text');
+    $prompt = "أنت محلل جودة في شركة «البحيري للدهانات والديكور». لديك تقييم عميل (من 1 إلى 5) وتعليقه. حدّد: "
+        . "kind = complaint لو فيه شكوى أو استياء أو مشكلة تحتاج تدخل (حتى لو التقييم عالٍ)، note لو ملاحظة أو اقتراح عادي، praise لو مدح. "
+        . "category = كلمة أو كلمتين بالعربية لنوع الموضوع (مثل: جودة الشغل، تأخير، تعامل الموظف، السعر، التوصيل، خدمة ما بعد البيع) أو null. "
+        . "severity = high لو العميل غاضب أو خسارة محتملة أو مشكلة جسيمة، medium، low. "
+        . "summary = جملة واحدة قصيرة بالعامية المصرية تلخص المشكلة أو الملاحظة، بدون اختراع أي معلومة. "
+        . 'أعد JSON فقط بالشكل {"kind":"note","category":null,"severity":"low","summary":""}' . "\nالتقييم: {$rating}\nالتعليق:\n" . ($comment !== '' ? $comment : '(بدون تعليق)');
+    $out = gemini($cfg, [['text' => $prompt]], ['responseMimeType' => 'application/json']);
+    $p = json_decode($out, true);
+    if (!is_array($p)) fail(502, 'ai_unavailable', 'bad_json');
+    $kind = in_array($p['kind'] ?? '', ['complaint', 'note', 'praise'], true) ? $p['kind'] : ($rating <= 2 ? 'complaint' : 'note');
+    $sev = in_array($p['severity'] ?? '', ['low', 'medium', 'high'], true) ? $p['severity'] : 'low';
+    echo json_encode([
+        'kind' => $kind,
+        'category' => isset($p['category']) && is_string($p['category']) ? mb_substr(trim($p['category']), 0, 40) : null,
+        'severity' => $sev,
+        'summary' => mb_substr(trim((string) ($p['summary'] ?? '')), 0, 300),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($mode === 'agent') {
     $contents = $json['contents'] ?? null;
     $tools = $json['tools'] ?? [];

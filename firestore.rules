@@ -173,6 +173,46 @@ service cloud.firestore {
       allow delete: if isManager();
     }
 
+    // Customer review links: the document id is the secret token in the link.
+    // A customer (no login) may read their own request and answer it exactly once;
+    // staff may only cancel it, mark the 48h nudge, or attach the AI analysis.
+    match /reviewRequests/{docId} {
+      allow get: if true;
+      allow list: if isStaff();
+      allow create: if isStaff()
+        && docId.size() >= 20
+        && request.resource.data.status == 'sent'
+        && !('response' in request.resource.data);
+      allow update: if (
+          resource.data.status == 'sent'
+          && request.resource.data.status == 'answered'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'response', 'answeredAt', 'isComplaint'])
+          && request.resource.data.isComplaint is bool
+          && request.resource.data.response.rating is int
+          && request.resource.data.response.rating >= 1
+          && request.resource.data.response.rating <= 5
+          && request.resource.data.response.keys().hasOnly(['rating', 'treatment', 'price', 'quality', 'wouldRecommend', 'comment'])
+          && (!('comment' in request.resource.data.response) || request.resource.data.response.comment.size() <= 1500)
+        ) || (
+          isStaff()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reminderSentAt', 'cancelReason', 'cancelledAt', 'ai'])
+          && (request.resource.data.status == resource.data.status
+              || (resource.data.status == 'sent' && request.resource.data.status == 'cancelled'))
+        );
+      allow delete: if isStaff() && role() == 'admin';
+    }
+
+    // Complaint follow-ups are append-only: nobody edits or removes what was written.
+    match /reviewNotes/{docId} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && request.resource.data.byId == get(profilePath()).data.userId
+        && request.resource.data.kind in ['note', 'resolved']
+        && request.resource.data.text.size() <= 2000;
+      allow update: if false;
+      allow delete: if isStaff() && role() == 'admin';
+    }
+
     match /notBoughtRecords/{docId} {
       allow read: if isStaff();
       allow create, update: if isStaff();

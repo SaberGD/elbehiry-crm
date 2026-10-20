@@ -2238,3 +2238,12 @@
 .view-as { display: flex; flex-direction: column; gap: .5rem; }
 .view-as label { display: flex; flex-direction: column; gap: .25rem; font-size: .76rem; font-weight: 700; }
 .view-as select { width: 100%; }
+
+/* Customer reviews */
+.review-list { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.review-card { border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; background: var(--surface); }
+.review-card.is-complaint { border-color: #c8232b; box-shadow: 0 0 0 3px rgba(200,35,43,.08); }
+.review-card p { margin: .2rem 0; }
+.review-title { font-size: 1rem; font-weight: 700; margin: .5rem 0 .1rem; }
+.review-input { width: 100%; padding: .55rem .75rem; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: inherit; font: inherit; }
+.review-input:focus { outline: none; border-color: #c8232b; box-shadow: 0 0 0 3px rgba(200,35,43,.12); }
