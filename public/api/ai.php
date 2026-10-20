@@ -97,7 +97,7 @@ function verify_active_staff(string $idToken): array {
     if (count($parts) !== 3) return [null, 'bad_token'];
     $payload = json_decode((string) base64_decode(strtr($parts[1], '-_', '+/')), true);
     $uid = is_array($payload) ? (string) ($payload['user_id'] ?? $payload['sub'] ?? '') : '';
-    if ($uid === '' || !preg_match('/^[A-Za-z0-9_\-]{6,128}$/', $uid)) return null;
+    if ($uid === '' || !preg_match('/^[A-Za-z0-9_\-]{6,128}$/', $uid)) return [null, 'bad_token'];
     $url = 'https://firestore.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID
         . '/databases/' . rawurlencode('(default)') . '/documents/authProfiles/' . rawurlencode($uid);
     $ch = curl_init($url);
