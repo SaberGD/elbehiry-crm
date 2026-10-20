@@ -43,15 +43,22 @@ import {
 } from "../../lib/presentation";
 import { useDialog } from "./useDialog";
 import { CustomerRatingModal } from "./CustomerRatingModal";
+import { VoiceNoteField } from "./VoiceNoteField";
+import { PurchaseOutcomeDialog } from "./PurchaseOutcomeDialog";
 
-export type LeadQuickAction = "edit" | "visit" | "followup";
+export type LeadQuickAction = "edit" | "visit" | "followup" | "outcome";
 interface Props {
   lead: Lead | null;
   isOpen: boolean;
   onClose: () => void;
   initialAction?: LeadQuickAction | null;
 }
-type Action = LeadQuickAction | "note" | "booking" | "reassign" | null;
+type Action =
+  | Exclude<LeadQuickAction, "outcome">
+  | "note"
+  | "booking"
+  | "reassign"
+  | null;
 export function LeadDetailsModal({
   lead,
   isOpen,
@@ -94,6 +101,7 @@ export function LeadDetailsModal({
   });
   const [agent, setAgent] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [outcomeOpen, setOutcomeOpen] = useState(false);
   const allowed = (value: Action) =>
     !!lead &&
     (value === "edit" || value === "note"
@@ -130,7 +138,12 @@ export function LeadDetailsModal({
   useEffect(() => {
     if (isOpen && lead) {
       setTab("timeline");
-      setAction(initialAction && allowed(initialAction) ? initialAction : null);
+      setOutcomeOpen(initialAction === "outcome" && canEditCustomer(effectiveUser, lead));
+      setAction(
+        initialAction && initialAction !== "outcome" && allowed(initialAction)
+          ? initialAction
+          : null,
+      );
       setMore(false);
       setRating(false);
       setName(lead.name);
@@ -367,6 +380,12 @@ export function LeadDetailsModal({
           </button>
         </div>
         <div className="client-action-bar">
+          {canEditCustomer(effectiveUser, lead) && (
+            <button className="btn-primary" onClick={() => setOutcomeOpen(true)}>
+              <ShoppingBag size={15} />
+              اشترى ولا لسه؟
+            </button>
+          )}
           {allowed("followup") && (
             <button className="btn-primary" onClick={() => show("followup")}>
               <Plus size={15} />
@@ -703,11 +722,7 @@ export function LeadDetailsModal({
                       </label>
                       <label className="field full-width">
                         <span>ملاحظات</span>
-                        <textarea
-                          value={note}
-                          onChange={(e) => setNote(e.target.value)}
-                          rows={2}
-                        />
+                        <VoiceNoteField value={note} onChange={setNote} rows={2} />
                       </label>
                     </div>
                   </details>
@@ -718,11 +733,7 @@ export function LeadDetailsModal({
                       {action === "visit" ? "نتيجة الزيارة" : "ملاحظات"}{" "}
                       <em>{action === "note" ? "مطلوب" : "اختياري"}</em>
                     </span>
-                    <textarea
-                      rows={2}
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                    />
+                    <VoiceNoteField value={note} onChange={setNote} rows={2} />
                   </label>
                 )}
               </div>
@@ -1012,6 +1023,21 @@ export function LeadDetailsModal({
             <ArrowRight size={14} />
           </button>
         </div>
+        {outcomeOpen && (
+          <PurchaseOutcomeDialog
+            lead={lead}
+            agentId={
+              lead.assignedAgentId ||
+              (isSales(effectiveUser) ? effectiveUser.id : "")
+            }
+            canBook={allowed("booking")}
+            onBought={() => {
+              setOutcomeOpen(false);
+              show("booking");
+            }}
+            onClose={() => setOutcomeOpen(false)}
+          />
+        )}
         <CustomerRatingModal
           lead={lead}
           isOpen={rating}

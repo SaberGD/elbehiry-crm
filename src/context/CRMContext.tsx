@@ -15,7 +15,16 @@ import {
   demoBrokers,
 } from "../data/demoData";
 import { today, followUpStatus } from "../lib/presentation";
-import { buildPostSaleSchedule, milestoneLabel } from "../lib/postSale";
+import {
+  buildPostSaleSchedule,
+  milestoneLabel,
+  addToDate,
+} from "../lib/postSale";
+import {
+  reasonLabel,
+  unknownReasonQuestion,
+  unknownReasonFollowUpDays,
+} from "../lib/notBought";
 import React, {
   createContext,
   useContext,
@@ -41,6 +50,7 @@ import {
   Booking,
   TimelineEvent,
   AuditLog,
+  NotBoughtRecord,
   DistributionRule,
   LeadStatus,
   Company,
@@ -83,6 +93,7 @@ export interface FollowUpExtra {
 }
 
 export interface CRMContextType {
+  notBoughtRecords: NotBoughtRecord[];
   currentUser: User;
   logout: () => Promise<void>;
   loadDemoData: () => void;
@@ -187,6 +198,9 @@ export interface CRMContextType {
   // Booking Operations
   addBooking: (booking: Omit<Booking, "id" | "createdAt">) => Booking;
   completeBooking: (bookingId: string, deliveredAt?: string) => void;
+  addNotBoughtRecord: (
+    data: Omit<NotBoughtRecord, "id" | "createdAt" | "agentName">,
+  ) => NotBoughtRecord;
 
   // User & Structure CRUD
   addUser: (user: Omit<User, "id" | "createdAt">) => User;
@@ -279,6 +293,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   const [courses, setCourses] = useState<Course[]>(() =>
     loadStorage("courses", initialCourses),
   );
+  const [notBoughtRecords, setNotBoughtRecords] = useState<NotBoughtRecord[]>(
+    () => loadStorage("not_bought", []),
+  );
+  useEffect(() => saveStorage("not_bought", notBoughtRecords), [notBoughtRecords]);
   const [leads, setLeads] = useState<Lead[]>(() =>
     loadStorage("leads", []),
   );
@@ -341,6 +359,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices);
   useFirestoreCollection("notifications", notifications, setNotifications);
   useFirestoreCollection("leads", leads, setLeads);
+  useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords);
   useFirestoreCollection("visits", visits, setVisits);
   useFirestoreCollection("followUps", followUps, setFollowUps);
   useFirestoreCollection("bookings", bookings, setBookings);
@@ -856,6 +875,43 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       `إتمام حجز كورس ${bookingData.courseName} للعميل ${bookingData.leadName}`,
     );
     return newBooking;
+  };
+
+  /** Records why a customer has not bought yet; an unknown reason schedules a follow-up question. */
+  const addNotBoughtRecord: CRMContextType["addNotBoughtRecord"] = (data) => {
+    const record: NotBoughtRecord = {
+      ...data,
+      id: `nbr-${crypto.randomUUID()}`,
+      agentName: users.find((u) => u.id === data.agentId)?.name,
+      createdAt: new Date().toISOString(),
+    };
+    setNotBoughtRecords((prev) => [record, ...prev]);
+    const labels = data.reasons
+      .map((r) => (r === "other" && data.otherText ? `أخرى: ${data.otherText}` : reasonLabel(r)))
+      .join("، ");
+    addTimelineEvent({
+      leadId: data.leadId,
+      authorId: effectiveUser.id,
+      authorName: effectiveUser.name,
+      type: "note",
+      title: `لسه ما اشترى: ${labels}`,
+      details: data.note || "",
+    });
+    if (data.reasons.includes("unknown") && data.agentId) {
+      addFollowUp({
+        leadId: data.leadId,
+        leadName: data.leadName,
+        leadPhone: leads.find((l) => l.id === data.leadId)?.phone || "",
+        assignedAgentId: data.agentId,
+        branchId: data.branchId,
+        scheduledAt: addToDate(today(), { days: unknownReasonFollowUpDays }),
+        reason: unknownReasonQuestion,
+        type: "call",
+        notes: "",
+      });
+    }
+    logAudit("سبب عدم الشراء", "عميل", data.leadId, `${data.leadName}: ${labels}`);
+    return record;
   };
 
   /** Marks a booking as delivered and schedules the post-sale follow-ups. */
@@ -1454,6 +1510,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
         addBooking,
         completeBooking,
+        addNotBoughtRecord,
+        notBoughtRecords,
 
         addUser,
         updateUser,

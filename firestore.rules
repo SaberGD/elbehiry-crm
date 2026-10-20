@@ -162,6 +162,12 @@ service cloud.firestore {
       allow delete: if isManager();
     }
 
+    match /notBoughtRecords/{docId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
     match /brokers/{docId} {
       allow read: if isStaff();
       allow create, update: if isStaff();

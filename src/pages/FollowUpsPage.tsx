@@ -16,8 +16,10 @@ import { followUpStatus, phoneNumber } from "../lib/presentation";
 import type { FollowUp } from "../types/crm";
 import { useDialog } from "../components/common/useDialog";
 import { milestoneLabel } from "../lib/postSale";
+import { VoiceNoteField } from "../components/common/VoiceNoteField";
+import type { LeadQuickAction } from "../components/common/LeadDetailsModal";
 interface Props {
-  onOpenLead: (id: string) => void;
+  onOpenLead: (id: string, action?: LeadQuickAction) => void;
   initialTab?: "due" | "overdue";
 }
 export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
@@ -198,6 +200,14 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                       تسجيل النتيجة
                     </button>
                   )}
+                {canAccessPage(effectiveUser, "clients") && f.category !== "post_sale" && (
+                  <button
+                    className="btn-secondary"
+                    onClick={() => onOpenLead(f.leadId, "outcome")}
+                  >
+                    اشترى ولا لسه؟
+                  </button>
+                )}
                 {canAccessPage(effectiveUser, "clients") && (
                   <button
                     className="btn-secondary"
@@ -279,11 +289,11 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                 <span>
                   إيه اللي حصل؟ <em>مطلوب</em>
                 </span>
-                <textarea
+                <VoiceNoteField
                   rows={3}
                   required
                   value={result}
-                  onChange={(e) => setResult(e.target.value)}
+                  onChange={setResult}
                   placeholder="مثلاً: العميل طلب عرض سعر وهيرد يوم الأحد."
                 />
               </label>

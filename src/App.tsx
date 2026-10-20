@@ -51,10 +51,10 @@ const AppContent: React.FC = () => {
   const [leadModalAction, setLeadModalAction] =
     useState<LeadQuickAction | null>(null);
 
-  const handleOpenLead = (leadId: string) => {
+  const handleOpenLead = (leadId: string, action?: LeadQuickAction) => {
     if (!leads.some((l) => l.id === leadId)) return;
     setSelectedLeadId(leadId);
-    setLeadModalAction(null);
+    setLeadModalAction(action ?? null);
     setIsLeadModalOpen(true);
   };
 

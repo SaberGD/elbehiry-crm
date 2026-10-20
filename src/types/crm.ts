@@ -441,3 +441,27 @@ export interface NotificationItem {
   linkTab?: string;
   leadId?: string;
 }
+
+export interface NotBoughtRecord {
+  id: string;
+  leadId: string;
+  leadName: string;
+  branchId: string;
+  agentId: string;
+  agentName?: string;
+  createdAt: string;
+  reasons: (
+    | "price"
+    | "comparing"
+    | "competitor"
+    | "unavailable"
+    | "postponed"
+    | "needs_approval"
+    | "service"
+    | "just_asking"
+    | "other"
+    | "unknown"
+  )[];
+  otherText?: string;
+  note?: string;
+}

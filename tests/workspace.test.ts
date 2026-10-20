@@ -12,6 +12,7 @@ import {
   canAccessPage,
   canCompleteFollowUp,
   canContactCustomer,
+  canEditCustomer,
 } from "../src/lib/access";
 import {
   defaultPermissionMatrix,
@@ -55,6 +56,7 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
     bookings: seed.initialBookings,
     visits: seed.initialVisits,
     purchaseInvoices: seed.initialPurchaseInvoices,
+    notBoughtRecords: [],
     companies: seed.initialCompanies,
     governorates: seed.initialGovernorates,
     warehouses: seed.initialWarehouses,
@@ -87,6 +89,7 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
         "addTeam",
         "updateTeam",
         "setViewAsUser",
+        "addNotBoughtRecord",
       ].map((k) => [k, noop(k)]),
     ),
     findDuplicateLeadsByPhone: () => seed.initialLeads,
@@ -335,5 +338,43 @@ test("creating a branch requires a real company and governorate instead of an un
       companyId: company.id,
       governorateId: gov.id,
     } as never),
+  );
+});
+
+test("recording why a customer has not bought is limited to customers the user may edit", () => {
+  const agent = users.find(
+    (u) =>
+      u.role === "sales_agent" &&
+      seed.initialLeads.some((l) => l.assignedAgentId === u.id),
+  )!;
+  const { view, calls } = fixture(agent);
+  const own = view.leads.find((l) => canEditCustomer(view.effectiveUser, l))!;
+  assert.ok(own, "agent has an editable customer in the seed");
+  view.addNotBoughtRecord({
+    leadId: own.id,
+    leadName: own.name,
+    branchId: own.branchId,
+    agentId: agent.id,
+    reasons: ["price"],
+  });
+  assert.ok(calls.includes("addNotBoughtRecord"));
+  const foreign = seed.initialLeads.find((l) => l.branchId !== agent.branchId)!;
+  assert.throws(() =>
+    view.addNotBoughtRecord({
+      leadId: foreign.id,
+      leadName: foreign.name,
+      branchId: foreign.branchId,
+      agentId: agent.id,
+      reasons: ["price"],
+    }),
+  );
+  assert.throws(() =>
+    view.addNotBoughtRecord({
+      leadId: own.id,
+      leadName: own.name,
+      branchId: own.branchId,
+      agentId: agent.id,
+      reasons: [],
+    }),
   );
 });

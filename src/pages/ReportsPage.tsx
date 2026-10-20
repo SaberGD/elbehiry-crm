@@ -1,4 +1,5 @@
 import { departmentIds, splitTotals } from "../lib/purchases";
+import { notBoughtReasons } from "../lib/notBought";
 import { useCRM } from "../context/CRMContext";
 import { hasPermission } from "../lib/permissions";
 import { isSales, scopeLabel } from "../lib/access";
@@ -15,6 +16,7 @@ export function ReportsPage() {
     bookings,
     followUps,
     purchaseInvoices,
+    notBoughtRecords,
     branches,
   } = useCRM();
   const has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
@@ -106,6 +108,44 @@ export function ReportsPage() {
                     </div>
                   </div>
                 ))}
+            </div>
+          </section>
+        )}
+        {has("customers.view") && (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>ليه لسه ما اشتروش</h2>
+                <p>
+                  {notBoughtRecords.length
+                    ? `${notBoughtRecords.length} تسجيل · السبب مجهول في ${Math.round((notBoughtRecords.filter((r) => r.reasons.includes("unknown")).length / notBoughtRecords.length) * 100)}٪`
+                    : "الأسباب اللي بيسجلها الفريق بعد كل زيارة أو متابعة"}
+                </p>
+              </div>
+            </div>
+            <div className="department-list">
+              {notBoughtRecords.length ? (
+                notBoughtReasons
+                  .map((r) => ({
+                    ...r,
+                    count: notBoughtRecords.filter((n) => n.reasons.includes(r.id)).length,
+                  }))
+                  .filter((r) => r.count > 0)
+                  .sort((a, b) => b.count - a.count)
+                  .map((r) => (
+                    <div className="department-row" key={r.id}>
+                      <div>
+                        <span>{r.label}</span>
+                        <strong>{r.count}</strong>
+                      </div>
+                      <div className="department-bar">
+                        <i style={{ width: `${(r.count / notBoughtRecords.length) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))
+              ) : (
+                <p className="quiet-note">لسه مفيش أسباب مسجلة.</p>
+              )}
             </div>
           </section>
         )}

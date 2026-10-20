@@ -2049,3 +2049,30 @@
 .account-panel .logout-button:hover {
   background: rgba(239, 68, 68, 0.1);
 }
+
+/* Voice / AI note field */
+.voice-field textarea { width: 100%; }
+.voice-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
+.voice-btn {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.35rem 0.75rem; border-radius: 99px; font-size: 0.75rem; font-weight: 600;
+  border: 1px solid var(--line, rgba(128,128,128,.35)); background: transparent; color: inherit; cursor: pointer;
+}
+.voice-btn:disabled { opacity: .5; cursor: default; }
+.voice-btn.is-recording { background: #c8232b; border-color: #c8232b; color: #fff; animation: voice-pulse 1.2s ease-in-out infinite; }
+.voice-status { font-size: 0.75rem; opacity: .8; display: inline-flex; align-items: center; gap: .3rem; }
+.voice-status.is-error { color: #c8232b; opacity: 1; }
+.voice-field .spin { animation: voice-spin 1s linear infinite; }
+@keyframes voice-spin { to { transform: rotate(360deg); } }
+@keyframes voice-pulse { 0%,100% { opacity: 1 } 50% { opacity: .65 } }
+.reason-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.reason-chip {
+  padding: 0.45rem 0.9rem; border-radius: 99px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  border: 1.5px solid var(--line, rgba(128,128,128,.4)); background: transparent; color: inherit;
+}
+.reason-chip[aria-pressed="true"] { background: #c8232b; border-color: #c8232b; color: #fff; }
+.reason-chip.is-unknown[aria-pressed="true"] { background: #b45309; border-color: #b45309; }
+.outcome-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 1rem 0; }
+.outcome-choice button { padding: 1.1rem; border-radius: 14px; font-size: 1.05rem; font-weight: 700; cursor: pointer; border: 2px solid; background: transparent; }
+.outcome-choice .is-bought { border-color: #15803d; color: #15803d; }
+.outcome-choice .is-not-yet { border-color: #b45309; color: #b45309; }
