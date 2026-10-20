@@ -58,6 +58,8 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   initialAction?: LeadQuickAction | null;
+  /** Opens another customer, such as the one who recommended this one. */
+  onOpenLead?: (id: string) => void;
 }
 type Action =
   | Exclude<LeadQuickAction, "outcome">
@@ -70,9 +72,11 @@ export function LeadDetailsModal({
   isOpen,
   onClose,
   initialAction = null,
+  onOpenLead,
 }: Props) {
   const {
     effectiveUser,
+    leads,
     users,
     branches,
     timelineEvents,
@@ -179,6 +183,7 @@ export function LeadDetailsModal({
   const shownEvents = timelineFilter === "all" ? events : events.filter((e) => e.group === timelineFilter);
   const timelineGroups = (Object.keys(timelineGroupLabels) as TimelineGroup[]).filter((g) => events.some((e) => e.group === g));
   const leadVisits = visits.filter((v) => v.linkedLeadId === lead.id);
+  const broughtLeads = leads.filter((l) => l.referredByLeadId === lead.id);
   const leadFollowUps = followUps
     .filter((f) => f.leadId === lead.id)
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
@@ -528,6 +533,21 @@ export function LeadDetailsModal({
                 {lead.interests?.length ? interestNames(lead.interests) : departmentNames[lead.department]} · {sourceNames[lead.source]}
               </span>
             </div>
+            {(lead.referredByLeadId || broughtLeads.length > 0) && (
+              <div>
+                <Users size={16} />
+                <span>
+                  <small>الترشيحات</small>
+                  {lead.referredByLeadId && (
+                    <button className="btn-text" style={{ padding: 0 }} onClick={() => onOpenLead?.(lead.referredByLeadId!)}>
+                      رشّحه {lead.referredByName || "عميل"}
+                    </button>
+                  )}
+                  {lead.referredByLeadId && broughtLeads.length > 0 && " · "}
+                  {broughtLeads.length > 0 && `رشّح ${broughtLeads.length} (${broughtLeads.filter((l) => l.status === "booked").length} اشتروا)`}
+                </span>
+              </div>
+            )}
           </div>
           {lead.notes && (
             <div className="client-note-preview">

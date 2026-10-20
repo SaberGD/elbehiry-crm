@@ -1,3 +1,4 @@
+import { isReferralPhone } from "../lib/referrals";
 import { canCompleteFollowUp, canAccessPage, isSales } from "../lib/access";
 import { hasPermission } from "../lib/permissions";
 import { useState } from "react";
@@ -26,7 +27,7 @@ interface Props {
   initialTab?: "due" | "overdue";
 }
 export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
-  const { effectiveUser, leads, branches, followUps, updateFollowUpResult, reviewRequests } =
+  const { effectiveUser, leads, branches, followUps, updateFollowUpResult, reviewRequests, addReferralLead } =
     useCRM();
   // The one 48-hour nudge for review requests the customer has not answered.
   const dueReviews = reviewRequests.filter((r) => reviewPhase(r) === "reminder_due");
@@ -39,6 +40,9 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
   const [rating, setRating] = useState(0);
   const [ratingComment, setRatingComment] = useState("");
   const [referralNote, setReferralNote] = useState("");
+  const [referralName, setReferralName] = useState("");
+  const [referralPhone, setReferralPhone] = useState("");
+  const [formError, setFormError] = useState("");
   const [q, setQ] = useState("");
   const [fBranch, setFBranch] = useState("all");
   const [fAgent, setFAgent] = useState("all");
@@ -81,6 +85,12 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
       (isPostSale(selected) && !rating)
     )
       return;
+    const hasReferral = isPostSale(selected) && !!(referralName.trim() || referralPhone.trim());
+    if (hasReferral && (!referralName.trim() || !isReferralPhone(referralPhone))) {
+      setFormError("اكتب اسم المرشَّح ورقم موبايله بشكل صحيح، أو سيب الخانتين فاضيين.");
+      return;
+    }
+    setFormError("");
     updateFollowUpResult(
       selected.id,
       "completed",
@@ -90,14 +100,23 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
         ? {
             satisfactionRating: rating,
             satisfactionComment: ratingComment.trim() || undefined,
-            referralNote: referralNote.trim() || undefined,
+            referralNote: [referralName.trim(), referralPhone.trim(), referralNote.trim()].filter(Boolean).join(" · ") || undefined,
           }
         : undefined,
     );
+    if (hasReferral) {
+      try {
+        addReferralLead({ fromLeadId: selected.leadId, name: referralName, phone: referralPhone, followUpId: selected.id });
+      } catch {
+        /* the call result is already saved; the salesperson can register the prospect from the customer file */
+      }
+    }
     setSelected(null);
     setRating(0);
     setRatingComment("");
     setReferralNote("");
+    setReferralName("");
+    setReferralPhone("");
     setResult("");
     setNextDate("");
     setHasNext(false);
@@ -383,20 +402,26 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                       placeholder="إيه اللي عجبه أو ما عجبوش؟"
                     />
                   </label>
-                  <label className="field">
+                  <div className="field">
                     <span>
                       حد من قرايبه أو معارفه محتاج؟{" "}
                       <em className="optional-tag">اختياري</em>
                     </span>
-                    <textarea
-                      rows={2}
-                      value={referralNote}
-                      onChange={(e) => setReferralNote(e.target.value)}
-                      placeholder="الاسم ورقم الهاتف والاحتياج، لو ذكرهم العميل."
-                    />
+                    <div className="field-grid">
+                      <input value={referralName} onChange={(e) => setReferralName(e.target.value)} placeholder="اسمه" />
+                      <input dir="ltr" type="tel" inputMode="tel" value={referralPhone} onChange={(e) => setReferralPhone(e.target.value)} placeholder="01xxxxxxxxx" />
+                    </div>
+                    <p className="quiet-note">لو العميل سمح، هيتسجل كعميل محتمل وتتجدول متابعة بعد يومين.</p>
+                  </div>
+                  <label className="field">
+                    <span>
+                      ملاحظة عن احتياجه <em className="optional-tag">اختياري</em>
+                    </span>
+                    <textarea rows={2} value={referralNote} onChange={(e) => setReferralNote(e.target.value)} placeholder="محتاج إيه؟ (دهان شقة، تشطيب…)" />
                   </label>
                 </>
               )}
+              {formError && <p className="notice warning" role="alert">{formError}</p>}
               <label className="checkbox-line" style={{ marginBlock: 20 }}>
                 <input
                   type="checkbox"

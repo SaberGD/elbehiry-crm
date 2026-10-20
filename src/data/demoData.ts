@@ -424,7 +424,7 @@ const reviewFor = (i: number, over: Partial<ReviewRequest>): ReviewRequest => {
   };
 };
 export const demoReviews: ReviewRequest[] = [
-  reviewFor(0, { status: "answered", answeredAt: hoursAgo(20), response: { rating: 5, treatment: 5, price: 4, quality: 5, wouldRecommend: true, comment: "تعامل محترم والشغل ممتاز، هرشحكم لأصحابي." }, ai: { kind: "praise", category: "تعامل الموظف", severity: "low", summary: "العميل راضي جدًا وهيرشحنا." } }),
+  reviewFor(0, { status: "answered", answeredAt: hoursAgo(20), response: { rating: 5, treatment: 5, price: 4, quality: 5, wouldRecommend: true, comment: "تعامل محترم والشغل ممتاز، هرشحكم لأصحابي.", referral: { name: "أحمد (قريب العميل)", phone: "01155500123" } }, ai: { kind: "praise", category: "تعامل الموظف", severity: "low", summary: "العميل راضي جدًا وهيرشحنا." } }),
   reviewFor(1, { status: "answered", answeredAt: hoursAgo(3), isComplaint: true, response: { rating: 2, treatment: 2, price: 3, quality: 2, wouldRecommend: false, comment: "الفني اتأخر 3 أيام عن الميعاد ومحدش كلمني يعتذر." }, ai: { kind: "complaint", category: "تأخير", severity: "high", summary: "تأخر الفني 3 أيام من غير أي اعتذار." } }),
   reviewFor(2, { status: "answered", answeredAt: hoursAgo(90), response: { rating: 3, treatment: 4, price: 2, quality: 4, comment: "الأسعار أعلى من اللي توقعته." }, ai: { kind: "note", category: "السعر", severity: "low", summary: "العميل شايف الأسعار عالية." } }),
   reviewFor(3, { sentAt: hoursAgo(5) }),

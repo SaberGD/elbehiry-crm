@@ -423,6 +423,15 @@ export function createWorkspace(raw: CRMContextType) {
     notBoughtRecords: raw.notBoughtRecords.filter((r) => leadIds.has(r.leadId)),
     reviewRequests: visibleReviews,
     reviewNotes: (raw.reviewNotes ?? []).filter((n) => visibleReviewIds.has(n.requestId)),
+    addReferralLead: ((input) => {
+      const from = findLead(input.fromLeadId);
+      require(access.canEditCustomer(actor, from) && access.canCreateCustomer(actor));
+      require(!input.reviewId || visibleReviewIds.has(input.reviewId));
+      requireAssignment(from.branchId, from.assignedAgentId || actor.id);
+      const result = raw.addReferralLead(input);
+      if (result.created) pendingCustomers.set(result.lead.id, result.lead);
+      return result;
+    }) as CRMContextType["addReferralLead"],
     requestReview: ((input) => {
       const lead = findLead(input.lead.id);
       require(access.canEditCustomer(actor, lead));

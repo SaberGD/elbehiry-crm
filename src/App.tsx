@@ -209,6 +209,7 @@ const AppContent: React.FC = () => {
         lead={selectedLead}
         isOpen={isLeadModalOpen}
         initialAction={leadModalAction}
+        onOpenLead={(id) => handleOpenLead(id)}
         onClose={() => {
           setIsLeadModalOpen(false);
           setLeadModalAction(null);

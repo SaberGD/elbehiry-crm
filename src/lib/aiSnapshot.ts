@@ -15,6 +15,8 @@ import { departmentIds } from "./purchases";
 import { brokerRows, customerRows, departmentLeaders, feedbackSummary } from "./overview";
 import { departmentNames, followUpStatus, today } from "./presentation";
 import { reasonLabel } from "./notBought";
+import { employeeRatings } from "./employeeRating";
+import { referrerRows } from "./referrals";
 import { complaintOpenedAt, complaintState, complaintStateLabel, isComplaint, isLateComplaint, reviewStats } from "./reviews";
 
 export interface SnapshotInput {
@@ -92,6 +94,7 @@ export function buildSnapshot(input: SnapshotInput) {
       notBought: notBoughtRecords.filter((r) => r.agentId === id && inRange(r.createdAt, from, to)).length,
     };
   };
+  const ratings = employeeRatings(users, reviews, followUps);
   const weekReviews = reviews.filter((r) => inRange(r.answeredAt || r.sentAt, weekFrom, t));
   const prevReviews = reviews.filter((r) => inRange(r.answeredAt || r.sentAt, prevFrom, prevTo));
   const boughtIds = new Set(active.map((b) => b.leadId));
@@ -146,6 +149,10 @@ export function buildSnapshot(input: SnapshotInput) {
           ).length,
           this_week: agentPeriod(u.id, weekFrom, t),
           last_week: agentPeriod(u.id, prevFrom, prevTo),
+          customerRating: (() => {
+            const r = ratings.find((x) => x.userId === u.id);
+            return r ? { score: r.score, count: r.count, level: r.level, last30: r.last30, trend: r.trend } : null;
+          })(),
           reviews: (() => {
             const st = reviewStats(reviews.filter((r) => r.agentId === u.id), notes);
             return { answered: st.answered, average: st.average, complaints: st.complaints.total, openComplaints: st.complaints.open + st.complaints.followedUp };
@@ -234,6 +241,7 @@ export function buildSnapshot(input: SnapshotInput) {
         .slice(0, 10)
         .map((l) => ({ customer: l.name, responsible: userName(l.assignedAgentId), branch: branchOf(l.branchId) })),
     },
+    referrals: referrerRows(leads, bookings).slice(0, 8).map((r) => ({ customer: r.name, referred: r.referred, bought: r.bought, totalEGP: r.totalEGP })),
     customerReviews: {
       this_week: reviewStats(weekReviews, notes),
       last_week: reviewStats(prevReviews, notes),

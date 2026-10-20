@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { MessageCircle, Send, XCircle } from "lucide-react";
+import { MessageCircle, Send, UserPlus, XCircle } from "lucide-react";
+import { canCreateCustomer, canEditCustomer } from "../../lib/access";
+import { referralMessage } from "../../lib/referrals";
 import { useCRM } from "../../context/CRMContext";
 import type { ReviewRequest } from "../../types/crm";
 import {
@@ -36,7 +38,8 @@ const severityLabel = { low: "بسيطة", medium: "متوسطة", high: "عاج
 
 /** One review request: its progress, the customer's answer, and what the staff can do about it. */
 export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { request: ReviewRequest; showCustomer?: boolean; onOpenLead?: (id: string) => void }) {
-  const { effectiveUser, leads, reviewNotes, markReviewReminderSent, cancelReviewRequest, addReviewNote } = useCRM();
+  const { effectiveUser, leads, reviewNotes, markReviewReminderSent, cancelReviewRequest, addReviewNote, addReferralLead } = useCRM();
+  const [referralMsg, setReferralMsg] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
@@ -51,6 +54,7 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
   const pending = r.status === "sent";
   const resp = r.response;
 
+  const open2 = (to: string, text: string) => window.open(whatsappUrl(to, text), "_blank", "noopener");
   const open = (text: string) => window.open(whatsappUrl(phone, text), "_blank", "noopener");
   const addNote = (kind: "note" | "resolved") => {
     if (!note.trim()) return;
@@ -107,6 +111,43 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
             <blockquote style={{ margin: "8px 0", padding: "10px 12px", background: "var(--surface-soft)", borderInlineStart: "3px solid #c8232b", borderRadius: 8 }}>
               {resp.comment}
             </blockquote>
+          )}
+          {resp.referral && (
+            <div className="referral-box">
+              <strong>رشّح لنا:</strong> {resp.referral.name} · <bdi dir="ltr">{resp.referral.phone}</bdi>
+              {r.referralLeadId ? (
+                <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span className="status-pill" style={{ background: "#e4f4e9", color: "#1b6b3a" }}>اتسجل كعميل محتمل</span>
+                  {onOpenLead && (
+                    <button className="btn-text" onClick={() => onOpenLead(r.referralLeadId!)}>
+                      فتح ملفه
+                    </button>
+                  )}
+                  <button className="btn-text" onClick={() => open2(resp.referral!.phone, referralMessage(r.leadName))}>
+                    <MessageCircle size={13} /> ابدأ الكلام على واتساب
+                  </button>
+                </div>
+              ) : lead && canEditCustomer(effectiveUser, lead) && canCreateCustomer(effectiveUser) ? (
+                <div style={{ marginTop: 6 }}>
+                  <button
+                    className="btn-primary"
+                    onClick={() => {
+                      try {
+                        const res = addReferralLead({ fromLeadId: r.leadId, name: resp.referral!.name, phone: resp.referral!.phone, reviewId: r.id });
+                        setReferralMsg(res.created ? "اتسجل كعميل محتمل واتجدولت متابعة بعد يومين." : `الرقم ده مسجّل بالفعل باسم ${res.lead.name}.`);
+                      } catch (e) {
+                        setReferralMsg(e instanceof Error ? e.message : "تعذر تسجيل الترشيح.");
+                      }
+                    }}
+                  >
+                    <UserPlus size={14} /> سجّله كعميل محتمل
+                  </button>
+                </div>
+              ) : (
+                <p className="table-secondary">مستني الموظف المسؤول يسجله.</p>
+              )}
+              {referralMsg && <p className="notice" role="status" style={{ marginTop: 6 }}>{referralMsg}</p>}
+            </div>
           )}
           {r.ai && (r.ai.category || r.ai.summary) && (
             <p className="table-secondary">

@@ -140,6 +140,24 @@ test("review links: the customer answers once; staff only see their own scope", 
   await assertFails(updateDoc(doc(db("agentA"), "reviewRequests", id), { response: { rating: 5 } }));
 });
 
+test("a customer can recommend one person with the review, and staff can link the prospect they registered", async () => {
+  const id = "tok_bbbbbbbbbbbbbbbbbbbbbbb";
+  await env.withSecurityRulesDisabled(async (ctx) =>
+    setDoc(doc(ctx.firestore(), "reviewRequests", id), { id, branchId: "b1", agentId: userId("agentA"), leadId: "L1", leadName: "A1", status: "sent" }),
+  );
+  const bad = [
+    { name: "", phone: "01012345678" },
+    { name: "س", phone: "123" },
+    { name: "س", phone: "01012345678", extra: "x" },
+  ];
+  for (const referral of bad)
+    await assertFails(updateDoc(doc(db(null), "reviewRequests", id), { status: "answered", isComplaint: false, answeredAt: "x", response: { rating: 5, referral } }));
+  await assertSucceeds(updateDoc(doc(db(null), "reviewRequests", id), { status: "answered", isComplaint: false, answeredAt: "x", response: { rating: 5, referral: { name: "سامي", phone: "01012345678" } } }));
+  await assertSucceeds(updateDoc(doc(db("agentA"), "reviewRequests", id), { referralLeadId: "ld-1" }));
+  await assertFails(updateDoc(doc(db("agentA"), "reviewRequests", id), { "response.referral.name": "غيره" }));
+  await assertFails(updateDoc(doc(db("agentC"), "reviewRequests", id), { referralLeadId: "ld-2" }));
+});
+
 test("complaint notes: managers of the branch add, nobody edits; the salesperson can read theirs", async () => {
   const note = (k, branch = "b1") => ({ id: `n-${k}`, requestId: "tok_aaaaaaaaaaaaaaaaaaaaaaa", branchId: branch, agentId: userId("agentA"), byId: userId(k), kind: "note", text: "called", at: "2026" });
   await assertSucceeds(setDoc(doc(db("bm1"), "reviewNotes", "n-bm1"), note("bm1")));

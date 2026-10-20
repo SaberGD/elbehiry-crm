@@ -1,3 +1,5 @@
+import { RatingBadge } from "../components/reviews/EmployeeRatings";
+import { employeeRatings } from "../lib/employeeRating";
 import { FilterBar } from "../components/common/FilterBar";
 import { authErrorMessage } from "../context/AuthContext";
 import { resetStaffPassword } from "../lib/adminClient";
@@ -14,7 +16,7 @@ import {
   specialties,
   type Specialty,
 } from "../lib/permissions";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useCRM } from "../context/CRMContext";
 import { useLanguage } from "../context/LanguageContext";
 import { UserRole, User } from "../types/crm";
@@ -52,7 +54,10 @@ export const StaffUsersPage: React.FC = () => {
     logAudit,
     addDepartmentEntity,
     addJobPosition,
+    reviewRequests,
+    followUps,
   } = useCRM();
+  const ratings = useMemo(() => employeeRatings(users, reviewRequests, followUps), [users, reviewRequests, followUps]);
 
   const { t } = useLanguage();
 
@@ -385,6 +390,7 @@ export const StaffUsersPage: React.FC = () => {
                     <th className="p-3.5">الفرع</th>
                     <th className="p-3.5">المسؤول المباشر</th>
                     <th className="p-3.5">بيانات التواصل</th>
+                    <th className="p-3.5">تقييم العملاء</th>
                     <th className="p-3.5">الحالة</th>
                     <th className="p-3.5 text-center">الإجراءات</th>
                   </tr>
@@ -439,6 +445,14 @@ export const StaffUsersPage: React.FC = () => {
                         <span className="block font-mono-numbers text-slate-500 text-[11px]">
                           {u.phone}
                         </span>
+                      </td>
+
+                      <td className="p-3.5">
+                        {["sales_agent", "team_leader"].includes(u.role) ? (
+                          <RatingBadge rating={ratings.find((r) => r.userId === u.id)} />
+                        ) : (
+                          <span className="table-secondary">—</span>
+                        )}
                       </td>
 
                       <td className="p-3.5">

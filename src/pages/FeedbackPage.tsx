@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useCRM } from "../context/CRMContext";
 import { ReviewCard } from "../components/reviews/ReviewCard";
+import { EmployeeRatings } from "../components/reviews/EmployeeRatings";
+import { pendingReferral } from "../lib/referrals";
 import { FilterBar, inDateRange } from "../components/common/FilterBar";
 import { averageRating, complaintState, isComplaint, isLateComplaint, resolutionHours, reviewPhase } from "../lib/reviews";
 
-type Tab = "complaints" | "all" | "waiting";
+type Tab = "complaints" | "referrals" | "all" | "waiting";
 
 /** Customer reviews and complaints inside the viewer's scope. */
 export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void }) {
@@ -27,13 +29,15 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
     const late = open.filter((r) => isLateComplaint(r, reviewNotes));
     const hours = complaints.map((r) => resolutionHours(r, reviewNotes)).filter((h): h is number => h !== null);
     const avgHours = hours.length ? Math.round(hours.reduce((a, b) => a + b, 0) / hours.length) : null;
-    return { sorted, complaints, open, late, avgHours, waiting, answered, avg: averageRating(sorted) };
+    const referrals = sorted.filter((r) => !!r.response?.referral);
+    const newReferrals = referrals.filter(pendingReferral);
+    return { sorted, complaints, open, late, avgHours, waiting, answered, referrals, newReferrals, avg: averageRating(sorted) };
   }, [reviewRequests, reviewNotes]);
 
   const dueReminders = data.waiting.filter((r) => reviewPhase(r) === "reminder_due").length;
   // Late complaints come first so they get picked up.
   const lateIds = new Set(data.late.map((r) => r.id));
-  const base = tab === "complaints" ? [...data.complaints].sort((a, b) => Number(lateIds.has(b.id)) - Number(lateIds.has(a.id))) : tab === "waiting" ? data.waiting : data.sorted;
+  const base = tab === "referrals" ? data.referrals : tab === "complaints" ? [...data.complaints].sort((a, b) => Number(lateIds.has(b.id)) - Number(lateIds.has(a.id))) : tab === "waiting" ? data.waiting : data.sorted;
   const list = base.filter((r) => {
     const stars = r.response?.rating;
     return (
@@ -69,6 +73,8 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
         </div>
       </div>
 
+      <EmployeeRatings />
+
       <div className="metric-grid" style={{ marginBottom: 16 }}>
         <div className="metric">
           <span className="metric-top">متوسط التقييم</span>
@@ -102,6 +108,7 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
           {(
             [
               ["complaints", `الشكاوى (${data.complaints.length})`],
+              ["referrals", `ترشيحات (${data.referrals.length}${data.newReferrals.length ? `، ${data.newReferrals.length} جديد` : ""})`],
               ["all", `كل الطلبات (${data.sorted.length})`],
               ["waiting", `مستنية رد (${data.waiting.length})`],
             ] as const
@@ -126,7 +133,7 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
         </div>
         {list.length === 0 ? (
           <div className="empty-state">
-            <h3>{tab === "complaints" ? "مفيش شكاوى. كويس!" : "لسه مفيش حاجة هنا"}</h3>
+            <h3>{tab === "complaints" ? "مفيش شكاوى. كويس!" : tab === "referrals" ? "لسه مفيش ترشيحات" : "لسه مفيش حاجة هنا"}</h3>
             <p>الموظف بيطلب التقييم من ملف العميل بزر «طلب تقييم»، والرد بيظهر هنا تلقائيًا.</p>
           </div>
         ) : (

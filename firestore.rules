@@ -281,11 +281,19 @@ service cloud.firestore {
           && request.resource.data.response.rating is int
           && request.resource.data.response.rating >= 1
           && request.resource.data.response.rating <= 5
-          && request.resource.data.response.keys().hasOnly(['rating', 'treatment', 'price', 'quality', 'wouldRecommend', 'comment'])
+          && request.resource.data.response.keys().hasOnly(['rating', 'treatment', 'price', 'quality', 'wouldRecommend', 'comment', 'referral'])
           && (!('comment' in request.resource.data.response) || request.resource.data.response.comment.size() <= 1500)
+          && (!('referral' in request.resource.data.response) || (
+                request.resource.data.response.referral.keys().hasOnly(['name', 'phone'])
+                && request.resource.data.response.referral.name is string
+                && request.resource.data.response.referral.name.size() > 0
+                && request.resource.data.response.referral.name.size() <= 80
+                && request.resource.data.response.referral.phone is string
+                && request.resource.data.response.referral.phone.size() >= 10
+                && request.resource.data.response.referral.phone.size() <= 20))
         ) || (
           rowOk(resource.data, 'agentId')
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reminderSentAt', 'cancelReason', 'cancelledAt', 'ai'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reminderSentAt', 'cancelReason', 'cancelledAt', 'ai', 'referralLeadId'])
           && (request.resource.data.status == resource.data.status
               || (resource.data.status == 'sent' && request.resource.data.status == 'cancelled'))
         );

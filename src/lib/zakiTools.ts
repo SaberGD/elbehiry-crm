@@ -4,6 +4,8 @@ import { bookingSplit, departmentIds } from "./purchases";
 import { brokerRows, customerRows, feedbackSummary } from "./overview";
 import { departmentNames, followUpStatus, sourceNames, statusNames } from "./presentation";
 import { notBoughtReasons, reasonLabel } from "./notBought";
+import { employeeRatings, ratingLevelLabel } from "./employeeRating";
+import { pendingReferral, referrerRows } from "./referrals";
 import { complaintOpenedAt, complaintState, complaintStateLabel, isComplaint, isLateComplaint, resolutionHours, reviewStats } from "./reviews";
 
 /** Live, role-scoped data the assistant may query. Built from the workspace (never raw database access). */
@@ -354,6 +356,40 @@ export function runTool(name: string, a: Args, d: ToolData): unknown {
       return { stats: reviewStats(rs, notes), ...page(rows, limitOf(a)) };
     }
 
+    case "employee_ratings": {
+      const bids = branchIdsFor(a.branch);
+      const aids = agentIdsFor(a.agent);
+      const rows = employeeRatings(d.users, d.reviewRequests ?? [], d.followUps)
+        .filter((r) => (!bids || (r.branchId && bids.includes(r.branchId))) && (!aids || aids.includes(r.userId)))
+        .filter((r) => a.onlyRated !== true || r.count > 0)
+        .map((r, i) => ({
+          rank: i + 1,
+          employee: r.name,
+          branch: r.branchId ? branchName(r.branchId) : null,
+          rating: r.score,
+          plainAverage: r.average,
+          ratingsCount: r.count,
+          level: ratingLevelLabel[r.level],
+          complaints: r.complaints,
+          customersRepliedPercent: r.responseRatePercent,
+          last30Days: r.last30,
+          trend: r.trend === "up" ? "في تحسن" : r.trend === "down" ? "في تراجع" : r.trend === "flat" ? "ثابت" : null,
+        }));
+      return { note: "rating = المتوسط مع تعديل بسيط للتقييمات القليلة؛ level «لسه بدري» = أقل من 3 تقييمات", ...page(rows, limitOf(a)) };
+    }
+
+    case "referrals": {
+      const bids = branchIdsFor(a.branch);
+      const rows = referrerRows(d.leads, d.bookings)
+        .filter((r) => inBranch(r.branchId, bids))
+        .map((r, i) => ({ rank: i + 1, customer: r.name, branch: branchName(r.branchId), referred: r.referred, contacted: r.visited, bought: r.bought, boughtTotalEGP: r.totalEGP }));
+      const waiting = (d.reviewRequests ?? []).filter(pendingReferral).filter((r) => inBranch(r.branchId, bids));
+      return {
+        referralsWaitingToBeRegistered: waiting.map((r) => ({ from: r.leadName, person: r.response!.referral!.name, branch: branchName(r.branchId) })),
+        ...page(rows, limitOf(a)),
+      };
+    }
+
     default:
       return { error: `أداة غير معروفة: ${name}` };
   }
@@ -373,6 +409,8 @@ export const toolLabels: Record<string, string> = {
   feedback: "بقرا تقييمات العملاء",
   performance: "بقارن الفروع والموظفين",
   reviews: "بقرا التقييمات والشكاوى",
+  employee_ratings: "بشوف تقييم الموظفين",
+  referrals: "بشوف الترشيحات",
 };
 
 export const defaultToolDate = (daysAgo: number, today: string) => addToDate(today, { days: -daysAgo });

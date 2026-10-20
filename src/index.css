@@ -2483,3 +2483,11 @@
     grid-column: 2;
   }
 }
+.referral-box {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  font-size: 13px;
+}

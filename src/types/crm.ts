@@ -234,6 +234,9 @@ export interface Lead {
   customerRatingComment?: string;
   brokerId?: string; // broker who referred this customer
   brokerName?: string;
+  /** The customer who recommended this one (a prospect added from a review or a post-sale call). */
+  referredByLeadId?: string;
+  referredByName?: string;
 }
 
 export type VisitorType = "client" | "broker" | "both";
@@ -312,6 +315,7 @@ export interface FollowUp {
   satisfactionRating?: number; // 1-5
   satisfactionComment?: string;
   referralNote?: string; // relatives / acquaintances the customer mentioned
+  referralLeadId?: string; // the prospect registered from what the customer said
 }
 
 export type BookingStatus =
@@ -541,7 +545,11 @@ export interface ReviewRequest {
     quality?: number;
     wouldRecommend?: boolean;
     comment?: string;
+    /** Someone the customer recommends us to, left on the public review page. */
+    referral?: { name: string; phone: string };
   };
+  /** The customer record made (or found) from the referral. */
+  referralLeadId?: string;
   ai?: ReviewAnalysis;
 }
 

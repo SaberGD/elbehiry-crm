@@ -5,6 +5,7 @@ import {
 } from "../lib/permissions";
 import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
+import { isReferralPhone, phoneKey } from "../lib/referrals";
 import { scopesFor, seesAll } from "../lib/scopes";
 import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
@@ -88,6 +89,8 @@ export interface CRMContextType {
   loadDemoData: () => Promise<void>;
   clearOrganizationData: () => Promise<void>;
   removeDemoData: () => Promise<void>;
+  /** Registers someone a customer recommended; returns the existing customer when the number is already known. */
+  addReferralLead: (input: { fromLeadId: string; name: string; phone: string; reviewId?: string; followUpId?: string }) => { lead: Lead; created: boolean };
   previewDemoRemoval: () => Promise<{ total: number; realLinked: number }>;
   /** How much flagged sample data is loaded right now. */
   demoSummary: { customers: number; branches: number; staff: number; brokers: number; any: boolean };
@@ -531,14 +534,19 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // ---- Customer reviews ----
   const requestReview: CRMContextType["requestReview"] = ({ lead, subjectKind, subjectId, subjectLabel }) => {
+    // The rating belongs to who served the customer: the employee who received that visit, else the customer's own employee.
+    const visit = subjectKind === "visit" ? visits.find((v) => v.id === subjectId) : undefined;
+    // A salesperson always asks for their own customers, which the security rules require.
+    const salesperson = ["sales_agent", "team_leader"].includes(effectiveUser.role);
+    const servedBy = salesperson ? effectiveUser : users.find((u) => u.id === visit?.receivedByAgentId) || users.find((u) => u.id === lead.assignedAgentId) || effectiveUser;
     const req: ReviewRequest = {
       id: newReviewToken(),
       leadId: lead.id,
       leadName: lead.name,
       branchId: lead.branchId,
       branchName: lead.branchName,
-      agentId: effectiveUser.id,
-      agentName: effectiveUser.name,
+      agentId: servedBy.id,
+      agentName: servedBy.name,
       subjectKind,
       subjectId,
       subjectLabel,
@@ -555,6 +563,73 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       details: subjectLabel,
     });
     return req;
+  };
+  /**
+   * A customer recommended someone: register them as a prospect under the same branch and employee, linked to the
+   * customer who recommended them, and schedule the first call. A number we already have is not added twice.
+   */
+  const addReferralLead: CRMContextType["addReferralLead"] = ({ fromLeadId, name, phone, reviewId, followUpId }) => {
+    const from = leads.find((l) => l.id === fromLeadId);
+    if (!from) throw new Error("العميل اللي رشّحه مش موجود.");
+    const person = name.trim();
+    if (!person || !isReferralPhone(phone)) throw new Error("اكتب اسم المرشَّح ورقم هاتف صحيح.");
+    const mark = (leadId: string) => {
+      if (reviewId) setReviewRequests((prev) => prev.map((r) => (r.id === reviewId ? { ...r, referralLeadId: leadId } : r)));
+      if (followUpId) setFollowUps((prev) => prev.map((f) => (f.id === followUpId ? { ...f, referralLeadId: leadId } : f)));
+    };
+    const existing = leads.find((l) => [l.phone, l.whatsappPhone || ""].some((p) => p && phoneKey(p) === phoneKey(phone)));
+    if (existing) {
+      addTimelineEvent({
+        leadId: from.id,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "note",
+        title: `رشّح ${person} (مسجّل عندنا بالفعل)`,
+        details: `الرقم ده تبع العميل ${existing.name}.`,
+      });
+      mark(existing.id);
+      return { lead: existing, created: false };
+    }
+    const agentId = from.assignedAgentId || effectiveUser.id;
+    const lead = addLead({
+      name: person,
+      phone: phone.trim(),
+      whatsappPhone: phone.trim(),
+      isSameWhatsApp: true,
+      source: "referral",
+      customerCategory: "individual",
+      branchId: from.branchId,
+      assignedAgentId: agentId,
+      status: "uncontacted",
+      classification: "B",
+      department: from.department,
+      interests: from.interests?.length ? from.interests : [from.department],
+      departmentName: from.departmentName,
+      notes: `رشّحه العميل ${from.name}`,
+      referredByLeadId: from.id,
+      referredByName: from.name,
+    });
+    addFollowUp({
+      leadId: lead.id,
+      leadName: lead.name,
+      leadPhone: lead.phone,
+      assignedAgentId: agentId,
+      branchId: lead.branchId,
+      scheduledAt: addToDate(today(), { days: 2 }),
+      reason: `كلّم ${lead.name}: رشّحه ${from.name}. افتح الكلام بـ«${from.name} قالنا إنك ممكن تحتاج شغل» وانسق معاه زيارة للفرع.`,
+      type: "call",
+      notes: "",
+    });
+    addTimelineEvent({
+      leadId: from.id,
+      authorId: effectiveUser.id,
+      authorName: effectiveUser.name,
+      type: "note",
+      title: `رشّح عميل جديد: ${person}`,
+      details: "اتسجل كعميل محتمل وهيتم التواصل معاه.",
+    });
+    mark(lead.id);
+    return { lead, created: true };
   };
   const patchReview = (id: string, patch: Partial<ReviewRequest>) =>
     setReviewRequests((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -1628,6 +1703,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         loadDemoData,
         clearOrganizationData,
         removeDemoData,
+        addReferralLead,
         previewDemoRemoval,
         demoSummary,
         createLoginForUser,
