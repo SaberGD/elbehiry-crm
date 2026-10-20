@@ -21,16 +21,16 @@
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 .dark {
-  --canvas: #111617;
-  --surface: #1c2325;
-  --surface-soft: #222b2e;
-  --surface-hover: #2b3538;
-  --ink: #f3efe7;
-  --muted: #afb7b5;
-  --line: #354043;
+  --canvas: #0b0f1a;
+  --surface: #131a2a;
+  --surface-soft: #1a2336;
+  --surface-hover: #222d44;
+  --ink: #eef1f8;
+  --muted: #a6b0c5;
+  --line: #2c3850;
   --brand: #ec7774;
   --brand-hover: #f58e8a;
-  --brand-soft: #35272b;
+  --brand-soft: #2a1f2c;
   --brand-text: #f2aaa2;
   --department-construction: #e28c84;
   --department-decor: #c5a77f;
@@ -47,7 +47,7 @@
   border-inline-end: 1px solid var(--line);
 }
 .dark .behery-sidebar {
-  background: #171d1f;
+  background: #0e1424;
 }
 .side-link {
   border-radius: 10px;
