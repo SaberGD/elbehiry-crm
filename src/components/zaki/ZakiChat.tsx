@@ -1,19 +1,88 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, X, Loader2 } from "lucide-react";
+import { Send, X } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
 import { aiStatus, runZaki, type ChatTurn } from "../../lib/aiClient";
 import { runTool, toolLabels, type ToolData } from "../../lib/zakiTools";
 import { zakiGuide, zakiTools } from "../../lib/zakiGuide";
 import { today } from "../../lib/presentation";
 import { VoiceNoteField } from "../common/VoiceNoteField";
+import { ZakiAvatar, type ZakiMood } from "./ZakiAvatar";
 
-const suggestions = [
-  "ملخص الأسبوع",
-  "مين العملاء اللي لازم أتابعهم النهارده؟",
+const examples = [
   "مين أقوى عملاء البستان؟",
+  "مين العملاء اللي لازم أتابعهم النهارده؟",
   "أكتر سبب بيخلي العملاء ما يشتروش؟",
   "أضعف فرع مين وليه؟",
+  "مين أنشط وسيط الشهر ده؟",
+  "ملخص الأسبوع",
 ];
+
+const thinkingLines = ["بدوّر في الملفات…", "بحسبها لحظة…", "بجمّع الأرقام…", "قربت أخلّص…"];
+
+const reduced = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/** Types an example, pauses, erases it, then moves on to the next one. */
+function useTypedExamples(active: boolean) {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    if (!active) return setText("");
+    if (reduced()) return setText(examples[0]);
+    let i = 0;
+    let n = 0;
+    let erasing = false;
+    let timer: number;
+    const tick = () => {
+      const full = examples[i];
+      if (!erasing) {
+        n++;
+        setText(full.slice(0, n));
+        if (n >= full.length) {
+          erasing = true;
+          timer = window.setTimeout(tick, 1700);
+          return;
+        }
+        timer = window.setTimeout(tick, 55 + Math.random() * 45);
+      } else {
+        n -= 2;
+        setText(full.slice(0, Math.max(n, 0)));
+        if (n <= 0) {
+          erasing = false;
+          n = 0;
+          i = (i + 1) % examples.length;
+          timer = window.setTimeout(tick, 450);
+          return;
+        }
+        timer = window.setTimeout(tick, 22);
+      }
+    };
+    timer = window.setTimeout(tick, 600);
+    return () => window.clearTimeout(timer);
+  }, [active]);
+  return text;
+}
+
+/** Reveals a finished answer gradually, word by word. */
+function useReveal(full: string, animate: boolean) {
+  const [shown, setShown] = useState(animate ? "" : full);
+  useEffect(() => {
+    if (!animate || reduced()) return setShown(full);
+    const words = full.split(/(\s+)/);
+    let k = 0;
+    const id = window.setInterval(() => {
+      k += 2;
+      setShown(words.slice(0, k).join(""));
+      if (k >= words.length) window.clearInterval(id);
+    }, 28);
+    return () => window.clearInterval(id);
+  }, [full, animate]);
+  return shown;
+}
+
+function BotAnswer({ text, fresh }: { text: string; fresh: boolean }) {
+  const shown = useReveal(text, fresh);
+  return <Rich text={shown} />;
+}
+
 
 function Rich({ text }: { text: string }) {
   const inline = (t: string) =>
@@ -58,13 +127,61 @@ export function ZakiChat() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [focused, setFocused] = useState(false);
+  const [greet, setGreet] = useState(false);
+  const [mood, setMood] = useState<ZakiMood>("idle");
+  const [line, setLine] = useState(0);
+  const [freshIdx, setFreshIdx] = useState(-1);
   const end = useRef<HTMLDivElement>(null);
+  const typed = useTypedExamples(open && !input && !focused && !busy);
   const titles = new Set(["م", "م.", "eng", "eng.", "dr", "dr.", "د", "د.", "أ", "أ.", "المهندس", "الدكتور", "الحاج", "الأستاذ"]);
   const first = currentUser.name.split(" ").find((w) => !titles.has(w.toLowerCase())) ?? currentUser.name;
 
   useEffect(() => {
     aiStatus().then((s) => setAvailable(s === "server"));
   }, []);
+  // A quick hello after the page settles, once per session.
+  useEffect(() => {
+    if (!available) return;
+    let seen = false;
+    try {
+      seen = sessionStorage.getItem("zaki-greeted") === "1";
+    } catch {
+      /* storage unavailable */
+    }
+    if (seen) return;
+    const a = window.setTimeout(() => {
+      setGreet(true);
+      setMood("wave");
+      try {
+        sessionStorage.setItem("zaki-greeted", "1");
+      } catch {
+        /* ignore */
+      }
+    }, 2500);
+    const b = window.setTimeout(() => {
+      setGreet(false);
+      setMood("idle");
+    }, 9000);
+    return () => {
+      window.clearTimeout(a);
+      window.clearTimeout(b);
+    };
+  }, [available]);
+  // Rotate the status line while thinking.
+  useEffect(() => {
+    if (!busy) return;
+    setLine(0);
+    const id = window.setInterval(() => setLine((l) => (l + 1) % thinkingLines.length), 1800);
+    return () => window.clearInterval(id);
+  }, [busy]);
+  // Doze off after a while without use.
+  useEffect(() => {
+    if (open || busy || greet) return;
+    setMood("idle");
+    const id = window.setTimeout(() => setMood("sleepy"), 90000);
+    return () => window.clearTimeout(id);
+  }, [open, busy, greet]);
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns, busy, open]);
@@ -78,6 +195,7 @@ export function ZakiChat() {
     const history = turns;
     setTurns((t) => [...t, { role: "user", text: q }]);
     setBusy(true);
+    setMood("thinking");
     setSteps([]);
     try {
       const { answer, used } = await runZaki({
@@ -90,8 +208,15 @@ export function ZakiChat() {
         execute: (name, args) => runTool(name, args, dataRef.current!),
         onStep: (name) => setSteps((s) => [...s, toolLabels[name] ?? name]),
       });
-      setTurns((t) => [...t, { role: "assistant", text: answer, used: [...new Set(used.map((u) => toolLabels[u] ?? u))] }]);
+      setTurns((t) => {
+        setFreshIdx(t.length + 1);
+        return [...t, { role: "assistant", text: answer, used: [...new Set(used.map((u) => toolLabels[u] ?? u))] }];
+      });
+      setMood("happy");
+      window.setTimeout(() => setMood("idle"), 3200);
     } catch (e) {
+      setMood("sorry");
+      window.setTimeout(() => setMood("idle"), 4000);
       const code = e instanceof Error ? e.message.slice(0, 160) : "";
       setTurns((t) => [
         ...t,
@@ -105,15 +230,31 @@ export function ZakiChat() {
   return (
     <>
       {!open && (
-        <button className="zaki-fab" onClick={() => setOpen(true)} aria-label="افتح زكي، المساعد الذكي">
-          <span className="zaki-avatar">ز</span>
-          <span className="zaki-fab-label">زكي</span>
-        </button>
+        <div className="zaki-fab-wrap">
+          {greet && (
+            <div className="zaki-bubble" role="status">
+              أهلًا {first}! أنا زكي، اسألني عن أي حاجة في النظام 👋
+            </div>
+          )}
+          <button
+            className={`zaki-fab ${mood === "sleepy" ? "is-sleepy" : ""}`}
+            onClick={() => {
+              setGreet(false);
+              setMood("happy");
+              setOpen(true);
+              window.setTimeout(() => setMood("idle"), 1800);
+            }}
+            aria-label="افتح زكي، المساعد الذكي"
+          >
+            <ZakiAvatar mood={mood} size={74} />
+            <span className="zaki-fab-label">زكي</span>
+          </button>
+        </div>
       )}
       {open && (
         <div className="zaki-panel" role="dialog" aria-label="زكي، المساعد الذكي">
           <div className="zaki-head">
-            <span className="zaki-avatar">ز</span>
+            <ZakiAvatar mood={busy ? "thinking" : mood} size={52} className="zaki-head-art" />
             <div>
               <strong>زكي</strong>
               <small>مساعد البحيري · بيجاوب من بيانات نظامك</small>
@@ -129,26 +270,22 @@ export function ZakiChat() {
                 بتشوفها.
               </p>
             </div>
-            {turns.length === 0 && (
-              <div className="zaki-chips">
-                {suggestions.map((s) => (
-                  <button key={s} onClick={() => send(s)}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
             {turns.map((t, i) => (
               <div key={i} className={`zaki-msg ${t.role === "user" ? "me" : "bot"}`}>
-                {t.role === "user" ? <p>{t.text}</p> : <Rich text={t.text} />}
+                {t.role === "user" ? <p>{t.text}</p> : <BotAnswer text={t.text} fresh={i === freshIdx} />}
                 {t.used && t.used.length > 0 && <small className="zaki-used">بص على: {t.used.join("، ")}</small>}
               </div>
             ))}
             {busy && (
-              <div className="zaki-msg bot">
-                <p>
-                  <Loader2 size={14} className="spin" /> {steps.length ? `${steps[steps.length - 1]}…` : "زكي بيفكّر…"}
-                </p>
+              <div className="zaki-msg bot zaki-thinking" aria-live="polite">
+                <span className="zaki-dots">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <span key={steps.length ? steps.length : `l${line}`} className="zaki-status">
+                  {steps.length ? `${steps[steps.length - 1]}…` : thinkingLines[line]}
+                </span>
               </div>
             )}
             <div ref={end} />
@@ -159,7 +296,8 @@ export function ZakiChat() {
               onChange={setInput}
               rows={1}
               hideImprove
-              placeholder="اكتب سؤالك أو اضغط تكلّم…"
+              placeholder={typed ? `${typed}▏` : "اكتب سؤالك أو اضغط تكلّم…"}
+              onFocusChange={setFocused}
               onSubmit={() => send(input)}
             />
             <button className="btn-primary zaki-send" onClick={() => send(input)} disabled={busy || !input.trim()} aria-label="إرسال">

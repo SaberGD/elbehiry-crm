@@ -2078,27 +2078,63 @@
 .outcome-choice .is-not-yet { border-color: #b45309; color: #b45309; }
 
 /* Zaki: floating assistant */
+.zaki-fab-wrap { position: fixed; left: 16px; bottom: 14px; z-index: 70; display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; }
 .zaki-fab {
-  position: fixed; left: 20px; bottom: 20px; z-index: 70;
-  display: inline-flex; align-items: center; gap: 0.5rem;
-  padding: 0.45rem 1rem 0.45rem 0.5rem; border-radius: 99px; cursor: pointer;
-  background: #c8232b; color: #fff; border: none; box-shadow: 0 8px 24px rgba(200,35,43,.35);
-  font-weight: 700; font-size: 0.9rem;
+  position: relative; display: inline-flex; flex-direction: column; align-items: center; cursor: pointer;
+  background: transparent; border: none; padding: 0; color: inherit;
+  animation: zaki-float 3.6s ease-in-out infinite; filter: drop-shadow(0 8px 14px rgba(0,0,0,.28));
+  transition: transform .2s;
 }
-.zaki-avatar {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 50%; background: #fff; color: #c8232b; font-weight: 800; font-size: 1.1rem; flex-shrink: 0;
+.zaki-fab:hover { transform: scale(1.08) rotate(-3deg); }
+.zaki-fab.is-sleepy { animation-duration: 6s; opacity: .85; }
+.zaki-fab-label {
+  margin-top: -6px; padding: .12rem .7rem; border-radius: 99px; background: #c8232b; color: #fff;
+  font-weight: 800; font-size: .74rem; box-shadow: 0 4px 10px rgba(200,35,43,.4);
 }
+.zaki-bubble {
+  max-width: 230px; padding: .6rem .85rem; border-radius: 16px 16px 16px 4px; background: #fff; color: #231815;
+  font-size: .82rem; font-weight: 600; line-height: 1.6; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  animation: zaki-pop .45s cubic-bezier(.2,1.4,.4,1) both;
+}
+@keyframes zaki-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+@keyframes zaki-pop { from { opacity: 0; transform: translateY(10px) scale(.7); transform-origin: bottom left; } to { opacity: 1; transform: none; } }
+.zaki-avatar-art { display: inline-block; flex-shrink: 0; }
+.zaki-svg, .zaki-img { width: 100%; height: 100%; display: block; overflow: visible; }
+.zaki-eyes { animation: zaki-blink 4.5s infinite; }
+@keyframes zaki-blink { 0%,93%,100% { transform: scaleY(1); } 96% { transform: scaleY(.08); } }
+.zaki-svg { animation: zaki-breathe 3.2s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes zaki-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025, 1.04); } }
+.zaki-wave-arm { animation: zaki-wave .7s ease-in-out infinite alternate; }
+@keyframes zaki-wave { from { transform: rotate(-14deg); } to { transform: rotate(16deg); } }
+.zaki-talk { animation: zaki-talk .35s ease-in-out infinite alternate; transform-origin: 100px 114px; }
+@keyframes zaki-talk { from { transform: scaleY(.45); } to { transform: scaleY(1.1); } }
+.zaki-yawn { animation: zaki-talk 2.2s ease-in-out infinite alternate; transform-origin: 100px 116px; }
+.zaki-mood-thinking .zaki-pupil { animation: zaki-look 2.4s ease-in-out infinite; }
+@keyframes zaki-look { 0%,100% { transform: translateX(0); } 50% { transform: translateX(-6px); } }
+.zaki-thought circle { animation: zaki-thought 1.4s ease-in-out infinite; }
+.zaki-thought circle:nth-child(2) { animation-delay: .2s; } .zaki-thought circle:nth-child(3) { animation-delay: .4s; }
+@keyframes zaki-thought { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+.zaki-sparkles { animation: zaki-spark 1s ease-in-out infinite alternate; transform-origin: center; }
+@keyframes zaki-spark { from { opacity: .4; transform: scale(.8); } to { opacity: 1; transform: scale(1.15); } }
+.zaki-sweat { animation: zaki-drip 1.6s ease-in infinite; }
+@keyframes zaki-drip { from { transform: translateY(-4px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(14px); opacity: 0; } }
+.zaki-zzz text { animation: zaki-zzz 2.4s ease-in-out infinite; } .zaki-zzz text:nth-child(2) { animation-delay: 1s; }
+@keyframes zaki-zzz { 0% { opacity: 0; transform: translateY(6px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
+.zaki-rings path { animation: zaki-thought 1s ease-in-out infinite; }
+.zaki-img { animation: zaki-breathe 3.2s ease-in-out infinite; }
+.zaki-head-art { background: #fff; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
+.zaki-head-art .zaki-svg, .zaki-head-art .zaki-img { transform: scale(1.18) translateY(8%); animation: none; }
 .zaki-panel {
   position: fixed; left: 20px; bottom: 20px; z-index: 70;
   width: min(410px, calc(100vw - 24px)); height: min(640px, calc(100vh - 40px));
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface, #fff); color: inherit; border: 1px solid rgba(128,128,128,.3);
   border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.28);
+  transform-origin: bottom left; animation: zaki-open .38s cubic-bezier(.2,1.2,.4,1) both;
 }
+@keyframes zaki-open { from { opacity: 0; transform: translateY(24px) scale(.82); } to { opacity: 1; transform: none; } }
 :root.dark .zaki-panel { background: #181c24; }
 .zaki-head { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 1rem; background: #c8232b; color: #fff; }
-.zaki-head .zaki-avatar { width: 38px; height: 38px; }
 .zaki-head div { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
 .zaki-head small { opacity: .85; font-size: .72rem; }
 .zaki-head .icon-button { color: #fff; }
@@ -2106,6 +2142,8 @@
 .zaki-msg { max-width: 92%; padding: 0.6rem 0.85rem; border-radius: 14px; font-size: 0.86rem; line-height: 1.7; }
 .zaki-msg p { margin: 0 0 .3rem; } .zaki-msg p:last-child { margin: 0; }
 .zaki-msg ul { margin: .2rem 0; padding-inline-start: 1.1rem; }
+.zaki-msg { animation: zaki-msg .32s ease-out both; }
+@keyframes zaki-msg { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .zaki-msg.bot { align-self: flex-start; background: rgba(128,128,128,.14); border-start-start-radius: 4px; }
 .zaki-msg.me { align-self: flex-end; background: #c8232b; color: #fff; border-start-end-radius: 4px; }
 .zaki-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -2114,7 +2152,7 @@
 .zaki-foot .voice-field { flex: 1; }
 .zaki-send { padding: 0.55rem 0.8rem; border-radius: 12px; }
 @media (max-width: 1023px) {
-  .zaki-fab { bottom: 84px; left: 14px; }
+  .zaki-fab-wrap { bottom: 74px; left: 10px; }
   .zaki-panel { left: 8px; right: 8px; bottom: 72px; width: auto; height: min(560px, calc(100vh - 96px)); }
 }
 
@@ -2126,3 +2164,13 @@
   background: transparent; color: #7295b3; font-size: 0.75rem; font-weight: 700; cursor: pointer;
 }
 .account-panel .password-button:hover { background: rgba(114,149,179,.12); }
+
+.zaki-thinking { display: flex; align-items: center; gap: .6rem; }
+.zaki-dots { display: inline-flex; gap: 4px; }
+.zaki-dots i { width: 7px; height: 7px; border-radius: 50%; background: #c8232b; animation: zaki-bounce 1s ease-in-out infinite; }
+.zaki-dots i:nth-child(2) { animation-delay: .15s; } .zaki-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes zaki-bounce { 0%,60%,100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-6px); opacity: 1; } }
+.zaki-status { animation: zaki-msg .4s ease-out both; font-size: .82rem; opacity: .85; }
+@media (prefers-reduced-motion: reduce) {
+  .zaki-fab, .zaki-svg, .zaki-img, .zaki-eyes, .zaki-panel, .zaki-msg, .zaki-bubble, .zaki-wave-arm, .zaki-dots i { animation: none !important; }
+}

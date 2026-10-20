@@ -14,6 +14,7 @@ interface Props {
   /** Enter (without Shift) calls this, e.g. to send a chat message. */
   onSubmit?: () => void;
   hideImprove?: boolean;
+  onFocusChange?: (focused: boolean) => void;
 }
 
 const MAX_SECONDS = 90;
@@ -33,6 +34,7 @@ export function VoiceNoteField({
   onSuggestReason,
   onSubmit,
   hideImprove,
+  onFocusChange,
 }: Props) {
   const [mode, setMode] = useState<"idle" | "recording" | "working">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -179,6 +181,8 @@ export function VoiceNoteField({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={() => onFocusChange?.(true)}
+        onBlur={() => onFocusChange?.(false)}
         onKeyDown={(e) => {
           if (onSubmit && e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
