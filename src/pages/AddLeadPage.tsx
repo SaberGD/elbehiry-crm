@@ -1,9 +1,11 @@
 import { BrokerSearch } from "../components/common/BrokerSearch";
+import { CustomerRatingModal } from "../components/common/CustomerRatingModal";
 import {
   canCreateCustomer,
   canAssignCustomers,
   canManageCatalog,
   canContactCustomer,
+  canRequestReview,
   canScheduleFollowUp,
 } from "../lib/access";
 import { PurchaseCategorySelector } from "../components/common/PurchaseCategorySelector";
@@ -96,6 +98,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
     useState<PurchaseInvoice["status"]>("recorded");
   const [error, setError] = useState("");
   const [created, setCreated] = useState<Lead | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const duplicates =
     phone.replace(/\D/g, "").length >= 10
       ? findDuplicateLeadsByPhone(phone)
@@ -215,6 +218,24 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
           <span className="eyebrow">بداية علاقة جديدة</span>
           <h1>اتضاف {created.name}.</h1>
           <p>الخطوة الجاية: تواصل مع العميل أو حدد أول متابعة.</p>
+          {canRequestReview(effectiveUser, created) && (
+            <div className="review-offer">
+              <span>
+                <strong>تبعت للعميل لينك تقييم؟</strong>
+                <small>اختياري: رسالة واتساب جاهزة، وانت اللي بتدوس إرسال.</small>
+              </span>
+              <button className="btn-secondary" onClick={() => setReviewOpen(true)}>
+                <MessageCircle size={16} />
+                ابعت لينك التقييم
+              </button>
+            </div>
+          )}
+          <CustomerRatingModal
+            lead={created}
+            isOpen={reviewOpen}
+            onClose={() => setReviewOpen(false)}
+            subject={{ kind: "general", label: "تجربتك مع البحيري" }}
+          />
           <div className="success-actions">
             {canScheduleFollowUp(effectiveUser, created) && (
               <button

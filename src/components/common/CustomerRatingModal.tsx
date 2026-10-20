@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Copy, MessageCircle, Check } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
-import { canContactCustomer } from "../../lib/access";
+import { canRequestReview } from "../../lib/access";
 import type { Lead, ReviewRequest } from "../../types/crm";
 import { requestMessage, reviewLink, whatsappUrl } from "../../lib/reviews";
 import { useDialog } from "./useDialog";
@@ -10,11 +10,13 @@ interface Props {
   lead: Lead | null;
   isOpen: boolean;
   onClose: () => void;
+  /** Right after a visit or a new customer: skip the choice and ask about exactly that. */
+  subject?: { kind: "visit" | "booking" | "general"; id?: string; label: string };
 }
 
 /** Ask a customer to rate one visit or booking: a unique link goes out on WhatsApp and the request is logged. */
-export function CustomerRatingModal({ lead, isOpen, onClose }: Props) {
-  const { effectiveUser, followUps, visits, bookings, reviewRequests, requestReview } = useCRM();
+export function CustomerRatingModal({ lead, isOpen, onClose, subject }: Props) {
+  const { effectiveUser, visits, bookings, reviewRequests, requestReview } = useCRM();
   const ref = useDialog(isOpen, onClose);
   const [choice, setChoice] = useState("general");
   const [sent, setSent] = useState<ReviewRequest | null>(null);
@@ -42,13 +44,16 @@ export function CustomerRatingModal({ lead, isOpen, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, lead?.id]);
 
-  if (!isOpen || !lead || !canContactCustomer(effectiveUser, lead, followUps)) return null;
-  const picked = options.find((o) => o.key === choice) || options[options.length - 1];
+  if (!isOpen || !lead || !canRequestReview(effectiveUser, lead)) return null;
+  const picked = subject
+    ? { key: "preset", kind: subject.kind, id: subject.id, label: subject.label }
+    : options.find((o) => o.key === choice) || options[options.length - 1];
   const pendingForPicked = reviewRequests.find(
     (r) => r.leadId === lead.id && r.status === "sent" && r.subjectKind === picked.kind && r.subjectId === picked.id,
   );
   const phone = lead.whatsappPhone || lead.phone;
 
+  const preview = requestMessage(lead, picked.label, "…");
   const send = () => {
     // Re-use a request that is still waiting for the same visit instead of creating a second link.
     const req = pendingForPicked ?? requestReview({ lead, subjectKind: picked.kind, subjectId: picked.id, subjectLabel: picked.label });
@@ -88,18 +93,23 @@ export function CustomerRatingModal({ lead, isOpen, onClose }: Props) {
         {!sent ? (
           <>
             <p className="quiet-note" style={{ padding: "0 0 16px" }}>
-              هنبعت للعميل لينك خاص بيه على واتساب. التقييم بيتسجل على الزيارة أو التعاقد اللي تختاره، ولو معاملش تقييم بعد 48 ساعة هتظهرلك تذكير.
+              هنفتح واتساب برسالة جاهزة فيها لينك خاص بالعميل ده، وانت اللي بتدوس إرسال. لو ما قيّمش بعد 48 ساعة هتظهرلك تذكير.
             </p>
-            <label className="field">
-              <span>التقييم يخص إيه؟</span>
-              <select value={choice} onChange={(e) => setChoice(e.target.value)}>
-                {options.map((o) => (
-                  <option key={o.key} value={o.key}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {!subject && options.length > 1 && (
+              <label className="field">
+                <span>التقييم يخص إيه؟</span>
+                <select value={choice} onChange={(e) => setChoice(e.target.value)}>
+                  {options.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className="review-preview" aria-label="شكل الرسالة">
+              {preview}
+            </div>
             {pendingForPicked && <p className="notice warning">فيه طلب تقييم متبعت قبل كده لنفس الموضوع. هنفتح نفس اللينك تاني من غير ما نعمل طلب جديد.</p>}
             <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
               <button className="btn-primary" onClick={send}>

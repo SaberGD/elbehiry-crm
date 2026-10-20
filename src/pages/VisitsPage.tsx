@@ -1,4 +1,6 @@
 import { BrokerSearch } from "../components/common/BrokerSearch";
+import { CustomerRatingModal } from "../components/common/CustomerRatingModal";
+import { MessageCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ArrowRight, ArrowUpLeft, CheckCircle2, ChevronDown, Handshake, MessageSquare, PlusCircle, ShoppingBag, UserRound, Users, CalendarClock, SlidersHorizontal } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
@@ -28,6 +30,9 @@ export function VisitsPage({ onOpenLead }: Props) {
   const { effectiveUser, visits, branches, users, leads, brokers, addVisit, addBroker, addPurchaseInvoice, updateLead } = useCRM();
   const [mode, setMode] = useState<"list" | "form">("list");
   const [notice, setNotice] = useState("");
+  // Offered right after saving a visit of a customer: optional, one tap.
+  const [reviewFor, setReviewFor] = useState<{ leadId: string; label: string } | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   // ---------- list filters ----------
   const [q, setQ] = useState("");
@@ -196,6 +201,7 @@ export function VisitsPage({ onOpenLead }: Props) {
         });
       }
       setNotice(`اتسجلت الزيارة${hasClient ? ` وملف ${clientName} موجود في العملاء` : ""}.`);
+      setReviewFor(hasClient && visit.linkedLeadId ? { leadId: visit.linkedLeadId, label: `زيارة ${branches.find((b) => b.id === branchId)?.name || "الفرع"} يوم ${date}` } : null);
       setMode("list");
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذر تسجيل الزيارة.");
@@ -222,8 +228,29 @@ export function VisitsPage({ onOpenLead }: Props) {
         {notice && (
           <div className="notice" role="status">
             {notice}
+            {reviewFor && leads.some((l) => l.id === reviewFor.leadId) && (
+              <div className="review-offer">
+                <span>
+                  <strong>تبعت للعميل لينك تقييم؟</strong>
+                  <small>اختياري: رسالة واتساب جاهزة، وانت اللي بتدوس إرسال.</small>
+                </span>
+                <button className="btn-secondary" onClick={() => setReviewOpen(true)}>
+                  <MessageCircle size={15} />
+                  ابعت لينك التقييم
+                </button>
+              </div>
+            )}
           </div>
         )}
+        <CustomerRatingModal
+          lead={leads.find((l) => l.id === reviewFor?.leadId) ?? null}
+          isOpen={reviewOpen}
+          onClose={() => {
+            setReviewOpen(false);
+            setReviewFor(null);
+          }}
+          subject={reviewFor ? { kind: "visit", label: reviewFor.label } : undefined}
+        />
         <section className="panel">
           <FilterBar
             search={{ value: q, onChange: setQ, placeholder: "ابحث باسم الزائر أو الوسيط أو الهاتف…" }}
@@ -281,9 +308,22 @@ export function VisitsPage({ onOpenLead }: Props) {
                               ملف العميل
                               <ArrowUpLeft size={13} />
                             </button>
-                          ) : (
+                          ) : null}
+                          {v.linkedLeadId && t !== "broker" ? (
+                            <button
+                              className="btn-text"
+                              onClick={() => {
+                                setReviewFor({ leadId: v.linkedLeadId!, label: `زيارة ${v.branchName || "الفرع"} يوم ${v.date}` });
+                                setReviewOpen(true);
+                              }}
+                            >
+                              <MessageCircle size={13} />
+                              تقييم
+                            </button>
+                          ) : null}
+                          {!v.linkedLeadId ? (
                             <span className="table-secondary">{t === "broker" ? "وسيط" : "—"}</span>
-                          )}
+                          ) : null}
                         </td>
                       </tr>
                     );

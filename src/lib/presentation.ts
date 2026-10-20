@@ -16,6 +16,13 @@ export const statusNames: Record<Lead["status"], string> = {
   not_interested: "غير مهتم",
   booked: "تم التعاقد",
 };
+export const followUpTypeNames: Record<string, string> = {
+  call: "اتصال",
+  whatsapp: "واتساب",
+  branch_visit: "زيارة فرع",
+  email: "بريد",
+  meeting: "اجتماع",
+};
 export const sourceNames: Record<Lead["source"], string> = {
   facebook: "فيسبوك",
   instagram: "إنستجرام",

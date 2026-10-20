@@ -1,15 +1,17 @@
 import { BrokerSearch } from "./BrokerSearch";
+import { buildTimeline, dayLabel, timeLabel, timelineGroupLabels, type TimelineGroup } from "../../lib/timeline";
 import { departmentIds, bookingSplit } from "../../lib/purchases";
 import {
   canEditCustomer,
   canContactCustomer,
+  canRequestReview,
   canCreateCustomer,
   canScheduleFollowUp,
   canAssignCustomers,
   isSales,
 } from "../../lib/access";
 import { hasPermission } from "../../lib/permissions";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   X,
   Phone,
@@ -86,8 +88,10 @@ export function LeadDetailsModal({
     reassignLead,
     addTimelineEvent,
     reviewRequests,
+    reviewNotes,
   } = useCRM();
   const [tab, setTab] = useState("timeline");
+  const [timelineFilter, setTimelineFilter] = useState<"all" | TimelineGroup>("all");
   const [action, setAction] = useState<Action>(null);
   const [more, setMore] = useState(false);
   const [rating, setRating] = useState(false);
@@ -171,9 +175,9 @@ export function LeadDetailsModal({
     }
   }, [isOpen, lead?.id, initialAction]);
   if (!isOpen || !lead) return null;
-  const events = timelineEvents
-    .filter((e) => e.leadId === lead.id)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const events = buildTimeline(lead.id, timelineEvents, reviewRequests, reviewNotes);
+  const shownEvents = timelineFilter === "all" ? events : events.filter((e) => e.group === timelineFilter);
+  const timelineGroups = (Object.keys(timelineGroupLabels) as TimelineGroup[]).filter((g) => events.some((e) => e.group === g));
   const leadVisits = visits.filter((v) => v.linkedLeadId === lead.id);
   const leadFollowUps = followUps
     .filter((f) => f.leadId === lead.id)
@@ -424,6 +428,12 @@ export function LeadDetailsModal({
               واتساب
             </a>
           )}
+          {canRequestReview(effectiveUser, lead) && (
+            <button className="btn-secondary" onClick={() => setRating(true)}>
+              <Star size={15} />
+              طلب تقييم
+            </button>
+          )}
           {(["edit", "note", "visit", "booking", "reassign"].some((v) =>
             allowed(v as Action),
           ) ||
@@ -460,18 +470,6 @@ export function LeadDetailsModal({
                     {label}
                   </button>
                 ))}
-              {canContactCustomer(effectiveUser, lead, followUps) && (
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setRating(true);
-                    setMore(false);
-                  }}
-                >
-                  <Star size={14} />
-                  طلب تقييم
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -831,44 +829,53 @@ export function LeadDetailsModal({
           >
             {tab === "timeline" &&
               (events.length ? (
-                <ol className="timeline">
-                  {events.map((e) => (
-                    <li key={e.id}>
-                      <span
-                        className={`timeline-dot event-${e.type}`}
-                        aria-hidden="true"
-                      >
-                        {e.type === "booking_created" ? (
-                          <ShoppingBag size={15} />
-                        ) : e.type === "followup_result" ? (
-                          <CheckCircle2 size={15} />
-                        ) : e.type === "followup_created" ? (
-                          <CalendarDays size={15} />
-                        ) : e.type === "note" ? (
-                          <FileText size={15} />
-                        ) : e.type === "visit" ? (
-                          <MapPin size={15} />
-                        ) : (
-                          <UserRound size={15} />
-                        )}
-                      </span>
-                      <div>
-                        <small>
-                          {new Intl.DateTimeFormat("ar-EG", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            timeZone: "Africa/Cairo",
-                          }).format(new Date(e.timestamp))}
-                        </small>
-                        <h3>{e.title}</h3>
-                        <p>{e.details}</p>
-                        <small>{e.authorName}</small>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
+                <>
+                  {timelineGroups.length > 1 && (
+                    <div className="tab-filter timeline-filter" role="group" aria-label="تصفية سجل التعاملات">
+                      <button type="button" aria-pressed={timelineFilter === "all"} onClick={() => setTimelineFilter("all")}>
+                        الكل ({events.length})
+                      </button>
+                      {timelineGroups.map((g) => (
+                        <button type="button" key={g} aria-pressed={timelineFilter === g} onClick={() => setTimelineFilter(g)}>
+                          {timelineGroupLabels[g]} ({events.filter((e) => e.group === g).length})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <ol className="timeline">
+                    {shownEvents.map((e, i) => {
+                      const day = dayLabel(e.at);
+                      const newDay = i === 0 || day !== dayLabel(shownEvents[i - 1].at);
+                      const Icon =
+                        e.group === "purchase" ? ShoppingBag
+                        : e.group === "visit" ? MapPin
+                        : e.group === "review" ? Star
+                        : e.type === "followup_result" ? CheckCircle2
+                        : e.group === "followup" ? CalendarDays
+                        : e.type === "call" || e.type === "inquiry" ? Phone
+                        : e.type === "note" ? FileText
+                        : UserRound;
+                      return (
+                        <Fragment key={e.id}>
+                        {newDay && <li className="timeline-day" aria-hidden="true">{day}</li>}
+                        <li className={`timeline-item group-${e.group}${e.tone ? ` tone-${e.tone}` : ""}`}>
+                          <span className="timeline-dot" aria-hidden="true">
+                            <Icon size={14} />
+                          </span>
+                          <div className="timeline-body">
+                            <h3>{e.title}</h3>
+                            {e.details && <p>{e.details}</p>}
+                            <small>
+                              {timeLabel(e.at)}
+                              {e.by ? ` · ${e.by}` : ""}
+                            </small>
+                          </div>
+                        </li>
+                        </Fragment>
+                      );
+                    })}
+                  </ol>
+                </>
               ) : (
                 <div className="empty-state">
                   <Clock3 size={24} />

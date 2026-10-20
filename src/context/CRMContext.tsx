@@ -7,7 +7,7 @@ import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
 import { scopesFor, seesAll } from "../lib/scopes";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
-import { today, followUpStatus } from "../lib/presentation";
+import { today, followUpStatus, statusNames, followUpTypeNames } from "../lib/presentation";
 import {
   buildPostSaleSchedule,
   milestoneLabel,
@@ -653,8 +653,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
             authorId: effectiveUser.id,
             authorName: effectiveUser.name,
             type: "status_change",
-            title: `تحديث حالة العميل إلى (${updates.status})`,
-            details: `تغيرت الحالة من ${l.status} إلى ${updates.status}`,
+            title: `تحديث حالة العميل إلى (${statusNames[updates.status]})`,
+            details: `تغيرت الحالة من ${statusNames[l.status]} إلى ${statusNames[updates.status]}`,
           });
         }
 
@@ -802,7 +802,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         authorName: effectiveUser.name,
         type: "visit",
         title: `تسجيل زيارة فرع (${branch?.name || "مقر الفرع"})`,
-        details: `استقبله الموظف: ${agent?.name}. النتيجة: ${visitData.outcome}. الملاحظات: ${visitData.notes}`,
+        details: [`استقبله الموظف: ${agent?.name}`, `النتيجة: ${visitData.outcome}`, visitData.notes ? `الملاحظات: ${visitData.notes}` : ""].filter(Boolean).join(". "),
       });
 
       if (visitData.requiresFollowUp && visitData.followUpDate) {
@@ -887,7 +887,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
       type: "followup_created",
-      title: `جدولة متابعة جديدة (${followUpData.type})`,
+      title: `جدولة متابعة جديدة (${followUpTypeNames[followUpData.type] ?? followUpData.type})`,
       details: `موعد المتابعة: ${followUpData.scheduledAt}. السبب: ${followUpData.reason}`,
     });
 

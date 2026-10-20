@@ -1762,39 +1762,97 @@
   min-height: 180px;
 }
 .timeline {
-  padding-inline-start: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  padding-inline-start: 18px;
 }
 .timeline li {
   position: relative;
-  border-inline-start: 1px solid var(--line);
-  padding: 0 24px 25px 0;
+  border-inline-start: 2px solid var(--line);
+  padding: 0 28px 22px 0;
+  padding-inline: 0 0;
+  padding-inline-start: 26px;
 }
 .timeline li:last-child {
   padding-bottom: 0;
+  border-inline-start-color: transparent;
+}
+.timeline li.timeline-day {
+  border-inline-start: 0;
+}
+.timeline li.timeline-day {
+  border: 0;
+  padding: 0 0 12px;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.timeline li.timeline-day:first-child {
+  margin-top: 0;
 }
 .timeline-dot {
   position: absolute;
-  inset-inline-start: -4px;
-  top: 6px;
-  width: 7px;
-  height: 7px;
+  inset-inline-start: -13px;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
   border-radius: 50%;
-  background: var(--brand);
+  background: var(--surface-soft);
+  color: var(--ink);
+  border: 1px solid var(--line);
   box-shadow: 0 0 0 4px var(--surface);
+}
+.timeline .group-purchase .timeline-dot {
+  background: #e4f4e9;
+  color: #1b6b3a;
+  border-color: #b9e0c6;
+}
+.timeline .group-visit .timeline-dot {
+  background: #e6eefb;
+  color: #1f4f9a;
+  border-color: #bccfee;
+}
+.timeline .group-review .timeline-dot {
+  background: #fdf3d9;
+  color: #8a5a00;
+  border-color: #f0dba0;
+}
+.timeline .tone-bad .timeline-dot {
+  background: #fbeceb;
+  color: #a51a21;
+  border-color: #efc2c4;
+}
+.timeline .tone-good .timeline-dot {
+  background: #e4f4e9;
+  color: #1b6b3a;
+  border-color: #b9e0c6;
+}
+.timeline-body {
+  padding-top: 2px;
 }
 .timeline h3 {
   font-size: 13px;
-  font-weight: 500;
-  margin-block: 6px;
+  font-weight: 600;
+  margin: 0 0 4px;
 }
 .timeline p {
   font-size: 12px;
+  line-height: 1.8;
   color: var(--muted);
-  margin-bottom: 9px;
+  margin: 0 0 6px;
 }
 .timeline small {
   font-size: 10px;
   color: var(--muted);
+}
+.timeline-filter {
+  margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 .profile-record {
   padding: 17px 0;
@@ -2336,4 +2394,35 @@
 .broker-picked small {
   color: var(--muted);
   text-align: start;
+}
+.review-preview {
+  white-space: pre-line;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--muted);
+  background: var(--surface-soft);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+.review-offer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  text-align: start;
+}
+.review-offer strong {
+  display: block;
+  font-size: 13px;
+}
+.review-offer small {
+  color: var(--muted);
 }

@@ -146,6 +146,8 @@ export const canContactCustomer = (u: User, l: Lead, tasks: FollowUp[]) =>
         f.assignedAgentId === u.id &&
         !["completed", "cancelled"].includes(f.status),
     ));
+/** Anyone who may edit a customer may ask them for a review (the workspace enforces the same). */
+export const canRequestReview = (u: User, l: Lead) => canEditCustomer(u, l);
 export const canScheduleFollowUp = (u: User, l: Lead) =>
   has(u, "followups.create") && (!isSales(u) || l.assignedAgentId === u.id);
 export const canCompleteFollowUp = (u: User, f: FollowUp) =>
