@@ -26,7 +26,7 @@ const phaseLabel: Record<ReviewPhase, string> = {
   cancelled: "اتلغى",
 };
 
-const when = (iso: string) => new Date(iso).toLocaleString("ar-EG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const when = (iso: string) => new Date(iso).toLocaleString("ar-EG-u-nu-latn", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 export const Stars = ({ n }: { n: number }) => (
   <span aria-label={`${n} من 5`} style={{ color: "#f5a623", letterSpacing: 2, direction: "ltr", display: "inline-block" }}>
     {"★".repeat(n)}
@@ -80,23 +80,23 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
       <h3 className="review-title">
         {showCustomer && (
           <button className="btn-text" style={{ padding: 0, fontWeight: 700 }} onClick={() => onOpenLead?.(r.leadId)}>
-            {r.leadName}
+            <bdi>{r.leadName}</bdi>
           </button>
         )}
         {showCustomer && " · "}
         {r.subjectLabel}
       </h3>
       <p className="table-secondary">
-        اتبعت {when(r.sentAt)} · {r.agentName || "—"}
+        اتبعت {when(r.sentAt)} · <bdi>{r.agentName || "—"}</bdi>
         {r.reminderSentAt && ` · تذكير ${when(r.reminderSentAt)}`}
       </p>
 
       {r.status === "answered" && resp && (
         <div style={{ marginTop: 10 }}>
-          <p>
+          <p style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Stars n={resp.rating} /> <strong>{resp.rating}/5</strong>
-            {r.answeredAt && <span className="table-secondary"> · {when(r.answeredAt)}</span>}
           </p>
+          {r.answeredAt && <p className="table-secondary">وصل التقييم {when(r.answeredAt)}</p>}
           <p className="table-secondary">
             {[
               resp.treatment ? `المعاملة ${resp.treatment}/5` : "",
