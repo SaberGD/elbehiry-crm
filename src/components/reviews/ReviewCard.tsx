@@ -27,8 +27,8 @@ const phaseLabel: Record<ReviewPhase, string> = {
 };
 
 const when = (iso: string) => new Date(iso).toLocaleString("ar-EG-u-nu-latn", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-export const Stars = ({ n }: { n: number }) => (
-  <span aria-label={`${n} من 5`} style={{ color: "#f5a623", letterSpacing: 2, direction: "ltr", display: "inline-block" }}>
+export const Stars = ({ n, size }: { n: number; size?: number }) => (
+  <span aria-label={`${n} من 5`} style={{ color: "#f5a623", letterSpacing: 2, direction: "ltr", display: "inline-block", ...(size ? { fontSize: size } : {}) }}>
     {"★".repeat(n)}
     <span style={{ color: "var(--line)" }}>{"★".repeat(5 - n)}</span>
   </span>
@@ -97,16 +97,24 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
             <Stars n={resp.rating} /> <strong>{resp.rating}/5</strong>
           </p>
           {r.answeredAt && <p className="table-secondary">وصل التقييم {when(r.answeredAt)}</p>}
-          <p className="table-secondary">
-            {[
-              resp.treatment ? `المعاملة ${resp.treatment}/5` : "",
-              resp.price ? `السعر ${resp.price}/5` : "",
-              resp.quality ? `الجودة ${resp.quality}/5` : "",
-              resp.wouldRecommend === true ? "هيرشحنا" : resp.wouldRecommend === false ? "مش متأكد إنه يرشحنا" : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", margin: "6px 0" }}>
+            {(
+              [
+                ["المعاملة", resp.treatment],
+                ["السعر", resp.price],
+                ["الجودة", resp.quality],
+              ] as const
+            )
+              .filter(([, n]) => n)
+              .map(([label, n]) => (
+                <span key={label} className="table-secondary" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {label} <Stars n={n!} size={13} />
+                </span>
+              ))}
+          </div>
+          {(resp.wouldRecommend === true || resp.wouldRecommend === false) && (
+            <p className="table-secondary">{resp.wouldRecommend ? "هيرشحنا" : "مش متأكد إنه يرشحنا"}</p>
+          )}
           {resp.comment && (
             <blockquote style={{ margin: "8px 0", padding: "10px 12px", background: "var(--surface-soft)", borderInlineStart: "3px solid #c8232b", borderRadius: 8 }}>
               {resp.comment}
