@@ -2,15 +2,14 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
 import { initializeFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { firebaseConfig } from './firebaseConfig';
 
 const app = initializeApp(firebaseConfig);
 
-// The test site builds with VITE_FIRESTORE_DATABASE_ID=test (separate database, same project); main and dev keep the default.
 export const db = initializeFirestore(
   app,
   { ignoreUndefinedProperties: true },
-  import.meta.env.VITE_FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId
+  firebaseConfig.firestoreDatabaseId
 );
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

@@ -2,7 +2,7 @@ name: CI & Deploy
 
 # main -> https://elbehiry.engsaber.space      (production)
 # dev  -> https://dev-elbehiry.engsaber.space  (development / staging)
-# test -> https://test-elbehiry.engsaber.space    (testing, separate Firestore database "test")
+# test -> https://test-elbehiry.engsaber.space    (testing, separate Firebase project albehairy-test)
 # Pull requests only run the checks (lint, tests, build); nothing is deployed.
 
 on:
@@ -30,7 +30,7 @@ jobs:
       - run: bun run test
       - run: bun run build
         env:
-          VITE_FIRESTORE_DATABASE_ID: ${{ github.ref_name == 'test' && 'test' || '' }}
+          VITE_APP_ENV: ${{ github.ref_name == 'test' && 'test' || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: dist

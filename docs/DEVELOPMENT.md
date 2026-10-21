@@ -4,7 +4,7 @@
 |---|---|---|
 | `main` | https://elbehiry.engsaber.space | النسخة المعتمدة (Production). لا يُدفع عليها مباشرة. |
 | `dev` | https://dev-elbehiry.engsaber.space | بيئة التطوير والتجربة. كل شغل جديد يمر منها. |
-| `test` | https://test-elbehiry.engsaber.space | بيئة تجريبية بقاعدة بيانات Firestore منفصلة اسمها `test` (نفس مشروع `albehairy-group`). |
+| `test` | https://test-elbehiry.engsaber.space | بيئة تجريبية بمشروع Firebase منفصل `albehairy-test` (قاعدة بيانات وحسابات دخول منفصلة). |
 
 ## قاعدة الشغل
 1. اشتغل على `dev` (أو على فرع قصير يتفرع منها مثل `feature/اسم-الميزة`).
@@ -38,6 +38,8 @@ bun run build                   # بناء dist
 - راجع `docs/roles-and-permissions.md` قبل أي تغيير في الصلاحيات.
 
 ## بيئة التجربة (test)
-- قاعدة البيانات: Firestore باسم `test` داخل مشروع `albehairy-group`، تُحدَّد وقت البناء عبر `VITE_FIRESTORE_DATABASE_ID=test` (يضبطها `deploy.yml` لفرع `test` فقط). `main` و`dev` يبقيان على `(default)`.
-- خطوات لمرة واحدة: (1) أنشئ النطاق الفرعي `test-elbehiry.engsaber.space` في Hostinger بمجلد `public_html/test-elbehiry`. (2) أنشئ قاعدة `test` من Firebase Console ← Firestore ← Add database (نفس الموقع)، وانشر عليها `firestore.rules`. (3) أضف `test-elbehiry.engsaber.space` في Authentication ← Authorized domains. (4) أنشئ GitHub Environment باسم `test` وفرع `test`.
-- Auth مشترك بين البيئات (مستخدمو المشروع نفسهم)؛ البيانات فقط معزولة.
+- مشروع Firebase مستقل `albehairy-test` (Firestore + Auth). السبب: قاعدة ثانية داخل `albehairy-group` تتطلب خطة Blaze.
+- الإعداد في `firebase-applet-config.test.json`، ويُختار وقت البناء عبر `VITE_APP_ENV=test` (يضبطها `deploy.yml` لفرع `test` فقط). `main` و`dev` يبقيان على الإعداد الأصلي.
+- القاعدة تبدأ فارغة: أول دخول على موقع test يعرض شاشة «الإعداد لأول مرة» لإنشاء حساب المطوّر.
+- قواعد Firestore تُنشر على المشروعين بشكل منفصل (`firebase deploy --only firestore --project albehairy-test`).
+- خدمة `api/admin.php` تحتاج `crm-firebase-admin.json` خاص بمشروع test إن أردت استخدامها هناك.
