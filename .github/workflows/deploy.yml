@@ -45,8 +45,8 @@ jobs:
     environment: ${{ github.ref_name == 'main' && 'production' || github.ref_name == 'test' && 'test' || 'development' }}
     env:
       # Folder of each subdomain on Hostinger, relative to the FTP account root.
-      SERVER_DIR_MAIN: domains/engsaber.space/public_html/elbehiry/
-      SERVER_DIR_DEV: domains/engsaber.space/public_html/dev-elbehiry/
+      SERVER_DIR_MAIN: domains/elbehiry.engsaber.space/public_html/
+      SERVER_DIR_DEV: domains/dev-elbehiry.engsaber.space/public_html/
       SERVER_DIR_TEST: domains/test-elbehiry.engsaber.space/public_html/
     steps:
       - uses: actions/download-artifact@v4
