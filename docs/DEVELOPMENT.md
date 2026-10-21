@@ -43,3 +43,9 @@ bun run build                   # بناء dist
 - القاعدة تبدأ فارغة: أول دخول على موقع test يعرض شاشة «الإعداد لأول مرة» لإنشاء حساب المطوّر.
 - قواعد Firestore تُنشر على المشروعين بشكل منفصل (`firebase deploy --only firestore --project albehairy-test`).
 - خدمة `api/admin.php` تحتاج `crm-firebase-admin.json` خاص بمشروع test إن أردت استخدامها هناك.
+
+## ترتيب الرفع (test ← dev ← main)
+1. ارفع على `test` وجرّب على https://test-elbehiry.engsaber.space.
+2. بعد التأكد، ادمج `test` في `dev`: لن يُنشر `dev` إلا إذا كان الكود مطابقًا لـ`test`.
+3. بعد التأكد على dev، افتح PR من `dev` إلى `main`: لن يُنشر `main` إلا إذا كان مطابقًا لـ`dev`، وينتظر موافقتك على بيئة `production` (فعّل Required reviewers من GitHub ← Settings ← Environments ← production).
+النطاقات تبقى على `engsaber.space`، و`dev` و`main` على قاعدة البيانات الأصلية.
