@@ -11,14 +11,14 @@ export interface ScopeProfile {
 const SALES = ["sales_agent", "team_leader"];
 const chunks = <T,>(list: T[], size: number) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, i * size + size));
 
-/** Mirrors seesAll() in firestore.rules. */
+/** Mirrors seesAll() in firestore.rules. The general sales manager covers every branch, including ones added later. */
 export function seesAll(p: ScopeProfile): boolean {
-  return ["admin", "general_manager"].includes(p.role) || (p.role === "regional_manager" && !p.supervisedBranchIds?.length);
+  return ["admin", "general_manager"].includes(p.role) || p.role === "regional_manager";
 }
 
 /** Mirrors scopeBranches() in firestore.rules. */
 export function scopeBranches(p: ScopeProfile): string[] {
-  if (["regional_manager", "supervisor"].includes(p.role) && p.supervisedBranchIds?.length) return p.supervisedBranchIds;
+  if (p.role === "supervisor" && p.supervisedBranchIds?.length) return p.supervisedBranchIds;
   return p.branchId ? [p.branchId] : [];
 }
 

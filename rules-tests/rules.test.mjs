@@ -89,12 +89,12 @@ test("a branch manager sees their whole branch and nothing else", async () => {
   await assertFails(setDoc(doc(db("bm1"), "leads", "N4"), { id: "N4", branchId: "b2", assignedAgentId: userId("agentC") }));
 });
 
-test("supervisors and regional managers see exactly their branch list", async () => {
+test("supervisors see exactly their branch list; the general sales manager sees every branch even with an old list", async () => {
   await assertSucceeds(getDocs(query(leads(db("sup")), where("branchId", "==", "b1"))));
   await assertSucceeds(getDocs(query(leads(db("supList")), where("branchId", "in", ["b2"]))));
   await assertFails(getDocs(query(leads(db("supList")), where("branchId", "==", "b1"))));
-  await assertSucceeds(getDocs(query(leads(db("regionalList")), where("branchId", "in", ["b1", "b2"]))));
-  await assertFails(getDocs(leads(db("regionalList"))));
+  // a stale branch list on the general sales manager must never hide a branch (e.g. one added later)
+  await assertSucceeds(getDocs(leads(db("regionalList"))));
   await assertSucceeds(getDocs(leads(db("regional"))));
 });
 

@@ -32,7 +32,7 @@ test("a customer goes to the branch sales manager by default; the general sales 
   assert.equal(defaultAgent(all, bm1, "b1"), "bm1");
   // the general sales manager registering a customer sells it themselves
   assert.equal(defaultAgent(all, gsm, "b2"), "g");
-  // one who oversees only some branches is not offered elsewhere
-  const limited = u("g2", "regional_manager", { supervisedBranchIds: ["b1"] });
-  assert.deepEqual(branchAgents([limited, bm2], "b2").map((x) => x.id), ["bm2"]);
+  // an old branch list on the general sales manager never narrows them: every branch counts, new ones too
+  const withOldList = u("g2", "regional_manager", { supervisedBranchIds: ["b1"] });
+  assert.deepEqual(branchAgents([withOldList, bm2], "b2").map((x) => x.id).sort(), ["bm2", "g2"]);
 });

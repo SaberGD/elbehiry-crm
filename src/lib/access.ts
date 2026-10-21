@@ -23,7 +23,7 @@ export const branchAgents = (users: User[], branchId: string) =>
     (u) =>
       u.active &&
       ((u.branchId === branchId && ["sales_agent", "team_leader", "branch_manager"].includes(u.role)) ||
-        (u.role === "regional_manager" && (!u.supervisedBranchIds?.length || u.supervisedBranchIds.includes(branchId)))),
+        u.role === "regional_manager"),
   );
 /** Who a new customer goes to by default: the person registering them if they sell there, else the branch's sales manager. */
 export const defaultAgent = (users: User[], me: User, branchId: string) => {
@@ -42,8 +42,8 @@ export const canAssignCustomers = (u: User) => has(u, "customers.assign");
 export const canSeeBranch = (u: User, id: string, branches: Branch[]) => {
   if (!branches.some((b) => b.id === id)) return false;
   if (isGlobalManager(u)) return true;
-  if (u.role === "regional_manager")
-    return !u.supervisedBranchIds?.length || u.supervisedBranchIds.includes(id);
+  // The general sales manager covers every branch, including ones added after the account was made.
+  if (u.role === "regional_manager") return true;
   if (u.role === "supervisor")
     return u.supervisedBranchIds?.length
       ? u.supervisedBranchIds.includes(id)
@@ -221,11 +221,10 @@ export function canAccessPage(u: User, page: string) {
 }
 export function scopeLabel(u: User) {
   if (isGlobalManager(u)) return "جميع الفروع";
-  if (["regional_manager", "supervisor"].includes(u.role))
+  if (u.role === "regional_manager") return "جميع الفروع";
+  if (u.role === "supervisor")
     return u.supervisedBranchIds?.length
       ? `${u.supervisedBranchIds.length} فرع ضمن الإشراف`
-      : u.role === "regional_manager"
-        ? "جميع الفروع"
-        : u.branchName || "لم يُحدد نطاق الإشراف";
+      : u.branchName || "لم يُحدد نطاق الإشراف";
   return u.branchName || "لم يُحدد فرع";
 }

@@ -6,7 +6,8 @@ test("who sees everything", () => {
   assert.ok(seesAll({ role: "admin", userId: "u" }));
   assert.ok(seesAll({ role: "general_manager", userId: "u" }));
   assert.ok(seesAll({ role: "regional_manager", userId: "u" }));
-  assert.ok(!seesAll({ role: "regional_manager", userId: "u", supervisedBranchIds: ["b1"] }));
+  // the general sales manager covers every branch, even with an old branch list saved
+  assert.ok(seesAll({ role: "regional_manager", userId: "u", supervisedBranchIds: ["b1"] }));
   assert.ok(!seesAll({ role: "branch_manager", userId: "u", branchId: "b1" }));
 });
 
@@ -24,8 +25,9 @@ test("queries match the rules: managers by branch, sales by branch and owner", (
   assert.equal(agent.audit, "none");
   assert.deepEqual(agent.brokers, [[["branchIds", "array-contains-any", ["b1"]]]]);
   assert.equal(scopesFor({ role: "general_manager", userId: "u" }).leads, "all");
-  const list = scopesFor({ role: "regional_manager", userId: "u", supervisedBranchIds: ["b1", "b2"] });
+  const list = scopesFor({ role: "supervisor", userId: "u", branchId: "b1", supervisedBranchIds: ["b1", "b2"] });
   assert.deepEqual(list.leads, [[["branchId", "in", ["b1", "b2"]]]]);
+  assert.equal(scopesFor({ role: "regional_manager", userId: "u", supervisedBranchIds: ["b1", "b2"] }).leads, "all");
   assert.equal(scopesFor({ role: "sales_agent", userId: "u" }).leads, "none"); // no branch, nothing
   assert.equal(scopesFor(null).leads, "none");
 });

@@ -161,8 +161,7 @@ export function createWorkspace(raw: CRMContextType) {
             u.role,
           )) ||
           // The general sales manager also sells, in any of the branches they oversee.
-          (u.role === "regional_manager" &&
-            (!u.supervisedBranchIds?.length || u.supervisedBranchIds.includes(branch)))),
+          u.role === "regional_manager"),
     );
   const requireCustomerWrite = (id: string) => {
     const lead = findLead(id);

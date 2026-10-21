@@ -203,11 +203,12 @@ export const StaffUsersPage: React.FC = () => {
         ...(isDirector(effectiveUser)
           ? {
               specialty: role === "supervisor" ? specialty : undefined,
-              supervisedBranchIds: ["supervisor", "regional_manager"].includes(
-                role,
-              )
-                ? supervisedBranchIds
-                : undefined,
+              supervisedBranchIds:
+                role === "supervisor"
+                  ? supervisedBranchIds
+                  : role === "regional_manager"
+                    ? [] // the general sales manager covers every branch: no list to go stale
+                    : undefined,
             }
           : {}),
         companyId,
@@ -235,11 +236,12 @@ export const StaffUsersPage: React.FC = () => {
         ...(isDirector(effectiveUser)
           ? {
               specialty: role === "supervisor" ? specialty : undefined,
-              supervisedBranchIds: ["supervisor", "regional_manager"].includes(
-                role,
-              )
-                ? supervisedBranchIds
-                : undefined,
+              supervisedBranchIds:
+                role === "supervisor"
+                  ? supervisedBranchIds
+                  : role === "regional_manager"
+                    ? [] // the general sales manager covers every branch: no list to go stale
+                    : undefined,
             }
           : {}),
         companyId,
@@ -739,7 +741,7 @@ export const StaffUsersPage: React.FC = () => {
               </div>
 
               {isDirector(effectiveUser) &&
-                ["supervisor", "regional_manager"].includes(role) && (
+                role === "supervisor" && (
                   <section className="panel" style={{ padding: 16 }}>
                     {role === "supervisor" && (
                       <label className="field">
@@ -761,9 +763,7 @@ export const StaffUsersPage: React.FC = () => {
                     )}
                     <p>
                       الفروع المشمولـة بالإشراف{" "}
-                      {role === "regional_manager"
-                        ? "(تركها فارغة يعني كل الفروع)"
-                        : "(اختر الفروع؛ عند تركها فارغة يكون النطاق هو الفرع المسجل فقط)"}
+                      (اختر الفروع؛ عند تركها فارغة يكون النطاق هو الفرع المسجل فقط)
                     </p>
                     {branches.map((b) => (
                       <label className="checkbox-line" key={b.id}>

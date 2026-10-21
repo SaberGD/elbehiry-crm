@@ -13,7 +13,9 @@ import {
   canCompleteFollowUp,
   canContactCustomer,
   canEditCustomer,
+  canSeeBranch,
 } from "../src/lib/access";
+import { seesAll } from "../src/lib/scopes";
 import {
   defaultPermissionMatrix,
   normalizeUser,
@@ -208,7 +210,8 @@ test("supervisors are limited to assigned branches and specialization", () => {
   const general = fixture(
     makeUser("regional_manager", { supervisedBranchIds: [employee.branchId!] }),
   ).view;
-  assert.ok(general.leads.every((l) => l.branchId === employee.branchId));
+  // the general sales manager is not limited by a branch list
+  assert.ok(general.leads.some((l) => l.branchId !== employee.branchId));
   assert.equal(general.permissionMatrix, undefined);
   const accounts = fixture(
     makeUser("supervisor", {
@@ -473,4 +476,13 @@ test("only the developer can delete an employee, and only one who has nothing le
   );
   // looking at the system as someone else does not allow it either
   await assert.rejects(() => fixture(director, { currentUser: developer, ...withIdle }).view.deleteUser(idle.id), /للمطوّر فقط/);
+});
+
+test("the general sales manager sees every branch, even one added after their branch list was saved", () => {
+  const gsm = { ...makeUser("regional_manager"), supervisedBranchIds: ["br-cairo", "br-alex"] };
+  const tanta = seed.initialBranches.find((b) => b.id === "br-tanta")!;
+  assert.equal(canSeeBranch(gsm, tanta.id, seed.initialBranches), true);
+  assert.equal(seesAll({ role: "regional_manager", userId: gsm.id, supervisedBranchIds: ["br-cairo"] }), true);
+  const { view } = fixture(gsm);
+  assert.ok(view.branches.some((b) => b.id === "br-tanta"));
 });

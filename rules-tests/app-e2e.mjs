@@ -91,6 +91,8 @@ await as("agentA", async (page, go) => {
   await page.locator("input[name=customerName]").fill("زائر جديد");
   await page.locator(".party-block input[type=tel]").first().fill("01055555555");
   await page.locator(".party-block select").filter({ has: page.locator("option", { hasText: "اختار من القايمة" }) }).selectOption({ label: "وسيط فرع 1 · 01111111111" });
+  // Every visit now records its result: an inquiry needs no reason.
+  await page.locator(".outcome-tile.is-inquiry").click();
   await page.getByRole("button", { name: "حفظ الزيارة" }).click();
   await page.waitForTimeout(2500);
   check((await page.locator(".notice").allInnerTexts()).some((t) => t.includes("اتسجلت")), "agent records a visit with a broker");
@@ -104,6 +106,7 @@ await as("agentA", async (page, go) => {
   await page.getByText("متابعة بعد الزيارة").click();
   await page.getByText("العميل ده محتاج متابعة").click();
   await page.locator('input[type="date"]').last().fill("2030-01-15");
+  await page.locator(".outcome-tile.is-inquiry").click();
   await page.getByRole("button", { name: "حفظ الزيارة" }).click();
   await page.waitForTimeout(2500);
   await go("متابعاتي");

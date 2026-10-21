@@ -72,15 +72,14 @@ service cloud.firestore {
       return profile().get('supervisedBranchIds', []);
     }
 
-    // Directors, and a regional manager without a branch list, see every branch.
+    // Directors and the general sales manager (regional_manager) see every branch, including new ones.
     function seesAll() {
-      return profile().role in ['admin', 'general_manager']
-        || (profile().role == 'regional_manager' && supervised().size() == 0);
+      return profile().role in ['admin', 'general_manager', 'regional_manager'];
     }
 
     // The branches a person works in (for array checks such as brokers).
     function scopeBranches() {
-      return profile().role in ['regional_manager', 'supervisor'] && supervised().size() > 0
+      return profile().role == 'supervisor' && supervised().size() > 0
         ? supervised()
         : [profile().get('branchId', '')];
     }
