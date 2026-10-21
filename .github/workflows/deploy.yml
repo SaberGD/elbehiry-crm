@@ -2,13 +2,14 @@ name: CI & Deploy
 
 # main -> https://elbehiry.engsaber.space      (production)
 # dev  -> https://dev-elbehiry.engsaber.space  (development / staging)
+# test -> https://test-elbehiry.engsaber.space    (testing, separate Firestore database "test")
 # Pull requests only run the checks (lint, tests, build); nothing is deployed.
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, test]
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, test]
   workflow_dispatch:
 
 concurrency:
@@ -28,6 +29,8 @@ jobs:
       - run: bun run lint
       - run: bun run test
       - run: bun run build
+        env:
+          VITE_FIRESTORE_DATABASE_ID: ${{ github.ref_name == 'test' && 'test' || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -37,13 +40,14 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/test')
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ github.ref_name == 'main' && 'production' || github.ref_name == 'test' && 'test' || 'development' }}
     env:
       # Folder of each subdomain on Hostinger, relative to the FTP account root.
       SERVER_DIR_MAIN: domains/engsaber.space/public_html/elbehiry/
       SERVER_DIR_DEV: domains/engsaber.space/public_html/dev-elbehiry/
+      SERVER_DIR_TEST: domains/engsaber.space/public_html/test-elbehiry/
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -57,4 +61,4 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./dist/
-          server-dir: ${{ github.ref_name == 'main' && env.SERVER_DIR_MAIN || env.SERVER_DIR_DEV }}
+          server-dir: ${{ github.ref_name == 'main' && env.SERVER_DIR_MAIN || github.ref_name == 'test' && env.SERVER_DIR_TEST || env.SERVER_DIR_DEV }}
