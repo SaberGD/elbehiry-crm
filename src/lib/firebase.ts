@@ -1,43 +1,21 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
-import {
-  initializeFirestore, connectFirestoreEmulator, persistentLocalCache, persistentMultipleTabManager,
-  memoryLocalCache, terminate, clearIndexedDbPersistence,
-} from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import { firebaseConfig } from './firebaseConfig';
 
 const app = initializeApp(firebaseConfig);
 
-// Local end-to-end tests run the real app against the Firebase emulators (never set in production builds).
-const useEmulators = import.meta.env.VITE_FIREBASE_EMULATORS === '1';
-
-// Rows are kept on the device (IndexedDB, shared by all open tabs). Re-opening the app within ~30 minutes resumes
-// each listener from where it stopped, so only rows that changed meanwhile are read (and billed) again, and the
-// screens show the cached rows immediately instead of waiting for the network.
-const canPersist = typeof indexedDB !== 'undefined';
 export const db = initializeFirestore(
   app,
-  {
-    ignoreUndefinedProperties: true,
-    localCache: canPersist ? persistentLocalCache({ tabManager: persistentMultipleTabManager() }) : memoryLocalCache(),
-  },
+  { ignoreUndefinedProperties: true },
   firebaseConfig.firestoreDatabaseId
 );
-
-/** Removes this device's cached rows (on sign-out, so the next person on a shared device starts clean). Reload after. */
-export async function clearLocalCache() {
-  if (!canPersist) return;
-  try {
-    await terminate(db);
-    await clearIndexedDbPersistence(db);
-  } catch {
-    /* another tab still has the cache open; it is cleared the next time it can be */
-  }
-}
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
+// Local end-to-end tests run the real app against the Firebase emulators (never set in production builds).
+const useEmulators = import.meta.env.VITE_FIREBASE_EMULATORS === '1';
 if (useEmulators) {
   connectFirestoreEmulator(db, '127.0.0.1', 8181);
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
@@ -88,3 +66,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   }
   return errInfo;
 }
+
+export async function testFirestoreConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log('Firebase Firestore connection verified.');
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('offline')) {
+      console.warn('Firebase Firestore client offline:', error.message);
+    }
+  }
+}
+
+testFirestoreConnection();

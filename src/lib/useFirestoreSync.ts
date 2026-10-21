@@ -1,8 +1,5 @@
 import { useEffect, useRef } from 'react';
-import {
-  collection, doc, onSnapshot, writeBatch, setDoc, getDocs, query, where, orderBy, limit,
-  type Query, type QueryConstraint, type WhereFilterOp,
-} from 'firebase/firestore';
+import { collection, doc, onSnapshot, writeBatch, setDoc, query, where, type WhereFilterOp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
 
 const BATCH_SIZE = 400;
@@ -42,50 +39,6 @@ export type ScopeFilter = [string, WhereFilterOp, unknown];
  */
 export type Scope = 'all' | 'none' | ScopeFilter[][];
 
-/** Only the newest `limit` rows by `orderBy` (for history-like collections that grow without end). */
-export interface ReadWindow {
-  orderBy: string;
-  limit: number;
-}
-
-function scopeQueries(name: string, scope: Exclude<Scope, 'none'>, window?: ReadWindow): Query[] {
-  const tail: QueryConstraint[] = window ? [orderBy(window.orderBy, 'desc'), limit(window.limit)] : [];
-  const filterSets = scope === 'all' ? [[]] : scope;
-  return filterSets.map((filters) =>
-    query(collection(db, name), ...filters.map(([f, op, v]) => where(f, op, v)), ...tail)
-  );
-}
-
-/** Narrows a scope to rows whose `field` is one of `values` (one query per value, so no extra index is needed). */
-export function narrowScope(scope: Scope, field: string, values: string[]): Scope {
-  if (scope === 'none' || !values.length) return 'none';
-  const base = scope === 'all' ? [[]] : scope;
-  return values.flatMap((v) => base.map((filters): ScopeFilter[] => [...filters, [field, '==', v]]));
-}
-
-/** One-off read of everything a scope covers (no listener). */
-export async function fetchScoped<T extends { id: string }>(name: string, scope: Scope): Promise<T[]> {
-  if (scope === 'none') return [];
-  const snaps = await Promise.all(scopeQueries(name, scope).map((q) => getDocs(q)));
-  const merged = new Map<string, T>();
-  for (const snap of snaps) for (const d of snap.docs) merged.set(d.id, { ...d.data(), id: d.id } as T);
-  return [...merged.values()];
-}
-
-/** Applies the same partial update to many documents, without reading them first. */
-export async function patchDocs(name: string, ids: string[], patch: Record<string, unknown>) {
-  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-    const batch = writeBatch(db);
-    for (const id of ids.slice(i, i + BATCH_SIZE)) batch.update(doc(db, name, id), patch);
-    await batch.commit();
-  }
-}
-
-/** Deletes documents by id (used when the rows are not loaded in the app). */
-export function deleteDocs(name: string, ids: string[]) {
-  return commitInBatches(name, ids.map((id) => ({ id })));
-}
-
 /**
  * Keeps a React state array and a Firestore collection in sync.
  * Firestore is the source of truth: incoming snapshots replace local state,
@@ -97,35 +50,26 @@ export function useFirestoreCollection<T extends { id: string }>(
   name: string,
   items: T[],
   setItems: (items: T[]) => void,
-  options: {
-    seedIfEmpty?: boolean;
-    transform?: (item: T) => T;
-    scope?: Scope;
-    window?: ReadWindow;
-    /** Called once every query of the current scope has answered. */
-    onLoaded?: () => void;
-  } = {}
+  options: { seedIfEmpty?: boolean; transform?: (item: T) => T; scope?: Scope } = {}
 ) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const prevRef = useRef<Map<string, T>>(new Map());
   const readyRef = useRef(false);
   const scope = options.scope ?? 'all';
-  const scopeKey = JSON.stringify([scope, options.window ?? null]);
-  // Set while the state is being emptied for a "none" scope, so stale rows are neither re-written nor deleted.
-  const clearingRef = useRef(false);
+  const scopeKey = JSON.stringify(scope);
 
   useEffect(() => {
     readyRef.current = false;
     prevRef.current = new Map();
-    clearingRef.current = false;
     if (scope === 'none') {
-      clearingRef.current = true;
+      readyRef.current = true;
       setItems([]);
-      options.onLoaded?.();
       return;
     }
-    const sources = scopeQueries(name, scope, options.window);
+    const sources = scope === 'all'
+      ? [collection(db, name)]
+      : scope.map((filters) => query(collection(db, name), ...filters.map(([f, op, v]) => where(f, op, v))));
     // Each listener's latest rows; the state is their union.
     const parts: Map<string, T>[] = sources.map(() => new Map());
     const answered = sources.map(() => false);
@@ -136,10 +80,8 @@ export function useFirestoreCollection<T extends { id: string }>(
       prevRef.current = new Map(data.map((i) => [i.id, i]));
       readyRef.current = answered.every(Boolean);
       setItems(data);
-      if (readyRef.current) options.onLoaded?.();
     };
-    const stops: (() => void)[] = [];
-    const listen = (source: Query, index: number) =>
+    const stops = sources.map((source, index) =>
       onSnapshot(
         source,
         (snap) => {
@@ -165,30 +107,18 @@ export function useFirestoreCollection<T extends { id: string }>(
           publish();
         },
         (err) => {
-          // A windowed query whose index is not deployed yet: fall back to the plain query rather than show nothing.
-          if (options.window && (err as { code?: string }).code === 'failed-precondition') {
-            console.warn(`Firestore index missing for ${name}; reading without a window. Deploy firestore.indexes.json.`, err.message);
-            stops[index] = listen(scopeQueries(name, scope, undefined)[index], index);
-            return;
-          }
           // A query the rules refuse means "nothing here for you", not a broken app.
           answered[index] = true;
           publish();
           handleFirestoreError(err, OperationType.GET, name);
         }
-      );
-    sources.forEach((source, index) => stops.push(listen(source, index)));
+      )
+    );
     return () => stops.forEach((stop) => stop());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, scopeKey]);
 
   useEffect(() => {
-    if (clearingRef.current) {
-      if (items.length) return; // the emptied state has not landed yet
-      clearingRef.current = false;
-      readyRef.current = true;
-      return;
-    }
     if (!readyRef.current) return;
     const prev = prevRef.current;
     const next = new Map(items.map((i) => [i.id, i]));

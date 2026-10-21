@@ -14,7 +14,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { firebaseConfig } from '../lib/firebaseConfig';
-import { auth, db, clearLocalCache, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserRole, User } from '../types/crm';
 import { normalizeLoginId, toAuthEmail } from '../lib/loginId';
 import { createLoginOnServer } from '../lib/adminClient';
@@ -174,9 +174,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       /* ignore */
     }
     await signOut(auth);
-    // The device's copy of the data goes too; the database client cannot be reused after that, hence the reload.
-    await clearLocalCache();
-    window.location.reload();
   };
 
   const changePassword = async (current: string, next: string) => {
