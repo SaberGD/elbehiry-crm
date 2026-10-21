@@ -104,8 +104,11 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canCreateCustomer(effectiveUser)) return;
     setError("");
+    if (!canCreateCustomer(effectiveUser)) {
+      setError("حسابك مش مسموحله يضيف عملاء. راجع مديرك لو محتاج الصلاحية.");
+      return;
+    }
     if (!name.trim() || !/^\+?[\d\s()-]{10,18}$/.test(phone.trim())) {
       setError("اكتب اسم العميل ورقم هاتف صحيح من 10 إلى 15 رقم.");
       return;
@@ -142,6 +145,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       setError(outErr || "حسابك مش مسموحله يسجل مشتريات.");
       return;
     }
+    try {
     let linkedBroker =
       brokerMode === "existing"
         ? brokers.find((b) => b.id === brokerId)
@@ -203,6 +207,9 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       });
     }
     setCreated(lead);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر إضافة العميل.");
+    }
   };
   if (created)
     return (

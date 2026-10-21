@@ -423,3 +423,19 @@ test("recording why a customer has not bought is limited to customers the user m
     }),
   );
 });
+
+test("the developer can add a customer to a branch that has no salesperson; an owner who cannot is told why in words", () => {
+  const lonely = seed.initialBranches[0];
+  const emptyUsers = users.filter((u) => !(u.branchId === lonely.id && ["sales_agent", "team_leader", "branch_manager"].includes(u.role)));
+  const draft = { name: "عميل", phone: "01000000000", branchId: lonely.id, status: "new" } as never;
+  const created = { id: "new-lead", branchId: lonely.id } as unknown as Lead;
+
+  const asDev = fixture(developer, { users: emptyUsers, addLead: () => created });
+  assert.equal(asDev.view.addLead({ ...(draft as object), assignedAgentId: developer.id } as never), created);
+
+  const asOwner = fixture(director, { users: [...emptyUsers.filter((u) => u.id !== director.id), director], addLead: () => created });
+  assert.throws(
+    () => asOwner.view.addLead({ ...(draft as object), assignedAgentId: director.id } as never),
+    (e: Error) => e.name === "ActionDenied" && e.message.length > 20 && !/^الإجراء غير متاح لدورك$/.test(e.message),
+  );
+});

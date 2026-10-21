@@ -4,6 +4,7 @@ import type { CRMContextType } from "../context/CRMContext";
 import type { Lead, User, UserRole } from "../types/crm";
 import * as access from "./access";
 import { isComplaint } from "./reviews";
+import { ActionDenied } from "./actionDenied";
 
 export function createWorkspace(raw: CRMContextType) {
   const actor = withPermissions(raw.effectiveUser, raw.permissionMatrix);
@@ -138,7 +139,7 @@ export function createWorkspace(raw: CRMContextType) {
     { branchId: string; assignedAgentId?: string }
   >();
   const deny = () => {
-    throw new Error("الإجراء غير متاح لدورك أو خارج نطاق عملك.");
+    throw new ActionDenied("الإجراء غير متاح لدورك أو خارج نطاق عملك.");
   };
   const require = (allowed: boolean) => {
     if (!allowed) deny();
@@ -153,7 +154,9 @@ export function createWorkspace(raw: CRMContextType) {
       (u) =>
         u.id === id &&
         u.active &&
-        ((u.branchId === branch &&
+        // The developer can do anything, including owning a customer in any branch.
+        (u.role === "admin" ||
+          (u.branchId === branch &&
           ["sales_agent", "team_leader", "supervisor", "branch_manager"].includes(
             u.role,
           )) ||
@@ -167,8 +170,12 @@ export function createWorkspace(raw: CRMContextType) {
     return lead;
   };
   const requireAssignment = (branch: string, agent: string) => {
-    require(branchIds.has(branch) && eligibleAgent(agent, branch));
-    require(!access.isSales(actor) || agent === actor.id);
+    if (!branchIds.has(branch)) throw new ActionDenied("الفرع ده خارج نطاق عملك.");
+    if (!eligibleAgent(agent, branch))
+      throw new ActionDenied(
+        "الموظف المختار مش تابع للفرع ده أو مش موظف مبيعات. لو الفرع مالوش مدير مبيعات، عيّنه الأول من صفحة الموظفين، وبعدها سجّل العميل باسمه.",
+      );
+    if (access.isSales(actor) && agent !== actor.id) throw new ActionDenied("السيلز يسجّل العميل باسمه هو بس.");
   };
   const validateStaff = (
     data: Partial<User>,
@@ -336,7 +343,7 @@ export function createWorkspace(raw: CRMContextType) {
       raw.setViewAsUser({ ...actual, permissions: undefined });
     }) as CRMContextType["setViewAsUser"],
     addLead: ((data) => {
-      require(access.canCreateCustomer(actor));
+      if (!access.canCreateCustomer(actor)) throw new ActionDenied("حسابك مش مسموحله يضيف عملاء. راجع مديرك لو محتاج الصلاحية.");
       requireAssignment(data.branchId, data.assignedAgentId || "");
       const assigned = raw.users.find((u) => u.id === data.assignedAgentId)!;
       const lead = raw.addLead({ ...data, teamId: assigned.teamId });
@@ -367,7 +374,7 @@ export function createWorkspace(raw: CRMContextType) {
       deny();
     }) as CRMContextType["deleteLead"],
     addVisit: ((data) => {
-      require(access.canCreateCustomer(actor));
+      if (!access.canCreateCustomer(actor)) throw new ActionDenied("حسابك مش مسموحله يسجّل زيارات. راجع مديرك لو محتاج الصلاحية.");
       requireAssignment(data.branchId, data.receivedByAgentId);
       if (data.linkedLeadId)
         require(findLead(data.linkedLeadId).branchId === data.branchId);
@@ -533,7 +540,7 @@ export function createWorkspace(raw: CRMContextType) {
       validateStaff(data);
       if (data.role !== "admin") {
         const q = userQuota(raw.users, raw.license);
-        if (q.full) throw new Error(userLimitMessage(q));
+        if (q.full) throw new ActionDenied(userLimitMessage(q));
       }
       require(
         access.canManageStaff(actor) &&
@@ -581,7 +588,7 @@ export function createWorkspace(raw: CRMContextType) {
       // Switching a stopped user back on counts against the plan too.
       if (target!.active === false && target!.role !== "admin") {
         const q = userQuota(raw.users, raw.license);
-        if (q.full) throw new Error(userLimitMessage(q));
+        if (q.full) throw new ActionDenied(userLimitMessage(q));
       }
       raw.toggleUserActive(id);
     }) as CRMContextType["toggleUserActive"],
@@ -603,7 +610,7 @@ export function createWorkspace(raw: CRMContextType) {
     addBranch: ((data) => {
       require(access.canManageOrganization(actor));
       const quota = branchQuota(raw.branches, raw.license);
-      if (quota.full) throw new Error(branchLimitMessage(quota));
+      if (quota.full) throw new ActionDenied(branchLimitMessage(quota));
       require(
         !data.companyId ||
           raw.companies.some((c) => c.id === data.companyId && c.active),
@@ -621,7 +628,7 @@ export function createWorkspace(raw: CRMContextType) {
       const was = raw.branches.find((b) => b.id === id);
       if (updates.active === true && was && was.active === false) {
         const quota = branchQuota(raw.branches, raw.license);
-        if (quota.full) throw new Error(branchLimitMessage(quota));
+        if (quota.full) throw new ActionDenied(branchLimitMessage(quota));
       }
       raw.updateBranch(...args);
     }) as CRMContextType["updateBranch"],
