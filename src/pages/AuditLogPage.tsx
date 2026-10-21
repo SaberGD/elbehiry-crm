@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ShieldCheck, ShieldAlert, Clock } from 'lucide-react';
@@ -6,7 +6,9 @@ import { FilterBar, inDateRange } from '../components/common/FilterBar';
 import { roleNames } from '../lib/presentation';
 
 export const AuditLogPage: React.FC = () => {
-  const { auditLogs } = useCRM();
+  const { auditLogs, requestAuditLogs, loadMoreAuditLogs, auditLogsHasMore } = useCRM();
+  // The log is read only when this page is opened, newest first.
+  useEffect(() => requestAuditLogs(), [requestAuditLogs]);
   const { t } = useLanguage();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -99,6 +101,13 @@ export const AuditLogPage: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {auditLogsHasMore && (
+          <div className="p-3 text-center border-t border-slate-100 dark:border-slate-800">
+            <button className="btn-secondary" onClick={loadMoreAuditLogs}>
+              عرض سجلات أقدم
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

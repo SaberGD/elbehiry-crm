@@ -35,6 +35,7 @@ bun run build                   # بناء dist
 ## ملاحظات
 - Firebase: بيئتا dev وmain تستخدمان نفس مشروع `albehairy-group` حاليًا، فأي بيانات تُدخل من dev تظهر في الإنتاج. يُفضّل مشروع Firebase منفصل لـ dev.
 - قواعد Firestore في `firestore.rules` تُنشر يدويًا من Firebase Console.
+- الـ indexes في `firestore.indexes.json`، وتقليل القراءات موضّح في `docs/database-reads.md`.
 - راجع `docs/roles-and-permissions.md` قبل أي تغيير في الصلاحيات.
 
 ## بيئة التجربة (test)
