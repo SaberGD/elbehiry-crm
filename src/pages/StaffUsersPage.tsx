@@ -59,7 +59,7 @@ export const StaffUsersPage: React.FC = () => {
     followUps,
     license,
   } = useCRM();
-  const uQuota = userQuota(users, license);
+  const uQuota = { ...userQuota(users, license), full: userQuota(users, license).full && effectiveUser.role !== "admin" };
   const ratings = useMemo(() => employeeRatings(users, reviewRequests, followUps), [users, reviewRequests, followUps]);
 
   const { t } = useLanguage();

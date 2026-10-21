@@ -51,7 +51,7 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
     addWarehouse,
     license,
   } = useCRM();
-  const quota = branchQuota(branches, license);
+  const quota = { ...branchQuota(branches, license), full: branchQuota(branches, license).full && effectiveUser.role !== "admin" };
   const { t } = useLanguage();
 
   const [activeTab, setActiveTab] = useState<

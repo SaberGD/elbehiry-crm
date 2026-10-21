@@ -538,7 +538,7 @@ export function createWorkspace(raw: CRMContextType) {
     }) as CRMContextType["updateBroker"],
     addUser: ((data) => {
       validateStaff(data);
-      if (data.role !== "admin") {
+      if (data.role !== "admin" && actor.role !== "admin") {
         const q = userQuota(raw.users, raw.license);
         if (q.full) throw new ActionDenied(userLimitMessage(q));
       }
@@ -586,7 +586,7 @@ export function createWorkspace(raw: CRMContextType) {
       const target = staff.find((u) => u.id === id);
       require(!!target && access.canEditStaff(actor, target, raw.branches));
       // Switching a stopped user back on counts against the plan too.
-      if (target!.active === false && target!.role !== "admin") {
+      if (target!.active === false && target!.role !== "admin" && actor.role !== "admin") {
         const q = userQuota(raw.users, raw.license);
         if (q.full) throw new ActionDenied(userLimitMessage(q));
       }
@@ -610,7 +610,8 @@ export function createWorkspace(raw: CRMContextType) {
     addBranch: ((data) => {
       require(access.canManageOrganization(actor));
       const quota = branchQuota(raw.branches, raw.license);
-      if (quota.full) throw new ActionDenied(branchLimitMessage(quota));
+      // The plan limits the business; the developer who sets it is not held back by it.
+      if (quota.full && actor.role !== "admin") throw new ActionDenied(branchLimitMessage(quota));
       require(
         !data.companyId ||
           raw.companies.some((c) => c.id === data.companyId && c.active),
@@ -626,7 +627,7 @@ export function createWorkspace(raw: CRMContextType) {
       // Switching a stopped branch back on counts against the plan too.
       const [id, updates] = args;
       const was = raw.branches.find((b) => b.id === id);
-      if (updates.active === true && was && was.active === false) {
+      if (updates.active === true && was && was.active === false && actor.role !== "admin") {
         const quota = branchQuota(raw.branches, raw.license);
         if (quota.full) throw new ActionDenied(branchLimitMessage(quota));
       }

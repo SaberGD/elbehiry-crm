@@ -439,3 +439,17 @@ test("the developer can add a customer to a branch that has no salesperson; an o
     (e: Error) => e.name === "ActionDenied" && e.message.length > 20 && !/^الإجراء غير متاح لدورك$/.test(e.message),
   );
 });
+
+test("the plan limits do not hold the developer back; they still stop the owner", () => {
+  const company = seed.initialCompanies.find((c) => c.active)!,
+    gov = seed.initialGovernorates.find((g) => g.active)!;
+  const branch = (id: string) => ({ id, name: id, code: id, active: true, companyId: company.id, governorateId: gov.id }) as never;
+  const data = { name: "c", code: "C", companyId: company.id, governorateId: gov.id } as never;
+  const branches = [branch("a"), branch("b")];
+  assert.doesNotThrow(() => fixture(developer, { branches, license: { maxBranches: 2 } }).view.addBranch(data));
+  assert.throws(() => fixture(director, { branches, license: { maxBranches: 2 } }).view.addBranch(data), /الباقة الحالية/);
+  const crowded = users.filter((u) => u.role !== "admin");
+  const draft = { name: "x", phone: "01000000001", role: "branch_manager", branchId: employee.branchId, active: true } as never;
+  assert.throws(() => fixture(director, { users: crowded, license: { maxBranches: 2, maxUsers: 1 } }).view.addUser(draft), /الباقة الحالية/);
+  assert.doesNotThrow(() => fixture(developer, { users: crowded, license: { maxBranches: 2, maxUsers: 1 } }).view.addUser(draft));
+});
