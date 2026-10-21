@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
 import { initializeFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { firebaseConfig } from './firebaseConfig';
 
 const app = initializeApp(firebaseConfig);
 

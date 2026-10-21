@@ -13,7 +13,7 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { firebaseConfig } from '../lib/firebaseConfig';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserRole, User } from '../types/crm';
 import { normalizeLoginId, toAuthEmail } from '../lib/loginId';
