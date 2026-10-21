@@ -93,11 +93,11 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
 
       {r.status === "answered" && resp && (
         <div style={{ marginTop: 10 }}>
-          <p style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Stars n={resp.rating} /> <strong>{resp.rating}/5</strong>
+          <p style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 17 }}>
+            <strong>التقييم العام</strong> <Stars n={resp.rating} size={20} />
           </p>
           {r.answeredAt && <p className="table-secondary">وصل التقييم {when(r.answeredAt)}</p>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", margin: "6px 0" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
             {(
               [
                 ["المعاملة", resp.treatment],
@@ -107,8 +107,8 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
             )
               .filter(([, n]) => n)
               .map(([label, n]) => (
-                <span key={label} className="table-secondary" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  {label} <Stars n={n!} size={13} />
+                <span key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, maxWidth: 260, fontSize: 15 }}>
+                  <span>{label}</span> <Stars n={n!} size={17} />
                 </span>
               ))}
           </div>
