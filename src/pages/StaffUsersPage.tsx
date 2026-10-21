@@ -322,6 +322,8 @@ export const StaffUsersPage: React.FC = () => {
 
     if (selectedBranchFilter && u.branchId !== selectedBranchFilter)
       return false;
+    // Developer accounts are not company staff: they stay out of the list and the counts unless picked on purpose.
+    if (u.role === "admin" && selectedRoleFilter !== "admin") return false;
     if (selectedRoleFilter && u.role !== selectedRoleFilter) return false;
     if (selectedDeptFilter && u.departmentId !== selectedDeptFilter)
       return false;
