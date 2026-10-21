@@ -275,6 +275,8 @@ export interface Visit {
   followUpAgentId?: string;
   followUpDate?: string;
   followUpReason?: string;
+  /** "auto" when the system chose the follow-up (after a purchase), not the salesperson. */
+  followUpOrigin?: "auto";
 }
 
 export type FollowUpStatus =
@@ -316,6 +318,12 @@ export interface FollowUp {
   satisfactionComment?: string;
   referralNote?: string; // relatives / acquaintances the customer mentioned
   referralLeadId?: string; // the prospect registered from what the customer said
+  /** Who made it: the salesperson (default), the system's own rules ("auto"), or a Zaki suggestion the salesperson accepted ("zaki"). */
+  origin?: "auto" | "zaki";
+  /** The accepted suggestion this follow-up came from. */
+  suggestionId?: string;
+  /** The broker it is about, when it is not for a customer. */
+  brokerId?: string;
 }
 
 export type BookingStatus =
@@ -526,6 +534,9 @@ export interface ReviewRequest {
   branchName?: string;
   agentId: string;
   agentName?: string;
+  /** Who was asked: the customer (default) or a broker; a broker's request is kept on the broker, not on any customer. */
+  partyKind?: "client" | "broker";
+  brokerId?: string;
   subjectKind: "visit" | "booking" | "general";
   subjectId?: string;
   subjectLabel: string; // shown to the customer, e.g. "زيارة فرع الإسكندرية يوم 12 أكتوبر"
@@ -566,4 +577,55 @@ export interface ReviewNote {
   byId: string;
   byName: string;
   at: string;
+}
+
+/** A reminder task the salesperson marked as done (for example "send the review request"). */
+export interface ReminderDone {
+  isDemo?: boolean;
+  /** Same as the task key, so a task can only be done once. */
+  id: string;
+  branchId: string;
+  agentId: string;
+  agentName?: string;
+  doneAt: string;
+}
+
+/**
+ * A follow-up Zaki noticed nobody scheduled (for example "the customer said he will build a villa next month").
+ * "checked" is only a marker that the data was already reviewed with nothing to suggest, so it is not read again.
+ */
+export interface AiSuggestion {
+  isDemo?: boolean;
+  id: string;
+  status: "pending" | "accepted" | "rejected" | "checked";
+  partyKind: "client" | "broker";
+  leadId?: string;
+  brokerId?: string;
+  /** Customer or broker name. */
+  name: string;
+  branchId: string;
+  agentId: string;
+  agentName?: string;
+  createdAt: string;
+  /** YYYY-MM-DD it was made: the daily limit counts these. */
+  dayKey: string;
+  /** What was reviewed, so the same data is not reviewed twice. */
+  fingerprint: string;
+  // The proposal.
+  proposedDate?: string;
+  reason?: string;
+  evidence?: string;
+  source?: string;
+  confidence?: number;
+  /** The facts Zaki was given, as plain lines, so the salesperson can see the whole picture before deciding. */
+  snapshot?: string[];
+  // The decision.
+  decidedAt?: string;
+  decidedById?: string;
+  decidedByName?: string;
+  rejectReason?: string;
+  finalDate?: string;
+  finalReason?: string;
+  edited?: boolean;
+  followUpId?: string;
 }

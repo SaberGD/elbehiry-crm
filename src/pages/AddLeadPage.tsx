@@ -313,7 +313,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
               </span>
               <input
                 name="customerPhone"
-                autoComplete="tel"
+                autoComplete="off"
                 dir="ltr"
                 type="tel"
                 required

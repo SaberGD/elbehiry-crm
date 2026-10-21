@@ -8,6 +8,7 @@ export const DEFAULT_MAX_USERS = 10;
 
 export const DEFAULT_AI_PER_HOUR = 120;
 export const DEFAULT_AI_PER_DAY = 600;
+export const DEFAULT_SUGGESTIONS_PER_DAY = 10;
 
 export interface License {
   maxBranches: number;
@@ -15,8 +16,10 @@ export interface License {
   /** Zaki / AI requests allowed per account; enforced by the server (api/ai.php). */
   aiPerHour?: number;
   aiPerDay?: number;
+  /** Follow-up suggestions Zaki may make to each salesperson per day. */
+  suggestionsPerDay?: number;
 }
-export const defaultLicense: License = { maxBranches: DEFAULT_MAX_BRANCHES, maxUsers: DEFAULT_MAX_USERS, aiPerHour: DEFAULT_AI_PER_HOUR, aiPerDay: DEFAULT_AI_PER_DAY };
+export const defaultLicense: License = { maxBranches: DEFAULT_MAX_BRANCHES, maxUsers: DEFAULT_MAX_USERS, aiPerHour: DEFAULT_AI_PER_HOUR, aiPerDay: DEFAULT_AI_PER_DAY, suggestionsPerDay: DEFAULT_SUGGESTIONS_PER_DAY };
 
 export interface BranchQuota {
   max: number;

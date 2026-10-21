@@ -1,9 +1,10 @@
-import type { AuditLog, Booking, BrokerEntity, Branch, FollowUp, Lead, NotBoughtRecord, ReviewNote, ReviewRequest, User, Visit } from "../types/crm";
+import type { AiSuggestion, AuditLog, Booking, BrokerEntity, Branch, FollowUp, Lead, NotBoughtRecord, ReminderDone, ReviewNote, ReviewRequest, User, Visit } from "../types/crm";
 import { departmentIds, bookingSplit } from "./purchases";
 import { departmentNames, followUpStatus, followUpTypeNames, statusNames } from "./presentation";
 import { notBoughtReasons } from "./notBought";
 import { complaintOpenedAt, complaintState, complaintStateLabel, isComplaint, isLateComplaint, resolutionHours } from "./reviews";
 import { employeeRatings, ratingLevelLabel } from "./employeeRating";
+import { isSalesCapable } from "./permissions";
 import type { Permission } from "./permissions";
 
 export interface ReportData {
@@ -18,6 +19,8 @@ export interface ReportData {
   brokers: BrokerEntity[];
   branches: Branch[];
   auditLogs: AuditLog[];
+  aiSuggestions: AiSuggestion[];
+  reminderDone: ReminderDone[];
 }
 export interface ReportFilter {
   from?: string;
@@ -192,6 +195,53 @@ export function auditReport(d: ReportData, f: ReportFilter): ReportTable {
   };
 }
 
+/** What each salesperson did in the period and what came of it, including how they treated Zaki's suggestions. */
+export function salesEffort(d: ReportData, f: ReportFilter): ReportTable {
+  return {
+    headers: ["السيلز", "الفرع", "زيارات استقبلها", "عملاء جدد", "متابعات اتجدولت", "متابعات اتعملت", "نسبة الإنجاز %", "متابعات متأخرة حاليًا", "طلبات تقييم اتبعتت", "تقييمات وصلت", "عدد المشتريات", "إجمالي المبيعات (ج.م)", "تذكيرات اتنجزت", "اقتراحات زكي", "اتقبلت", "اتفضّت", "لسه مستنية"],
+    rows: d.users
+      .filter((u) => isSalesCapable(u) && u.active !== false && inBranch(u.branchId, f))
+      .map((u) => {
+        const fu = d.followUps.filter((x) => x.assignedAgentId === u.id && inRange(x.scheduledAt, f));
+        const done = fu.filter((x) => x.status === "completed").length;
+        const reviews = d.reviewRequests.filter((r) => r.agentId === u.id && inRange(r.sentAt, f));
+        const bookings = d.bookings.filter((b) => live(b) && b.agentId === u.id && inRange(b.bookingDate, f));
+        const sug = d.aiSuggestions.filter((s) => s.agentId === u.id && s.status !== "checked" && inRange(s.dayKey, f));
+        return [
+          u.name,
+          branchName(d, u.branchId),
+          d.visits.filter((v) => v.receivedByAgentId === u.id && inRange(v.date, f)).length,
+          d.leads.filter((l) => l.assignedAgentId === u.id && inRange(l.createdAt, f)).length,
+          fu.length,
+          done,
+          pct(done, fu.filter((x) => x.status !== "cancelled").length),
+          d.followUps.filter((x) => x.assignedAgentId === u.id && followUpStatus(x) === "overdue").length,
+          reviews.length,
+          reviews.filter((r) => r.status === "answered").length,
+          bookings.length,
+          bookings.reduce((s, x) => s + x.amount, 0),
+          d.reminderDone.filter((r) => r.agentId === u.id && inRange(r.doneAt, f)).length,
+          sug.length,
+          sug.filter((s) => s.status === "accepted").length,
+          sug.filter((s) => s.status === "rejected").length,
+          sug.filter((s) => s.status === "pending").length,
+        ];
+      }),
+  };
+}
+
+/** Every suggestion Zaki made in the period and what the salesperson decided. */
+export function zakiSuggestionsReport(d: ReportData, f: ReportFilter): ReportTable {
+  const verdict = { pending: "مستنية قرار", accepted: "اتقبلت", rejected: "اتفضّت", checked: "" } as const;
+  return {
+    headers: ["التاريخ", "السيلز", "الفرع", "عميل/وسيط", "الاسم", "الموعد المقترح", "السبب", "اللي اتقال", "مصدره", "القرار", "اتعدّلت قبل القبول", "الموعد النهائي", "سبب الرفض"],
+    rows: d.aiSuggestions
+      .filter((s) => s.status !== "checked" && inBranch(s.branchId, f) && inRange(s.dayKey, f))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((s) => [s.dayKey, s.agentName || userName(d, s.agentId), branchName(d, s.branchId), s.partyKind === "broker" ? "وسيط" : "عميل", s.name, s.proposedDate || "", s.reason || "", s.evidence || "", s.source || "", verdict[s.status], s.status === "accepted" ? (s.edited ? "نعم" : "لا") : "", s.finalDate || "", s.rejectReason || ""]),
+  };
+}
+
 /** Key numbers for one period, shown as a printable one-pager. */
 export function weeklySummary(d: ReportData, f: ReportFilter): ReportTable {
   const visits = d.visits.filter((v) => inBranch(v.branchId, f) && inRange(v.date, f));
@@ -229,6 +279,8 @@ export const reportCatalog: ReportDef[] = [
   { id: "overdue-followups", tier: "core", title: "المتابعات المتأخرة", description: "مين اتأخر، كام يوم، وعند مين. الأقدم أول.", audience: "المدير العام ومديرو الفروع", needs: ["followups.view"], build: overdueFollowUps },
   { id: "not-yet-reasons", tier: "core", title: "أسباب «لسه»", description: "ليه العملاء ما اشتروش: عدد كل سبب ونسبته وتوزيعه على الفروع.", audience: "المالك والمدير العام", needs: ["customers.view"], build: notYetReasons },
   { id: "sales-by-department", tier: "core", title: "المبيعات حسب القسم والفرع", description: "مبيعات كل فرع موزعة على الأقسام الأربعة، مع إجمالي الشركة.", audience: "المالك", needs: ["bookings.view"], build: salesByDepartment },
+  { id: "sales-effort", tier: "core", title: "جهد السيلز (شهري)", description: "كل سيلز: زيارات، متابعات اتعملت ونسبة إنجازها، تقييمات، مشتريات، وتعامله مع اقتراحات زكي.", audience: "المالك والمدير العام", needs: ["reports.view"], build: salesEffort },
+  { id: "zaki-suggestions", tier: "core", title: "اقتراحات زكي: اتقبل واتفضّ إيه", description: "كل اقتراح زكي عمله، وقرار السيلز عليه وسبب الرفض، ومدى تعديل الموعد.", audience: "المالك والمدير العام", needs: ["reports.view"], build: zakiSuggestionsReport },
   { id: "weekly-summary", tier: "extra", title: "ملخص الفترة (للطباعة أو PDF)", description: "صفحة واحدة بأهم الأرقام للفترة المختارة، جاهزة للطباعة أو الحفظ PDF.", audience: "المالك", needs: ["reports.view"], print: true, build: weeklySummary },
   { id: "brokers", tier: "extra", title: "أداء الوسطاء", description: "كل وسيط: عملاء جابهم، كام اشترى، وإجمالي مشترياتهم.", audience: "المالك", needs: ["brokers.view"], build: brokerPerformance },
   { id: "employee-ratings", tier: "extra", title: "تقييمات الموظفين", description: "تقييم كل موظف من عملائه: المتوسط، المحسوب، المستوى، والشكاوى.", audience: "المالك والمدير العام", needs: ["reports.view"], build: employeeRatingsReport },

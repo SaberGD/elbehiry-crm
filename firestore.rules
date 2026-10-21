@@ -266,6 +266,27 @@ service cloud.firestore {
     // Customer review links: the document id IS the secret token in the link.
     // A customer (no login) may read their own request and answer it exactly once;
     // staff may only cancel it, mark the 48h nudge, or attach the AI analysis.
+    // Zaki's follow-up suggestions: a person's own; created pending (or "checked"), then decided once.
+    match /aiSuggestions/{docId} {
+      allow read: if rowOk(resource.data, 'agentId');
+      allow create: if rowOk(request.resource.data, 'agentId')
+        && request.resource.data.agentId == profile().userId
+        && request.resource.data.status in ['pending', 'checked'];
+      allow update: if rowOk(resource.data, 'agentId')
+        && resource.data.agentId == profile().userId
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['accepted', 'rejected']
+        && request.resource.data.agentId == resource.data.agentId
+        && request.resource.data.branchId == resource.data.branchId;
+    }
+
+    // "Done" marks on reminders: a person's own, never edited or removed.
+    match /reminderDone/{docId} {
+      allow read: if rowOk(resource.data, 'agentId');
+      allow create: if rowOk(request.resource.data, 'agentId')
+        && request.resource.data.agentId == profile().userId;
+    }
+
     match /reviewRequests/{docId} {
       allow get: if true;
       allow list: if rowOk(resource.data, 'agentId');

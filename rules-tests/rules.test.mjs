@@ -197,3 +197,24 @@ test("the company plan (branch limit) can be changed by the developer only", asy
   await assertSucceeds(getDoc(doc(db("agentA"), "settings", "license")));
   await assertSucceeds(setDoc(doc(db("gm"), "settings", "distribution"), { autoDistribute: true }));
 });
+
+test("Zaki suggestions and reminder marks belong to one person: made pending, decided once, never edited after", async () => {
+  const mine = { id: "S1", branchId: "b1", agentId: userId("agentA"), status: "pending", name: "x" };
+  await assertSucceeds(setDoc(doc(db("agentA"), "aiSuggestions", "S1"), mine));
+  await assertSucceeds(setDoc(doc(db("agentA"), "aiSuggestions", "S0"), { ...mine, id: "S0", status: "checked" }));
+  // not for someone else, not born decided, not in another branch
+  await assertFails(setDoc(doc(db("agentA"), "aiSuggestions", "S2"), { ...mine, id: "S2", agentId: userId("agentB") }));
+  await assertFails(setDoc(doc(db("agentA"), "aiSuggestions", "S3"), { ...mine, id: "S3", status: "accepted" }));
+  await assertFails(setDoc(doc(db("agentC"), "aiSuggestions", "S4"), { ...mine, id: "S4" }));
+  // only the owner can read or decide it
+  await assertFails(getDoc(doc(db("agentB"), "aiSuggestions", "S1")));
+  await assertFails(updateDoc(doc(db("agentB"), "aiSuggestions", "S1"), { status: "rejected" }));
+  await assertSucceeds(getDoc(doc(db("agentA"), "aiSuggestions", "S1")));
+  await assertSucceeds(updateDoc(doc(db("agentA"), "aiSuggestions", "S1"), { status: "accepted", finalDate: "2030-01-01" }));
+  // decided is final
+  await assertFails(updateDoc(doc(db("agentA"), "aiSuggestions", "S1"), { status: "rejected" }));
+  // reminder marks
+  await assertSucceeds(setDoc(doc(db("agentA"), "reminderDone", "rs:v1:client"), { id: "rs:v1:client", branchId: "b1", agentId: userId("agentA"), doneAt: "x" }));
+  await assertFails(setDoc(doc(db("agentA"), "reminderDone", "rs:v2:client"), { id: "rs:v2:client", branchId: "b1", agentId: userId("agentB"), doneAt: "x" }));
+  await assertFails(updateDoc(doc(db("agentA"), "reminderDone", "rs:v1:client"), { doneAt: "y" }));
+});

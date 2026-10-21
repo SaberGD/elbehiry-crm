@@ -51,6 +51,9 @@ export function CustomerRatingModal({ lead, isOpen, onClose, subject }: Props) {
   const pendingForPicked = reviewRequests.find(
     (r) => r.leadId === lead.id && r.status === "sent" && r.subjectKind === picked.kind && r.subjectId === picked.id,
   );
+  const answeredForPicked = reviewRequests.find(
+    (r) => r.leadId === lead.id && r.status === "answered" && r.subjectKind === picked.kind && r.subjectId === picked.id,
+  );
   const phone = lead.whatsappPhone || lead.phone;
 
   const preview = requestMessage(lead, picked.label, "…");
@@ -110,11 +113,14 @@ export function CustomerRatingModal({ lead, isOpen, onClose, subject }: Props) {
             <div className="review-preview" aria-label="شكل الرسالة">
               {preview}
             </div>
+            {answeredForPicked && !pendingForPicked && (
+              <p className="notice warning">العميل رد على طلب تقييم لنفس الموضوع قبل كده ({answeredForPicked.answeredAt?.slice(0, 10)}). متأكد إنك عايز تبعت طلب جديد؟ ممكن تختار زيارة أو موضوع تاني بدل كده.</p>
+            )}
             {pendingForPicked && <p className="notice warning">فيه طلب تقييم متبعت قبل كده لنفس الموضوع. هنفتح نفس اللينك تاني من غير ما نعمل طلب جديد.</p>}
             <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
               <button className="btn-primary" onClick={send}>
                 <MessageCircle size={16} />
-                إرسال على واتساب
+                {answeredForPicked && !pendingForPicked ? "أيوه، ابعت طلب جديد" : "إرسال على واتساب"}
               </button>
               <button className="btn-text" onClick={onClose}>
                 إلغاء

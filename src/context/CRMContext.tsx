@@ -61,6 +61,8 @@ import {
   ReviewAnalysis,
   PurchaseCategory,
   BrokerEntity,
+  ReminderDone,
+  AiSuggestion,
   PurchaseInvoice,
   NotificationItem,
 } from "../types/crm";
@@ -74,11 +76,27 @@ export interface FollowUpExtra {
 
 export interface CRMContextType {
   notBoughtRecords: NotBoughtRecord[];
+  reminderDone: ReminderDone[];
+  aiSuggestions: AiSuggestion[];
+  saveSuggestions: (items: Omit<AiSuggestion, "id" | "createdAt" | "dayKey">[]) => AiSuggestion[];
+  decideSuggestion: (
+    id: string,
+    decision:
+      | { accept: true; date: string; reason: string; type: FollowUp["type"]; edited: boolean }
+      | { accept: false; reason?: string },
+  ) => void;
+  markReminderDone: (taskId: string, branchId: string) => void;
   reviewRequests: ReviewRequest[];
   reviewNotes: ReviewNote[];
   requestReview: (input: {
     lead: Lead;
     subjectKind: ReviewRequest["subjectKind"];
+    subjectId?: string;
+    subjectLabel: string;
+  }) => ReviewRequest;
+  requestBrokerReview: (input: {
+    broker: BrokerEntity;
+    branchId: string;
     subjectId?: string;
     subjectLabel: string;
   }) => ReviewRequest;
@@ -289,6 +307,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     () => loadStorage("not_bought", []),
   );
   useEffect(() => saveStorage("not_bought", notBoughtRecords), [notBoughtRecords]);
+  const [reminderDone, setReminderDone] = useState<ReminderDone[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[]>([]);
   const [reviewRequests, setReviewRequests] = useState<ReviewRequest[]>([]);
   const [reviewNotes, setReviewNotes] = useState<ReviewNote[]>([]);
   const [leads, setLeads] = useState<Lead[]>(() =>
@@ -371,6 +391,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   useFirestoreCollection("notifications", notifications, setNotifications, { scope: scope.notifications });
   useFirestoreCollection("leads", leads, setLeads, { scope: scope.leads });
   useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: scope.notBought });
+  useFirestoreCollection("reminderDone", reminderDone, setReminderDone, { scope: scope.reminderDone });
+  useFirestoreCollection("aiSuggestions", aiSuggestions, setAiSuggestions, { scope: scope.aiSuggestions });
   useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests, { scope: scope.reviews });
   useFirestoreCollection("reviewNotes", reviewNotes, setReviewNotes, { scope: scope.reviewNotes });
   useFirestoreCollection("visits", visits, setVisits, { scope: scope.visits });
@@ -573,6 +595,80 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     });
     return req;
   };
+  const saveSuggestions: CRMContextType["saveSuggestions"] = (items) => {
+    const made = items.map((i) => ({ ...i, id: `sug-${crypto.randomUUID()}`, createdAt: new Date().toISOString(), dayKey: today() }));
+    setAiSuggestions((prev) => [...made, ...prev]);
+    return made;
+  };
+  /** The salesperson's decision on a suggestion: accepting schedules the follow-up and writes it into the customer's history. */
+  const decideSuggestion: CRMContextType["decideSuggestion"] = (id, decision) => {
+    const s = aiSuggestions.find((x) => x.id === id);
+    if (!s || s.status !== "pending") return;
+    const at = new Date().toISOString();
+    const who = { decidedAt: at, decidedById: effectiveUser.id, decidedByName: effectiveUser.name };
+    if (!decision.accept) {
+      setAiSuggestions((prev) => prev.map((x) => (x.id === id ? { ...x, ...who, status: "rejected", rejectReason: decision.reason } : x)));
+      logAudit("رفض اقتراح زكي", "اقتراح", id, `${s.name}: ${decision.reason || "من غير سبب"}`);
+      return;
+    }
+    const lead = s.leadId ? leads.find((l) => l.id === s.leadId) : undefined;
+    const broker = s.brokerId ? brokers.find((b) => b.id === s.brokerId) : undefined;
+    const fu = addFollowUp({
+      leadId: s.leadId ?? "",
+      brokerId: s.brokerId,
+      leadName: s.name,
+      leadPhone: lead?.phone ?? broker?.phone ?? "",
+      assignedAgentId: s.agentId,
+      branchId: s.branchId,
+      scheduledAt: decision.date,
+      reason: decision.reason,
+      type: decision.type,
+      notes: s.evidence ? `اقتراح زكي: ${s.evidence}` : "",
+      origin: "zaki",
+      suggestionId: s.id,
+    });
+    setAiSuggestions((prev) => prev.map((x) => (x.id === id ? { ...x, ...who, status: "accepted", finalDate: decision.date, finalReason: decision.reason, edited: decision.edited, followUpId: fu.id } : x)));
+    if (s.leadId)
+      addTimelineEvent({
+        leadId: s.leadId,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "followup_created",
+        title: `زكي اقترح متابعة، و${effectiveUser.name} وافق وجدولها يوم ${decision.date}`,
+        details: `السبب: ${decision.reason}.${s.evidence ? ` اللي اتقال: «${s.evidence}»${s.source ? ` (${s.source})` : ""}.` : ""}${decision.edited ? " السيلز عدّل تفاصيل الاقتراح قبل الجدولة." : ""}`,
+      });
+    logAudit("قبول اقتراح زكي", "اقتراح", id, `${s.name}: متابعة يوم ${decision.date}`);
+  };
+  /** A reminder the salesperson says is done: it stays done, and the system will not bring it back. */
+  const markReminderDone = (taskId: string, branchId: string) => {
+    if (reminderDone.some((r) => r.id === taskId)) return;
+    setReminderDone((prev) => [{ id: taskId, branchId, agentId: effectiveUser.id, agentName: effectiveUser.name, doneAt: new Date().toISOString() }, ...prev]);
+  };
+  /** The same ask for a broker who came on a visit: it is kept with the broker, never on a customer's file. */
+  const requestBrokerReview: CRMContextType["requestBrokerReview"] = ({ broker, branchId, subjectId, subjectLabel }) => {
+    const visit = visits.find((v) => v.id === subjectId);
+    const salesperson = ["sales_agent", "team_leader"].includes(effectiveUser.role);
+    const servedBy = salesperson ? effectiveUser : users.find((u) => u.id === visit?.receivedByAgentId) || effectiveUser;
+    const req: ReviewRequest = {
+      id: newReviewToken(),
+      leadId: "",
+      leadName: broker.name,
+      partyKind: "broker",
+      brokerId: broker.id,
+      branchId,
+      branchName: branches.find((b) => b.id === branchId)?.name,
+      agentId: servedBy.id,
+      agentName: servedBy.name,
+      subjectKind: "visit",
+      subjectId,
+      subjectLabel,
+      sentAt: new Date().toISOString(),
+      status: "sent",
+    };
+    setReviewRequests((prev) => [req, ...prev]);
+    logAudit("طلب تقييم من وسيط", "وسيط", broker.id, `${subjectLabel}`);
+    return req;
+  };
   /**
    * A customer recommended someone: register them as a prospect under the same branch and employee, linked to the
    * customer who recommended them, and schedule the first call. A number we already have is not added twice.
@@ -624,6 +720,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       leadPhone: lead.phone,
       assignedAgentId: agentId,
       branchId: lead.branchId,
+      origin: "auto",
       scheduledAt: addToDate(today(), { days: 2 }),
       reason: `كلّم ${lead.name}: رشّحه ${from.name}. افتح الكلام بـ«${from.name} قالنا إنك ممكن تحتاج شغل» وانسق معاه زيارة للفرع.`,
       type: "call",
@@ -905,6 +1002,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
           reason: visitData.followUpReason || `متابعة نتيجة زيارة المقر بتاريخ ${visitData.date}`,
           type: "call",
           notes: visitData.notes,
+          origin: visitData.followUpOrigin,
         });
       }
     }
@@ -950,8 +1048,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         ? [...(owner.delegatedTo || []), followUpData.assignedAgentId]
         : undefined;
 
-    // Update Lead's nextFollowUpDate & status
-    updateLead(followUpData.leadId, {
+    // A follow-up about a broker has no customer file to update.
+    if (followUpData.leadId) updateLead(followUpData.leadId, {
       ...(delegatedTo ? { delegatedTo } : {}),
       nextFollowUpDate: [
         ...followUps
@@ -969,14 +1067,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
           : "needs_followup",
     });
 
-    addTimelineEvent({
-      leadId: followUpData.leadId,
-      authorId: effectiveUser.id,
-      authorName: effectiveUser.name,
-      type: "followup_created",
-      title: `جدولة متابعة جديدة (${followUpTypeNames[followUpData.type] ?? followUpData.type})`,
-      details: `موعد المتابعة: ${followUpData.scheduledAt}. السبب: ${followUpData.reason}`,
-    });
+    // A Zaki suggestion writes its own, fuller timeline entry when it is accepted.
+    if (followUpData.leadId && followUpData.origin !== "zaki")
+      addTimelineEvent({
+        leadId: followUpData.leadId,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "followup_created",
+        title: `جدولة متابعة جديدة (${followUpTypeNames[followUpData.type] ?? followUpData.type})`,
+        details: `موعد المتابعة: ${followUpData.scheduledAt}. السبب: ${followUpData.reason}`,
+      });
 
     logAudit(
       "إضافة متابعة",
@@ -1010,7 +1110,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
           : f,
       ),
     );
-    if (status === "completed" && extra?.satisfactionRating) {
+    if (status === "completed" && extra?.satisfactionRating && original.leadId) {
       updateLead(original.leadId, {
         customerRatingStars: extra.satisfactionRating,
         customerRatingComment: extra.satisfactionComment,
@@ -1018,14 +1118,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       });
     }
     const lead = leads.find((l) => l.id === original.leadId);
-    addTimelineEvent({
-      leadId: original.leadId,
-      authorId: effectiveUser.id,
-      authorName: effectiveUser.name,
-      type: "followup_result",
-      title: status === "completed" ? "تسجيل نتيجة المتابعة" : "إلغاء متابعة",
-      details: result,
-    });
+    // A follow-up about a broker has no customer history to write into.
+    if (original.leadId)
+      addTimelineEvent({
+        leadId: original.leadId,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "followup_result",
+        title: status === "completed" ? "تسجيل نتيجة المتابعة" : "إلغاء متابعة",
+        details: result,
+      });
     if (lead && status === "completed") {
       const remainingDates = followUps
         .filter(
@@ -1131,6 +1233,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         leadPhone: leads.find((l) => l.id === data.leadId)?.phone || "",
         assignedAgentId: data.agentId,
         branchId: data.branchId,
+        origin: "auto",
         scheduledAt: addToDate(today(), { days: unknownReasonFollowUpDays }),
         reason: unknownReasonQuestion,
         type: "call",
@@ -1173,6 +1276,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         status:
           m.date < nowStr ? "overdue" : m.date === nowStr ? "due" : "upcoming",
         category: "post_sale" as const,
+        origin: "auto" as const,
         bookingId,
         milestone: m.milestone,
       }));
@@ -1791,9 +1895,15 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         completeBooking,
         addNotBoughtRecord,
         notBoughtRecords,
+        reminderDone,
+        markReminderDone,
+        aiSuggestions,
+        saveSuggestions,
+        decideSuggestion,
         reviewRequests,
         reviewNotes,
         requestReview,
+        requestBrokerReview,
         markReviewReminderSent,
         cancelReviewRequest,
         addReviewNote,

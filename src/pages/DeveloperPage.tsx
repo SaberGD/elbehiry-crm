@@ -1,4 +1,4 @@
-import { DEFAULT_AI_PER_DAY, DEFAULT_AI_PER_HOUR, branchQuota, userQuota } from "../lib/license";
+import { DEFAULT_AI_PER_DAY, DEFAULT_AI_PER_HOUR, DEFAULT_SUGGESTIONS_PER_DAY, branchQuota, userQuota } from "../lib/license";
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, Code2, RefreshCw, Server } from "lucide-react";
 import { auth } from "../lib/firebase";
@@ -74,6 +74,9 @@ export function DeveloperPage() {
   const curDay = license.aiPerDay ?? DEFAULT_AI_PER_DAY;
   const [aiHour, setAiHour] = useState<number>(curHour);
   const [aiDay, setAiDay] = useState<number>(curDay);
+  const curSug = license.suggestionsPerDay ?? DEFAULT_SUGGESTIONS_PER_DAY;
+  const [sugDay, setSugDay] = useState<number>(curSug);
+  useEffect(() => setSugDay(curSug), [curSug]);
   useEffect(() => setAiHour(curHour), [curHour]);
   useEffect(() => setAiDay(curDay), [curDay]);
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -239,13 +242,14 @@ export function DeveloperPage() {
           <Num label="أقصى عدد مستخدمين" value={maxUsers} onChange={setMaxUsers} hint={`مستخدم دلوقتي: ${uQuota.used} من ${uQuota.max}`} />
           <Num label="طلبات الذكاء الاصطناعي في الساعة (لكل حساب)" value={aiHour} onChange={setAiHour} hint="لو عدّى الحد بيتوقف مؤقتًا" />
           <Num label="طلبات الذكاء الاصطناعي في اليوم (لكل حساب)" value={aiDay} onChange={setAiDay} hint="حماية من الإساءة وتكلفة زايدة" />
+          <Num label="اقتراحات زكي في اليوم (لكل سيلز)" value={sugDay} onChange={setSugDay} hint="الحد الأقصى لاقتراحات المتابعة" />
           <button
             className="btn-primary"
             disabled={
-              maxBranches < 1 || maxUsers < 1 || aiHour < 1 || aiDay < 1 ||
-              (maxBranches === license.maxBranches && maxUsers === uQuota.max && aiHour === curHour && aiDay === curDay)
+              maxBranches < 1 || maxUsers < 1 || aiHour < 1 || aiDay < 1 || sugDay < 1 ||
+              (maxBranches === license.maxBranches && maxUsers === uQuota.max && aiHour === curHour && aiDay === curDay && sugDay === curSug)
             }
-            onClick={() => setLicense({ maxBranches, maxUsers, aiPerHour: aiHour, aiPerDay: aiDay })}
+            onClick={() => setLicense({ maxBranches, maxUsers, aiPerHour: aiHour, aiPerDay: aiDay, suggestionsPerDay: sugDay })}
           >
             حفظ الباقة
           </button>

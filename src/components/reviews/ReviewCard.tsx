@@ -38,7 +38,7 @@ const severityLabel = { low: "بسيطة", medium: "متوسطة", high: "عاج
 
 /** One review request: its progress, the customer's answer, and what the staff can do about it. */
 export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { request: ReviewRequest; showCustomer?: boolean; onOpenLead?: (id: string) => void }) {
-  const { effectiveUser, leads, reviewNotes, markReviewReminderSent, cancelReviewRequest, addReviewNote, addReferralLead } = useCRM();
+  const { effectiveUser, leads, brokers, reviewNotes, markReviewReminderSent, cancelReviewRequest, addReviewNote, addReferralLead } = useCRM();
   const [referralMsg, setReferralMsg] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
@@ -49,7 +49,8 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
   const notes = reviewNotes.filter((n) => n.requestId === r.id).sort((a, b) => a.at.localeCompare(b.at));
   const state = complaintState(r, reviewNotes);
   const canNote = complaint && ["admin", "general_manager", "regional_manager", "branch_manager"].includes(effectiveUser.role);
-  const phone = lead?.whatsappPhone || lead?.phone || "";
+  const broker = r.partyKind === "broker" ? brokers.find((b) => b.id === r.brokerId) : undefined;
+  const phone = broker?.phone || lead?.whatsappPhone || lead?.phone || "";
   const link = reviewLink(r.id);
   const pending = r.status === "sent";
   const resp = r.response;
@@ -78,11 +79,14 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
         )}
       </div>
       <h3 className="review-title">
-        {showCustomer && (
-          <button className="btn-text" style={{ padding: 0, fontWeight: 700 }} onClick={() => onOpenLead?.(r.leadId)}>
-            {r.leadName}
-          </button>
-        )}
+        {showCustomer &&
+          (r.partyKind === "broker" ? (
+            <span style={{ fontWeight: 700 }}>وسيط: {r.leadName}</span>
+          ) : (
+            <button className="btn-text" style={{ padding: 0, fontWeight: 700 }} onClick={() => onOpenLead?.(r.leadId)}>
+              {r.leadName}
+            </button>
+          ))}
         {showCustomer && " · "}
         {r.subjectLabel}
       </h3>
@@ -144,7 +148,7 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
                   </button>
                 </div>
               ) : (
-                <p className="table-secondary">مستني الموظف المسؤول يسجله.</p>
+                <p className="table-secondary">{r.partyKind === "broker" ? "ده ترشيح من وسيط: سجّله بنفسك من العملاء ← عميل جديد." : "مستني الموظف المسؤول يسجله."}</p>
               )}
               {referralMsg && <p className="notice" role="status" style={{ marginTop: 6 }}>{referralMsg}</p>}
             </div>

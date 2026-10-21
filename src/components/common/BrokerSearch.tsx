@@ -1,16 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, UserPlus, X } from "lucide-react";
 import type { BrokerEntity } from "../../types/crm";
-
-const norm = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/[ً-ٟـ]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه")
-    .replace(/\s+/g, " ")
-    .trim();
+import { matchesPerson, norm } from "../../lib/searchText";
 
 /** Type a broker's name or number and pick from the matches; optionally offer to add a new one. */
 export function BrokerSearch({
@@ -38,13 +29,7 @@ export function BrokerSearch({
   }, []);
 
   const t = norm(q);
-  const digits = q.replace(/\D/g, "");
-  const matches = t
-    ? brokers
-        .filter((b) => b.active)
-        .filter((b) => norm(b.name).includes(t) || (digits.length >= 3 && (b.phone || "").replace(/\D/g, "").includes(digits)))
-        .slice(0, 8)
-    : [];
+  const matches = t ? brokers.filter((b) => b.active).filter((b) => matchesPerson(b, q)).slice(0, 8) : [];
 
   if (picked)
     return (

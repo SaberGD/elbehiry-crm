@@ -86,11 +86,15 @@ await as("agentA", async (page, go) => {
   await go("الزيارات");
   await page.getByRole("button", { name: "تسجيل زيارة" }).click();
   await page.getByRole("radio", { name: /عميل ومعاه وسيط/ }).click();
-  const brokerOptions = await page.locator(".party-block select option").allInnerTexts();
+  await page.getByPlaceholder("اكتب اسم الوسيط أو رقمه").fill("وسيط");
+  const brokerOptions = await page.getByRole("option").allInnerTexts();
   check(brokerOptions.some((o) => o.includes("وسيط فرع 1")) && !brokerOptions.some((o) => o.includes("وسيط فرع 2")), "agent picks brokers of own branch only");
-  await page.locator("input[name=customerName]").fill("زائر جديد");
+  // Search-first: nobody matches, so the new customer starts from what was typed.
+  await page.getByPlaceholder("اكتب اسم العميل أو رقمه").fill("زائر جديد");
+  await page.getByRole("button", { name: /كعميل جديد/ }).click();
   await page.locator(".party-block input[type=tel]").first().fill("01055555555");
-  await page.locator(".party-block select").filter({ has: page.locator("option", { hasText: "اختار من القايمة" }) }).selectOption({ label: "وسيط فرع 1 · 01111111111" });
+  await page.getByPlaceholder("اكتب اسم الوسيط أو رقمه").fill("وسيط فرع 1");
+  await page.getByRole("option", { name: /وسيط فرع 1/ }).click();
   // Every visit now records its result: an inquiry needs no reason.
   await page.locator(".outcome-tile.is-inquiry").click();
   await page.getByRole("button", { name: "حفظ الزيارة" }).click();
@@ -101,7 +105,8 @@ await as("agentA", async (page, go) => {
   // A visit that needs a follow-up: creates the customer, the follow-up and the history.
   await go("الزيارات");
   await page.getByRole("button", { name: "تسجيل زيارة" }).click();
-  await page.locator("input[name=customerName]").fill("زائر بمتابعة");
+  await page.getByPlaceholder("اكتب اسم العميل أو رقمه").fill("زائر بمتابعة");
+  await page.getByRole("button", { name: /كعميل جديد/ }).click();
   await page.locator(".party-block input[type=tel]").first().fill("01066666666");
   await page.getByText("متابعة بعد الزيارة").click();
   await page.getByText("العميل ده محتاج متابعة").click();
@@ -110,8 +115,7 @@ await as("agentA", async (page, go) => {
   await page.getByRole("button", { name: "حفظ الزيارة" }).click();
   await page.waitForTimeout(2500);
   await go("متابعاتي");
-  await page.locator(".tab-filter button").filter({ hasText: "القادمة" }).first().click();
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(600); // upcoming follow-ups are listed on the page itself now
   check((await page.locator("main").innerText()).includes("زائر بمتابعة"), "agent's follow-up was saved");
   // A new customer from the customer form.
   await go("العملاء");

@@ -47,6 +47,7 @@ import {
   canSeeBranch,
 } from "../../lib/presentation";
 import { useDialog } from "./useDialog";
+import { requestsTo } from "../../lib/reviews";
 import { CustomerRatingModal } from "./CustomerRatingModal";
 import { InterestPicker, interestNames } from "./InterestPicker";
 import { NameWithTitle } from "./NameWithTitle";
@@ -349,6 +350,7 @@ export function LeadDetailsModal({
     reassign: "تغيير الموظف المسؤول",
   };
   const leadReviews = reviewRequests.filter((r) => r.leadId === lead.id);
+  const sentBefore = requestsTo(reviewRequests, { leadId: lead.id })[0];
   const labels: Record<string, string> = {
     timeline: "سجل التعاملات",
     followups: `المتابعات (${leadFollowUps.length})`,
@@ -432,7 +434,7 @@ export function LeadDetailsModal({
           {canRequestReview(effectiveUser, lead) && (
             <button className="btn-secondary" onClick={() => setRating(true)}>
               <Star size={15} />
-              طلب تقييم
+              {sentBefore ? "طلب تقييم جديد؟" : "طلب تقييم"}
             </button>
           )}
           {(["edit", "note", "visit", "booking", "reassign"].some((v) =>
@@ -474,6 +476,12 @@ export function LeadDetailsModal({
             </div>
           )}
         </div>
+        {sentBefore && (
+          <p className="review-sent-note" role="status">
+            <Star size={13} /> تم إرسال طلب تقييم ({sentBefore.subjectLabel}) يوم {sentBefore.sentAt.slice(0, 10)}:{" "}
+            {sentBefore.status === "answered" ? "العميل رد عليه" : "لسه ما ردش"}. اضغط «طلب تقييم جديد؟» لو محتاج تبعت طلب تاني.
+          </p>
+        )}
         <div className="client-scroll">
           <div className="profile-summary">
             <div>

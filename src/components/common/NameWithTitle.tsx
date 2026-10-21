@@ -81,7 +81,7 @@ export function NameWithTitle({ value, onChange, label = "اسم العميل", 
         )}
         <input
           name={fieldName}
-          autoComplete="name"
+          autoComplete="off"
           required={required}
           placeholder={placeholder}
           style={{ flex: 1, minWidth: 0 }}

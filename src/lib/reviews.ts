@@ -126,3 +126,18 @@ export function reviewStats(list: ReviewRequest[], notes: ReviewNote[], now = Da
     },
   };
 }
+
+/** Who a review request was sent to: a customer, or a broker who came on a visit. */
+export type ReviewParty = { leadId: string } | { brokerId: string };
+const isParty = (r: ReviewRequest, p: ReviewParty) =>
+  "brokerId" in p ? r.partyKind === "broker" && r.brokerId === p.brokerId : r.partyKind !== "broker" && r.leadId === p.leadId;
+
+/** Every request sent to that person, newest first; cancelled ones do not count as "sent". */
+export function requestsTo(requests: ReviewRequest[], party: ReviewParty): ReviewRequest[] {
+  return requests.filter((r) => r.status !== "cancelled" && isParty(r, party)).sort((a, b) => b.sentAt.localeCompare(a.sentAt));
+}
+
+/** The request already made for exactly this visit or purchase, if any (so the same ask is not sent twice). */
+export function requestForSubject(requests: ReviewRequest[], party: ReviewParty, kind: ReviewRequest["subjectKind"], subjectId?: string): ReviewRequest | undefined {
+  return requestsTo(requests, party).find((r) => r.subjectKind === kind && (r.subjectId ?? "") === (subjectId ?? ""));
+}

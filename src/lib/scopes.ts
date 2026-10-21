@@ -42,7 +42,7 @@ export function rowScope(p: ScopeProfile, ownerField: string, extra: ScopeFilter
 export function scopesFor(p: ScopeProfile | null) {
   if (!p) {
     const none: Scope = "none";
-    return { leads: none, followUps: none, visits: none, bookings: none, invoices: none, notBought: none, reviews: none, reviewNotes: none, timeline: none, brokers: none, users: none, notifications: none, audit: none };
+    return { leads: none, followUps: none, visits: none, bookings: none, invoices: none, notBought: none, reminderDone: none, aiSuggestions: none, reviews: none, reviewNotes: none, timeline: none, brokers: none, users: none, notifications: none, audit: none };
   }
   const all = seesAll(p);
   const branches = scopeBranches(p);
@@ -54,6 +54,8 @@ export function scopesFor(p: ScopeProfile | null) {
     bookings: rowScope(p, "agentId"),
     invoices: rowScope(p, "agentId"),
     notBought: rowScope(p, "agentId"),
+    reminderDone: rowScope(p, "agentId"),
+    aiSuggestions: rowScope(p, "agentId"),
     reviews: rowScope(p, "agentId"),
     reviewNotes: rowScope(p, "agentId"),
     timeline: rowScope(p, "leadOwnerId", sales ? [[["authorId", "==", p.userId]]] : []),

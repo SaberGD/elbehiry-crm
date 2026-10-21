@@ -89,6 +89,10 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
         "updateUser",
         "toggleUserActive",
         "deleteUser",
+        "decideSuggestion",
+        "saveSuggestions",
+        "markReminderDone",
+        "requestBrokerReview",
         "updateUserSalaryInfo",
         "updatePermissionMatrix",
         "resetAllData",
@@ -485,4 +489,17 @@ test("the general sales manager sees every branch, even one added after their br
   assert.equal(seesAll({ role: "regional_manager", userId: gsm.id, supervisedBranchIds: ["br-cairo"] }), true);
   const { view } = fixture(gsm);
   assert.ok(view.branches.some((b) => b.id === "br-tanta"));
+});
+
+test("a salesperson decides only their own pending Zaki suggestions, and accepting needs a date and a reason", () => {
+  const mineLead = { ...seed.initialLeads[0], id: "my-lead", branchId: employee.branchId!, assignedAgentId: employee.id };
+  const withLead = { leads: [mineLead] };
+  const sug = (over = {}) => ({ id: "s1", status: "pending", partyKind: "client", leadId: mineLead.id, name: mineLead.name, branchId: mineLead.branchId, agentId: employee.id, ...over }) as never;
+  const ok = fixture(employee, { ...withLead, aiSuggestions: [sug()] });
+  ok.view.decideSuggestion("s1", { accept: true, date: "2030-01-01", reason: "قال هيرجع", type: "call", edited: false });
+  assert.deepEqual(ok.calls.filter((c) => c === "decideSuggestion"), ["decideSuggestion"]);
+  assert.throws(() => fixture(employee, { ...withLead, aiSuggestions: [sug()] }).view.decideSuggestion("s1", { accept: true, date: "", reason: "x", type: "call", edited: false }));
+  assert.throws(() => fixture(employee, { ...withLead, aiSuggestions: [sug({ agentId: "someone-else" })] }).view.decideSuggestion("s1", { accept: false }));
+  assert.throws(() => fixture(employee, { ...withLead, aiSuggestions: [sug({ status: "accepted" })] }).view.decideSuggestion("s1", { accept: false }));
+  assert.throws(() => fixture(employee, withLead).view.saveSuggestions([sug({ agentId: "someone-else" })] as never));
 });

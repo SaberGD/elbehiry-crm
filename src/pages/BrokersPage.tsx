@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export const BrokersPage: React.FC = () => {
-  const { brokers, purchaseInvoices, leads, bookings, addBroker, updateBroker, effectiveUser } = useCRM();
+  const { brokers, purchaseInvoices, leads, bookings, reviewRequests, addBroker, updateBroker, effectiveUser } = useCRM();
   const { t } = useLanguage();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -246,6 +246,19 @@ export const BrokersPage: React.FC = () => {
                 <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl">
                   <div className="text-slate-400 text-[10px]">الترشيحات</div>
                   <div className="font-bold text-slate-800 dark:text-slate-200 font-mono-numbers">{statsFor(b.id).customers} عميل</div>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl col-span-2">
+                  <div className="text-slate-400 text-[10px]">تقييم الوسيط لتعاملنا</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-200 font-mono-numbers">
+                    {(() => {
+                      const mine = reviewRequests.filter((r) => r.partyKind === 'broker' && r.brokerId === b.id);
+                      const rated = mine.filter((r) => r.status === 'answered' && r.response).map((r) => r.response!.rating);
+                      const sent = mine.filter((r) => r.status !== 'cancelled').length;
+                      return rated.length
+                        ? `${(rated.reduce((a, c) => a + c, 0) / rated.length).toFixed(1)} من 5 (${rated.length} تقييم)`
+                        : sent ? `اتبعتله طلب، لسه ما ردش` : 'ما اتبعتلوش طلب تقييم';
+                    })()}
+                  </div>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl">
                   <div className="text-slate-400 text-[10px]">حجم المبيعات</div>

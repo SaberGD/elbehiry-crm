@@ -226,7 +226,12 @@ export function createWorkspace(raw: CRMContextType) {
         ),
     );
   };
-  const visibleReviews = (raw.reviewRequests ?? []).filter((r) => leadIds.has(r.leadId));
+  const visibleReviews = (raw.reviewRequests ?? []).filter(
+    (r) =>
+      leadIds.has(r.leadId) ||
+      // a broker's request is not tied to a customer: it follows the branch (and the salesperson's own work)
+      (r.partyKind === "broker" && branchIds.has(r.branchId) && (!access.isSales(actor) || r.agentId === actor.id)),
+  );
   const visibleReviewIds = new Set(visibleReviews.map((r) => r.id));
   const view = {
     ...raw,
@@ -447,6 +452,32 @@ export function createWorkspace(raw: CRMContextType) {
       require(access.canEditCustomer(actor, lead));
       return raw.requestReview({ ...input, lead });
     }) as CRMContextType["requestReview"],
+    requestBrokerReview: ((input) => {
+      require(access.canCreateCustomer(actor) && branchIds.has(input.branchId) && raw.brokers.some((b) => b.id === input.broker.id));
+      return raw.requestBrokerReview({ ...input, broker: raw.brokers.find((b) => b.id === input.broker.id)! });
+    }) as CRMContextType["requestBrokerReview"],
+    saveSuggestions: ((items) => {
+      require(items.every((i) => i.agentId === actor.id && branchIds.has(i.branchId) && (!i.leadId || leads.some((l) => l.id === i.leadId))));
+      return raw.saveSuggestions(items);
+    }) as CRMContextType["saveSuggestions"],
+    decideSuggestion: ((id, decision) => {
+      const s = raw.aiSuggestions.find((x) => x.id === id);
+      require(!!s && s.agentId === actor.id && s.status === "pending");
+      if (decision.accept) {
+        require(hasPermission(actor, "followups.create"));
+        if (s!.leadId) {
+          const lead = findLead(s!.leadId);
+          require(access.canScheduleFollowUp(actor, lead) && s!.branchId === lead.branchId);
+        }
+        requireAssignment(s!.branchId, s!.agentId);
+        require(!!decision.date && !!decision.reason.trim());
+      }
+      raw.decideSuggestion(id, decision);
+    }) as CRMContextType["decideSuggestion"],
+    markReminderDone: ((taskId, branchId) => {
+      require(branchIds.has(branchId));
+      raw.markReminderDone(taskId, branchId);
+    }) as CRMContextType["markReminderDone"],
     markReviewReminderSent: ((id) => {
       require(visibleReviewIds.has(id));
       raw.markReviewReminderSent(id);
@@ -612,12 +643,13 @@ export function createWorkspace(raw: CRMContextType) {
       require(raw.currentUser.role === "admin" && Number.isInteger(l.maxBranches) && l.maxBranches >= 1 && l.maxBranches <= 1000);
       require(l.maxUsers === undefined || (Number.isInteger(l.maxUsers) && l.maxUsers >= 1 && l.maxUsers <= 10000));
       const okCap = (n?: number) => n === undefined || (Number.isInteger(n) && n >= 1 && n <= 100000);
-      require(okCap(l.aiPerHour) && okCap(l.aiPerDay));
+      require(okCap(l.aiPerHour) && okCap(l.aiPerDay) && okCap(l.suggestionsPerDay));
       raw.setLicense({
         maxBranches: l.maxBranches,
         ...(l.maxUsers !== undefined ? { maxUsers: l.maxUsers } : {}),
         ...(l.aiPerHour !== undefined ? { aiPerHour: l.aiPerHour } : {}),
         ...(l.aiPerDay !== undefined ? { aiPerDay: l.aiPerDay } : {}),
+        ...(l.suggestionsPerDay !== undefined ? { suggestionsPerDay: l.suggestionsPerDay } : {}),
       });
     }) as CRMContextType["setLicense"],
     addBranch: ((data) => {

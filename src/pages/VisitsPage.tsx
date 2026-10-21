@@ -1,4 +1,6 @@
 import { BrokerSearch } from "../components/common/BrokerSearch";
+import { CustomerSearch } from "../components/common/CustomerSearch";
+import { PostVisitReview, type VisitReviewTarget } from "../components/common/PostVisitReview";
 import { CustomerRatingModal } from "../components/common/CustomerRatingModal";
 import { MessageCircle } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -35,6 +37,7 @@ export function VisitsPage({ onOpenLead }: Props) {
   // Offered right after saving a visit of a customer: optional, one tap.
   const [reviewFor, setReviewFor] = useState<{ leadId: string; label: string } | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [justSaved, setJustSaved] = useState<VisitReviewTarget | null>(null);
 
   // ---------- list filters ----------
   const [q, setQ] = useState("");
@@ -69,8 +72,7 @@ export function VisitsPage({ onOpenLead }: Props) {
   // ---------- the form ----------
   const availableBranches = branches.filter((b) => b.active && canSeeBranch(effectiveUser, b.id, branches));
   const [type, setType] = useState<VisitorType>("client");
-  const [clientMode, setClientMode] = useState<"existing" | "new">("new");
-  const [clientSearch, setClientSearch] = useState("");
+  const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
   const [pickedLead, setPickedLead] = useState<Lead | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -94,11 +96,6 @@ export function VisitsPage({ onOpenLead }: Props) {
   const hasClient = type !== "broker";
   const hasBroker = type !== "client";
   const validAgent = agents.some((u) => u.id === agentId) ? agentId : defaultAgent(users, effectiveUser, branchId);
-  const matches = useMemo(() => {
-    const t = clientSearch.trim().toLowerCase();
-    if (!t) return [];
-    return leads.filter((l) => l.name.toLowerCase().includes(t) || l.phone.includes(t)).slice(0, 6);
-  }, [clientSearch, leads]);
   const typedPhone = phone.replace(/\D/g, "");
   const duplicate = hasClient && clientMode === "new" && typedPhone.length >= 10 ? leads.find((l) => l.phone.replace(/\D/g, "") === typedPhone) : undefined;
   const activeBrokers = brokers.filter((b) => b.active);
@@ -107,8 +104,7 @@ export function VisitsPage({ onOpenLead }: Props) {
 
   const openForm = () => {
     setType("client");
-    setClientMode("new");
-    setClientSearch("");
+    setClientMode(leads.length ? "existing" : "new");
     setPickedLead(null);
     setName("");
     setPhone("");
@@ -128,6 +124,7 @@ export function VisitsPage({ onOpenLead }: Props) {
     setFollowUpDate("");
     setError("");
     setNotice("");
+    setJustSaved(null);
     setMode("form");
   };
 
@@ -178,6 +175,7 @@ export function VisitsPage({ onOpenLead }: Props) {
         requiresFollowUp: followUpOn && hasPermission(effectiveUser, "followups.create"),
         followUpAgentId: validAgent,
         followUpDate: followUpOn ? followUpOnDate : undefined,
+        followUpOrigin: !followUp && bought ? "auto" : undefined,
         followUpReason: !followUp && bought ? `متابعة بعد الشراء بتاريخ ${date}: رأيه في الخدمة وتقييمه` : undefined,
       });
       // A customer who came with a broker belongs to that broker; the purchase is credited to them.
@@ -220,7 +218,17 @@ export function VisitsPage({ onOpenLead }: Props) {
         }
       }
       setNotice(`اتسجلت الزيارة${hasClient ? ` وملف ${clientName} موجود في العملاء` : ""}.`);
-      setReviewFor(hasClient && visit.linkedLeadId ? { leadId: visit.linkedLeadId, label: `زيارة ${branches.find((b) => b.id === branchId)?.name || "الفرع"} يوم ${date}` } : null);
+      setReviewFor(null);
+      setJustSaved(
+        (hasClient && visit.linkedLeadId) || broker
+          ? {
+              visitId: visit.id,
+              label: `زيارة ${branches.find((b) => b.id === branchId)?.name || "الفرع"} يوم ${date}`,
+              client: hasClient && visit.linkedLeadId ? { leadId: visit.linkedLeadId, name: clientName, phone: clientPhone } : undefined,
+              broker: broker ? { brokerId: broker.id } : undefined,
+            }
+          : null,
+      );
       setMode("list");
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذر تسجيل الزيارة.");
@@ -247,18 +255,7 @@ export function VisitsPage({ onOpenLead }: Props) {
         {notice && (
           <div className="notice" role="status">
             {notice}
-            {reviewFor && leads.some((l) => l.id === reviewFor.leadId) && (
-              <div className="review-offer">
-                <span>
-                  <strong>تبعت للعميل لينك تقييم؟</strong>
-                  <small>اختياري: رسالة واتساب جاهزة، وانت اللي بتدوس إرسال.</small>
-                </span>
-                <button className="btn-secondary" onClick={() => setReviewOpen(true)}>
-                  <MessageCircle size={15} />
-                  ابعت لينك التقييم
-                </button>
-              </div>
-            )}
+            {justSaved && <PostVisitReview target={justSaved} />}
           </div>
         )}
         <CustomerRatingModal
@@ -396,37 +393,22 @@ export function VisitsPage({ onOpenLead }: Props) {
           {hasClient && (
             <div className="party-block">
               <h3>العميل</h3>
-              <div className="tab-filter" role="group" aria-label="العميل">
-                <button type="button" aria-pressed={clientMode === "new"} onClick={() => { setClientMode("new"); setPickedLead(null); }}>
-                  عميل جديد
-                </button>
-                <button type="button" aria-pressed={clientMode === "existing"} onClick={() => setClientMode("existing")}>
-                  عميل مسجّل
-                </button>
-              </div>
               {clientMode === "existing" ? (
-                pickedLead ? (
-                  <p className="notice" role="status">
-                    <strong>{pickedLead.name}</strong> · <span dir="ltr">{pickedLead.phone}</span>
-                    <button type="button" className="btn-text" onClick={() => setPickedLead(null)}>
-                      تغيير
-                    </button>
-                  </p>
-                ) : (
-                  <div style={{ position: "relative" }}>
-                    <input className="review-input" placeholder="ابحث باسم العميل أو رقمه…" value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} />
-                    {matches.length > 0 && (
-                      <div className="picker-list">
-                        {matches.map((l) => (
-                          <button type="button" key={l.id} onClick={() => { setPickedLead(l); setClientSearch(""); if (l.branchId) setBranchId(l.branchId); }}>
-                            <strong>{l.name}</strong>
-                            <small dir="ltr">{l.phone}</small>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
+                <CustomerSearch
+                  leads={leads}
+                  value={pickedLead}
+                  onChange={(l) => {
+                    setPickedLead(l);
+                    if (l?.branchId) setBranchId(l.branchId);
+                  }}
+                  onCreate={(typed) => {
+                    // What was typed becomes the start of the new customer: digits are the phone, otherwise the name.
+                    if (typed.replace(/\D/g, "").length >= 7) setPhone(typed);
+                    else setName(typed);
+                    setPickedLead(null);
+                    setClientMode("new");
+                  }}
+                />
               ) : (
                 <div className="field-grid">
                   <NameWithTitle value={name} onChange={setName} required />
@@ -434,7 +416,7 @@ export function VisitsPage({ onOpenLead }: Props) {
                     <span>
                       رقم الهاتف <em>مطلوب</em>
                     </span>
-                    <input dir="ltr" type="tel" inputMode="tel" placeholder="01xxxxxxxxx" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    <input dir="ltr" type="tel" inputMode="tel" autoComplete="off" placeholder="01xxxxxxxxx" value={phone} onChange={(e) => setPhone(e.target.value)} />
                   </label>
                   {duplicate && (
                     <div className="notice warning full-width" role="status">
@@ -447,6 +429,11 @@ export function VisitsPage({ onOpenLead }: Props) {
                   <div className="full-width">
                     <InterestPicker value={interests} onChange={setInterests} />
                   </div>
+                  {leads.length > 0 && (
+                    <button type="button" className="btn-text full-width" onClick={() => setClientMode("existing")}>
+                      ← دوّر في العملاء المسجلين بدل كده
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -457,84 +444,37 @@ export function VisitsPage({ onOpenLead }: Props) {
               <h3>الوسيط</h3>
               {brokerMode === "existing" ? (
                 <BrokerSearch
-                  label="دوّر على الوسيط"
+                  label="دوّر على الوسيط (يمكن يكون مسجّل قبل كده)"
                   brokers={activeBrokers}
                   value={brokerId}
                   onChange={setBrokerId}
-                  onCreate={(name) => {
-                    setBrokerName(name);
+                  onCreate={(typed) => {
+                    if (typed.replace(/\D/g, "").length >= 7) setBrokerPhone(typed);
+                    else setBrokerName(typed);
                     setBrokerId("");
                     setBrokerMode("new");
                   }}
                 />
               ) : (
                 <div className="field-grid">
-                  <NameWithTitle value={name} onChange={setName} required />
-                  <label className="field">
-                    <span>
-                      رقم الهاتف <em>مطلوب</em>
-                    </span>
-                    <input dir="ltr" type="tel" inputMode="tel" placeholder="01xxxxxxxxx" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                  </label>
-                  {duplicate && (
-                    <div className="notice warning full-width" role="status">
-                      الرقم ده موجود عندنا باسم {duplicate.name}، والزيارة هتتسجل على ملفه.
-                      <button type="button" onClick={() => { setPickedLead(duplicate); setClientMode("existing"); }}>
-                        استخدم الملف الموجود
-                      </button>
-                    </div>
-                  )}
-                  <div className="full-width">
-                    <InterestPicker value={interests} onChange={setInterests} />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {hasBroker && (
-            <div className="party-block">
-              <h3>الوسيط</h3>
-              <div className="tab-filter" role="group" aria-label="الوسيط">
-                <button type="button" aria-pressed={brokerMode === "existing"} onClick={() => setBrokerMode("existing")} disabled={!activeBrokers.length}>
-                  وسيط مسجّل
-                </button>
-                <button type="button" aria-pressed={brokerMode === "new"} onClick={() => setBrokerMode("new")}>
-                  وسيط جديد
-                </button>
-              </div>
-              {brokerMode === "existing" ? (
-                <label className="field">
-                  <span>اختار الوسيط</span>
-                  <select value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
-                    <option value="">اختار من القايمة</option>
-                    {activeBrokers.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name} · {b.phone}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <div className="field-grid">
                   <label className="field">
                     <span>
                       اسم الوسيط <em>مطلوب</em>
                     </span>
-                    <input value={brokerName} onChange={(e) => setBrokerName(e.target.value)} />
+                    <input autoComplete="off" value={brokerName} onChange={(e) => setBrokerName(e.target.value)} />
                   </label>
                   <label className="field">
                     <span>
                       رقم الوسيط <em>مطلوب</em>
                     </span>
-                    <input dir="ltr" type="tel" inputMode="tel" placeholder="01xxxxxxxxx" value={brokerPhone} onChange={(e) => setBrokerPhone(e.target.value)} />
+                    <input dir="ltr" type="tel" inputMode="tel" autoComplete="off" placeholder="01xxxxxxxxx" value={brokerPhone} onChange={(e) => setBrokerPhone(e.target.value)} />
                   </label>
+                  {activeBrokers.length > 0 && (
+                    <button type="button" className="btn-text full-width" onClick={() => setBrokerMode("existing")}>
+                      ← دوّر في الوسطاء المسجلين بدل كده
+                    </button>
+                  )}
                 </div>
-              )}
-              {brokerMode === "new" && activeBrokers.length > 0 && (
-                <button type="button" className="btn-text" onClick={() => setBrokerMode("existing")}>
-                  ← دوّر في الوسطاء المسجلين بدل كده
-                </button>
               )}
             </div>
           )}

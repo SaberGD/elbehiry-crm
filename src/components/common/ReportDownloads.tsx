@@ -49,8 +49,10 @@ export function ReportDownloads() {
       brokers: crm.brokers,
       branches: crm.branches,
       auditLogs: crm.auditLogs,
+      aiSuggestions: crm.aiSuggestions,
+      reminderDone: crm.reminderDone,
     }),
-    [crm.leads, crm.visits, crm.bookings, crm.followUps, crm.notBoughtRecords, crm.reviewRequests, crm.reviewNotes, crm.users, crm.brokers, crm.branches, crm.auditLogs],
+    [crm.leads, crm.visits, crm.bookings, crm.followUps, crm.notBoughtRecords, crm.reviewRequests, crm.reviewNotes, crm.users, crm.brokers, crm.branches, crm.auditLogs, crm.aiSuggestions, crm.reminderDone],
   );
   const filter = { from: from || undefined, to: to || undefined, branchId: branchId || undefined };
   const allowed = reportCatalog.filter((r) => r.needs.every((p) => hasPermission(crm.effectiveUser, p)));

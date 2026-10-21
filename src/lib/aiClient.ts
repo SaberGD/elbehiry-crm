@@ -169,3 +169,17 @@ export async function customerBrief(customer: unknown): Promise<CustomerBriefRes
     body: JSON.stringify({ mode: "brief", customer }),
   });
 }
+
+export interface FollowUpSuggestionResult {
+  opportunity: boolean;
+  date?: string;
+  reason?: string;
+  evidence?: string;
+  source?: string;
+  confidence?: number;
+}
+
+/** Asks the assistant whether this customer or broker deserves a follow-up nobody scheduled. */
+export async function followUpSuggestion(candidate: unknown): Promise<FollowUpSuggestionResult> {
+  return call({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "suggest", candidate }) });
+}

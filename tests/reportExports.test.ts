@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { branchPerformance, notYetReasons, overdueFollowUps, reportCatalog, salesByDepartment, toCsv, weeklySummary, type ReportData } from "../src/lib/reportExports";
+import { branchPerformance, notYetReasons, salesEffort, zakiSuggestionsReport, overdueFollowUps, reportCatalog, salesByDepartment, toCsv, weeklySummary, type ReportData } from "../src/lib/reportExports";
 
-const empty: ReportData = { leads: [], visits: [], bookings: [], followUps: [], notBoughtRecords: [], reviewRequests: [], reviewNotes: [], users: [], brokers: [], branches: [], auditLogs: [] };
+const empty: ReportData = { leads: [], visits: [], bookings: [], followUps: [], notBoughtRecords: [], reviewRequests: [], reviewNotes: [], users: [], brokers: [], branches: [], auditLogs: [], aiSuggestions: [], reminderDone: [] };
 const data = {
   ...empty,
   branches: [{ id: "b1", name: "القاهرة", active: true }, { id: "b2", name: "الإسكندرية", active: true }],
@@ -65,6 +65,34 @@ test("csv keeps Arabic, escapes quotes and neutralises formulas", () => {
 });
 
 test("the catalog puts the four essentials first and marks the rest as extra", () => {
-  assert.deepEqual(reportCatalog.filter((r) => r.tier === "core").map((r) => r.id), ["branch-performance", "overdue-followups", "not-yet-reasons", "sales-by-department"]);
-  assert.equal(reportCatalog.indexOf(reportCatalog.find((r) => r.tier === "extra")!), 4);
+  assert.deepEqual(reportCatalog.filter((r) => r.tier === "core").map((r) => r.id), ["branch-performance", "overdue-followups", "not-yet-reasons", "sales-by-department", "sales-effort", "zaki-suggestions"]);
+  assert.equal(reportCatalog.indexOf(reportCatalog.find((r) => r.tier === "extra")!), 6);
+});
+
+test("sales effort counts what each salesperson did and how they treated Zaki's suggestions", () => {
+  const d = {
+    ...empty,
+    branches: [{ id: "b1", name: "القاهرة", active: true }],
+    users: [{ id: "u1", name: "سامي", role: "sales_agent", branchId: "b1", active: true }, { id: "m", name: "مدير", role: "general_manager", active: true }],
+    visits: [{ id: "v1", receivedByAgentId: "u1", branchId: "b1", date: "2026-10-10" }],
+    followUps: [
+      { id: "f1", assignedAgentId: "u1", branchId: "b1", scheduledAt: "2026-10-12T10:00:00", status: "completed" },
+      { id: "f2", assignedAgentId: "u1", branchId: "b1", scheduledAt: "2020-01-01T10:00:00", status: "due" },
+    ],
+    aiSuggestions: [
+      { id: "s1", agentId: "u1", branchId: "b1", status: "accepted", edited: true, dayKey: "2026-10-11", createdAt: "2026-10-11T08:00:00Z", name: "عميل", partyKind: "client", proposedDate: "2026-11-11", finalDate: "2026-11-15" },
+      { id: "s2", agentId: "u1", branchId: "b1", status: "rejected", rejectReason: "مش فرصة حقيقية", dayKey: "2026-10-11", createdAt: "2026-10-11T09:00:00Z", name: "وسيط", partyKind: "broker" },
+      { id: "s3", agentId: "u1", branchId: "b1", status: "checked", dayKey: "2026-10-11", createdAt: "x", name: "x", partyKind: "client" },
+    ],
+  } as unknown as ReportData;
+  const t = salesEffort(d, { from: "2026-10-01", to: "2026-10-31" });
+  assert.equal(t.rows.length, 1); // the manager is not a salesperson
+  const row = Object.fromEntries(t.headers.map((h, i) => [h, t.rows[0][i]]));
+  assert.equal(row["زيارات استقبلها"], 1);
+  assert.equal(row["متابعات اتعملت"], 1);
+  assert.equal(row["متابعات متأخرة حاليًا"], 1);
+  assert.deepEqual([row["اقتراحات زكي"], row["اتقبلت"], row["اتفضّت"]], [2, 1, 1]);
+  const z = zakiSuggestionsReport(d, { from: "2026-10-01", to: "2026-10-31" });
+  assert.equal(z.rows.length, 2);
+  assert.equal(z.rows.find((r) => r[4] === "عميل")![10], "نعم");
 });
