@@ -47,7 +47,7 @@ jobs:
       # Folder of each subdomain on Hostinger, relative to the FTP account root.
       SERVER_DIR_MAIN: domains/engsaber.space/public_html/elbehiry/
       SERVER_DIR_DEV: domains/engsaber.space/public_html/dev-elbehiry/
-      SERVER_DIR_TEST: domains/engsaber.space/public_html/test-elbehiry/
+      SERVER_DIR_TEST: domains/test-elbehiry.engsaber.space/public_html/
     steps:
       - uses: actions/download-artifact@v4
         with:
