@@ -592,6 +592,20 @@ export function createWorkspace(raw: CRMContextType) {
       }
       raw.toggleUserActive(id);
     }) as CRMContextType["toggleUserActive"],
+    deleteUser: (async (id) => {
+      // Only the developer, and not while looking at the system as someone else.
+      if (actor.role !== "admin" || raw.currentUser.role !== "admin") throw new ActionDenied("مسح الموظفين للمطوّر فقط.");
+      const target = raw.users.find((u) => u.id === id);
+      if (!target) throw new ActionDenied("الموظف ده مش موجود.");
+      if (target.id === raw.currentUser.id) throw new ActionDenied("مينفعش تمسح حسابك إنت.");
+      const owned = raw.leads.filter((l) => l.assignedAgentId === id).length;
+      const open = raw.followUps.filter((f) => f.assignedAgentId === id && !["completed", "cancelled"].includes(f.status)).length;
+      if (owned || open)
+        throw new ActionDenied(
+          `${target.name} لسه مسؤول عن ${owned} عميل و${open} متابعة مفتوحة. انقلهم لموظف تاني الأول من صفحة العملاء، أو عطّل الحساب بدل المسح.`,
+        );
+      await raw.deleteUser(id);
+    }) as CRMContextType["deleteUser"],
     updateUserPermissions: ((...args) => {
       deny();
     }) as CRMContextType["updateUserPermissions"],

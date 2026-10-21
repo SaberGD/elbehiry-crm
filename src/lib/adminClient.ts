@@ -67,3 +67,18 @@ export async function createLoginOnServer(userId: string, loginId: string, passw
   }
   return null;
 }
+
+/** Removes a person's sign-in account on the server (developer only). Returns false when the server is not set up. */
+export async function deleteLoginOnServer(userId: string): Promise<boolean> {
+  const token = await auth.currentUser?.getIdToken();
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ action: "delete_login", userId }),
+  }).catch(() => null);
+  if (!res) return false;
+  if (res.status === 503) return false;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error === "forbidden" ? "مش مسموح لك تمسح حساب الدخول ده." : "تعذر مسح حساب الدخول من السيرفر، حاول تاني.");
+  return true;
+}

@@ -86,6 +86,7 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
         "addUser",
         "updateUser",
         "toggleUserActive",
+        "deleteUser",
         "updateUserSalaryInfo",
         "updatePermissionMatrix",
         "resetAllData",
@@ -452,4 +453,24 @@ test("the plan limits do not hold the developer back; they still stop the owner"
   const draft = { name: "x", phone: "01000000001", role: "branch_manager", branchId: employee.branchId, active: true } as never;
   assert.throws(() => fixture(director, { users: crowded, license: { maxBranches: 2, maxUsers: 1 } }).view.addUser(draft), /الباقة الحالية/);
   assert.doesNotThrow(() => fixture(developer, { users: crowded, license: { maxBranches: 2, maxUsers: 1 } }).view.addUser(draft));
+});
+
+test("only the developer can delete an employee, and only one who has nothing left to hand over", async () => {
+  const idle = { ...employee, id: "idle-agent" };
+  const withIdle = { users: [...users.filter((u) => u.id !== idle.id), idle], leads: seed.initialLeads.filter((l) => l.assignedAgentId !== idle.id), followUps: [] as never };
+  const asDev = fixture(developer, { ...withIdle, currentUser: developer });
+  await asDev.view.deleteUser(idle.id);
+  assert.deepEqual(asDev.calls, ["deleteUser"]);
+
+  await assert.rejects(() => fixture(director, { ...withIdle, currentUser: director }).view.deleteUser(idle.id), /للمطوّر فقط/);
+  await assert.rejects(() => fixture(developer, { ...withIdle, currentUser: developer }).view.deleteUser(developer.id), /حسابك/);
+  // still owns a customer: told to hand them over first
+  const busy = { ...employee, id: "busy-agent" };
+  const lead = { ...seed.initialLeads[0], assignedAgentId: busy.id };
+  await assert.rejects(
+    () => fixture(developer, { currentUser: developer, users: [...users, busy], leads: [lead], followUps: [] as never }).view.deleteUser(busy.id),
+    /مسؤول عن 1 عميل/,
+  );
+  // looking at the system as someone else does not allow it either
+  await assert.rejects(() => fixture(director, { currentUser: developer, ...withIdle }).view.deleteUser(idle.id), /للمطوّر فقط/);
 });

@@ -33,6 +33,7 @@ import {
   ChevronRight,
   ShieldCheck,
   KeyRound,
+  Trash2,
   Copy,
   X,
 } from "lucide-react";
@@ -51,6 +52,7 @@ export const StaffUsersPage: React.FC = () => {
     addUser,
     updateUser,
     toggleUserActive,
+    deleteUser,
     createLoginForUser,
     logAudit,
     addDepartmentEntity,
@@ -506,6 +508,24 @@ export const StaffUsersPage: React.FC = () => {
                               title="إعادة تعيين كلمة المرور (كلمة عشوائية)"
                             >
                               <KeyRound className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {effectiveUser.role === "admin" && u.id !== effectiveUser.id && (
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm(`هتمسح ${u.name} نهائيًا: بياناته وحساب دخوله. مش هينفع ترجّعه. متأكد؟`)) return;
+                                try {
+                                  await deleteUser(u.id);
+                                } catch (e) {
+                                  window.alert(e instanceof Error ? e.message : "تعذر المسح");
+                                }
+                              }}
+                              className="p-1.5 bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 hover:bg-red-100 rounded-lg cursor-pointer transition-colors"
+                              title="مسح الموظف نهائيًا (للمطوّر فقط)"
+                              aria-label={`مسح ${u.name}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
 

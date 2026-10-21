@@ -4,6 +4,7 @@
  *   GET  ?ping=1                                  -> {"configured": bool}
  *   POST {"action":"reset_password","userId":"…"} -> a fresh RANDOM password for that staff member
  *   POST {"action":"create_login","userId":"…","loginId":"…","password":"…"} -> creates the sign-in account
+ *   POST {"action":"delete_login","userId":"…"}  -> developer only: removes that person's sign-in account
  *        (so self sign-up can be switched off in Firebase: nobody can make an account from the browser)
  *
  * Why a server: changing someone else's password needs the Firebase Admin credentials,
@@ -156,10 +157,26 @@ if ($sa === null) fail(503, 'not_configured');
 
 $in = json_decode((string) file_get_contents('php://input'), true);
 $action = is_array($in) ? (string) ($in['action'] ?? '') : '';
-if (!in_array($action, ['reset_password', 'create_login'], true)) fail(400, 'bad_action');
+if (!in_array($action, ['reset_password', 'create_login', 'delete_login'], true)) fail(400, 'bad_action');
 $userId = (string) ($in['userId'] ?? '');
 if (!preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $userId)) fail(400, 'bad_user');
 rate_limit($callerUid);
+
+if ($action === 'delete_login') {
+    if ($callerRole !== 'admin') fail(403, 'forbidden');
+    $userDoc = read_doc('users/' . rawurlencode($userId), $idToken);
+    if (!$userDoc) fail(404, 'user_not_found');
+    $targetUid = f($userDoc, 'authUid');
+    if (!$targetUid) { echo json_encode(['deleted' => false, 'reason' => 'no_login']); exit; }
+    if ($targetUid === $callerUid) fail(403, 'forbidden', 'cannot delete your own account');
+    $token = google_token($sa);
+    if ($token === null) fail(502, 'admin_auth_failed');
+    [$st, $res] = http('POST', 'https://identitytoolkit.googleapis.com/v1/projects/' . FIREBASE_PROJECT_ID . '/accounts:delete', ['Authorization: Bearer ' . $token, 'Content-Type: application/json'], json_encode(['localId' => $targetUid]));
+    $gone = $st === 200 || str_contains((string) ($res['error']['message'] ?? ''), 'USER_NOT_FOUND');
+    if (!$gone) fail(502, 'delete_failed', 'identitytoolkit_' . $st);
+    echo json_encode(['deleted' => true, 'uid' => $targetUid]);
+    exit;
+}
 
 if ($action === 'create_login') {
     // The staff record was written by the caller under the security rules, so its role and branch are already

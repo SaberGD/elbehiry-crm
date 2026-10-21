@@ -29,7 +29,8 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { deleteLoginOnServer } from "../lib/adminClient";
 import { db } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
 import {
@@ -206,6 +207,8 @@ export interface CRMContextType {
   addUser: (user: Omit<User, "id" | "createdAt">) => User;
   updateUser: (id: string, updates: Partial<User>) => void;
   toggleUserActive: (id: string) => void;
+  /** Developer only: removes the staff record, its access record and its sign-in account. */
+  deleteUser: (id: string) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: string[]) => void;
   addBranch: (branch: Omit<Branch, "id">) => Branch;
   updateBranch: (id: string, updates: Partial<Branch>) => void;
@@ -1271,6 +1274,19 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
+  const deleteUser = async (id: string) => {
+    const target = users.find((u) => u.id === id);
+    if (!target) return;
+    // The server finds the sign-in account through the staff record, so it goes first.
+    if (target.authUid) {
+      await deleteLoginOnServer(id);
+      // Without the access record nobody can get in, even if the sign-in account could not be removed.
+      await deleteDoc(doc(db, "authProfiles", target.authUid)).catch((e) => console.error("authProfile delete failed", e));
+    }
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+    logAudit("مسح موظف", "مستخدم", id, `مسح ${target.name} نهائيًا`);
+  };
+
   /** Creates a Firebase login for a staff record and links the two. */
   const createLoginForUser: CRMContextType["createLoginForUser"] = async (
     userId,
@@ -1786,6 +1802,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         addUser,
         updateUser,
         toggleUserActive,
+        deleteUser,
         updateUserPermissions,
         addBranch,
         updateBranch,
