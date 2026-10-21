@@ -24,7 +24,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
-const FIREBASE_PROJECT_ID = 'albehairy-group';
+// The test site (test-*) has its own Firebase project; every other site uses the production one.
+define('FIREBASE_PROJECT_ID', str_starts_with((string) ($_SERVER['HTTP_HOST'] ?? ''), 'test-') ? 'albehairy-test' : 'albehairy-group');
 const RATE_LIMIT_PER_HOUR = 30;
 const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
 

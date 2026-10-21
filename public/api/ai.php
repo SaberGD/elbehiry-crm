@@ -87,7 +87,8 @@ function http_json(string $url, array $headers, array $body): array {
     return [$status, is_array($data) ? $data : []];
 }
 
-const FIREBASE_PROJECT_ID = 'albehairy-group';
+// The test site (test-*) has its own Firebase project; every other site uses the production one.
+define('FIREBASE_PROJECT_ID', str_starts_with((string) ($_SERVER['HTTP_HOST'] ?? ''), 'test-') ? 'albehairy-test' : 'albehairy-group');
 
 /**
  * Returns the uid only when the caller is an ACTIVE staff member. The user's own
