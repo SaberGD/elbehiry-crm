@@ -509,17 +509,6 @@ export function createWorkspace(raw: CRMContextType) {
       require(data.branchId === lead!.branchId && data.reasons.length > 0);
       return raw.addNotBoughtRecord(data);
     }) as CRMContextType["addNotBoughtRecord"],
-    completeBooking: ((id, deliveredAt) => {
-      const booking = bookings.find((b) => b.id === id);
-      require(!!booking);
-      const lead = findLead(booking!.leadId);
-      require(
-        hasPermission(actor, "bookings.create") &&
-          (!access.isSales(actor) || lead.assignedAgentId === actor.id),
-      );
-      require(!deliveredAt || /^\d{4}-\d{2}-\d{2}$/.test(deliveredAt));
-      raw.completeBooking(id, deliveredAt);
-    }) as CRMContextType["completeBooking"],
     addPurchaseInvoice: ((data) => {
       require(hasPermission(actor, "invoices.manage"));
       requireAssignment(data.branchId, data.agentId);

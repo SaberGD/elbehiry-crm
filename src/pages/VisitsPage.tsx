@@ -150,8 +150,9 @@ export function VisitsPage({ onOpenLead }: Props) {
     const bits = [notes.trim()];
     const bought = hasClient && outcome.result === "bought";
     const finalOutcome = hasClient && outcome.result ? outcomeLabel[outcome.result] : "زيارة وسيط";
-    const followUpOn = hasClient && (followUp || bought);
-    const followUpOnDate = followUp ? followUpDate : addToDate(date, { days: 3 });
+    // A purchase schedules its own post-sale follow-ups; only a follow-up the salesperson chose is added here.
+    const followUpOn = hasClient && followUp;
+    const followUpOnDate = followUpDate;
     try {
       const visit = addVisit({
         visitorType: type,
@@ -175,8 +176,6 @@ export function VisitsPage({ onOpenLead }: Props) {
         requiresFollowUp: followUpOn && hasPermission(effectiveUser, "followups.create"),
         followUpAgentId: validAgent,
         followUpDate: followUpOn ? followUpOnDate : undefined,
-        followUpOrigin: !followUp && bought ? "auto" : undefined,
-        followUpReason: !followUp && bought ? `متابعة بعد الشراء بتاريخ ${date}: رأيه في الخدمة وتقييمه` : undefined,
       });
       // A customer who came with a broker belongs to that broker; the purchase is credited to them.
       if (hasClient && broker && visit.linkedLeadId) {

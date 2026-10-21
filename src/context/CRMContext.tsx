@@ -12,8 +12,7 @@ import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../l
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
 import { today, followUpStatus, statusNames, sourceNames, followUpTypeNames } from "../lib/presentation";
 import {
-  buildPostSaleSchedule,
-  milestoneLabel,
+  upcomingPostSale,
   addToDate,
 } from "../lib/postSale";
 import {
@@ -29,7 +28,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { deleteLoginOnServer } from "../lib/adminClient";
 import { db } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
@@ -216,7 +215,6 @@ export interface CRMContextType {
 
   // Booking Operations
   addBooking: (booking: Omit<Booking, "id" | "createdAt">) => Booking;
-  completeBooking: (bookingId: string, deliveredAt?: string) => void;
   addNotBoughtRecord: (
     data: Omit<NotBoughtRecord, "id" | "createdAt" | "agentName">,
   ) => NotBoughtRecord;
@@ -595,6 +593,37 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     });
     return req;
   };
+  // One time: every purchase made before this change counts as delivered on its purchase date, and gets its post-sale
+  // follow-ups that are still ahead. Done by the developer's session only, with fixed ids, and marked done in settings.
+  const latest = useRef({ bookings, followUps });
+  latest.current = { bookings, followUps };
+  const backfillStarted = useRef(false);
+  useEffect(() => {
+    if (authForScope?.role !== "admin" || backfillStarted.current || !bookings.length) return;
+    backfillStarted.current = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const flag = doc(db, "settings", "postSaleBackfill");
+        if ((await getDoc(flag)).exists()) return;
+        const { bookings: bs, followUps: fs } = latest.current;
+        const open = bs.filter((b) => b.bookingStatus !== "cancelled");
+        const created = open.flatMap((b) => {
+          const have = new Set(fs.filter((f) => f.bookingId === b.id && f.category === "post_sale").map((f) => f.milestone));
+          // A purchase that already has its post-sale follow-ups was delivered and scheduled before: leave it alone.
+          return have.size ? [] : postSaleFollowUps(b, have);
+        });
+        setBookings((prev) => prev.map((b) => (b.bookingStatus !== "cancelled" && !b.deliveredAt ? { ...b, bookingStatus: "completed", deliveredAt: b.bookingDate } : b)));
+        if (created.length) setFollowUps((prev) => [...created, ...prev]);
+        await setDoc(flag, { done: true, at: new Date().toISOString(), purchases: open.length, followUps: created.length });
+      } catch (e) {
+        console.error("post-sale backfill failed", e);
+        backfillStarted.current = false;
+      }
+    }, 8000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authForScope?.role, bookings.length > 0]);
+
   const saveSuggestions: CRMContextType["saveSuggestions"] = (items) => {
     const made = items.map((i) => ({ ...i, id: `sug-${crypto.randomUUID()}`, createdAt: new Date().toISOString(), dayKey: today() }));
     setAiSuggestions((prev) => [...made, ...prev]);
@@ -1166,6 +1195,30 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // Booking Operations
+  /** The post-sale follow-ups still ahead for a purchase, with fixed ids so doing it twice can never double them. */
+  const postSaleFollowUps = (booking: Booking, have: Set<string | undefined>): FollowUp[] => {
+    const lead = leads.find((l) => l.id === booking.leadId);
+    const agentId = users.some((u) => u.id === booking.agentId) ? booking.agentId : lead?.assignedAgentId || booking.agentId;
+    return upcomingPostSale(booking.bookingDate, today(), have).map((m) => ({
+      id: `flw-ps-${booking.id}-${m.milestone}`,
+      leadId: booking.leadId,
+      leadName: booking.leadName,
+      leadPhone: booking.leadPhone,
+      assignedAgentId: agentId,
+      assignedAgentName: users.find((u) => u.id === agentId)?.name,
+      branchId: booking.branchId,
+      scheduledAt: m.date,
+      reason: m.reason,
+      type: "call" as const,
+      notes: "",
+      status: (m.date === today() ? "due" : "upcoming") as FollowUp["status"],
+      category: "post_sale" as const,
+      origin: "auto" as const,
+      bookingId: booking.id,
+      milestone: m.milestone,
+    }));
+  };
+
   const addBooking = (
     bookingData: Omit<Booking, "id" | "createdAt">,
   ): Booking => {
@@ -1173,20 +1226,34 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const branch = branches.find((b) => b.id === bookingData.branchId);
     const agent = users.find((u) => u.id === bookingData.agentId);
 
+    // Buying means receiving: a purchase is delivered the day it is made.
+    const cancelled = bookingData.bookingStatus === "cancelled";
     const newBooking: Booking = {
       ...bookingData,
       id,
       branchName: branch?.name || bookingData.branchName,
       agentName: agent?.name || bookingData.agentName,
+      bookingStatus: cancelled ? "cancelled" : "completed",
+      ...(cancelled ? {} : { deliveredAt: bookingData.bookingDate }),
       createdAt: new Date().toISOString(),
     };
 
     setBookings((prev) => [newBooking, ...prev]);
+    const post = cancelled ? [] : postSaleFollowUps(newBooking, new Set());
 
     // Automatically update Lead status to 'booked'!
     updateLead(bookingData.leadId, {
       status: "booked",
+      ...(post.length
+        ? {
+            nextFollowUpDate: [
+              ...followUps.filter((f) => f.leadId === bookingData.leadId && !["completed", "cancelled"].includes(followUpStatus(f))).map((f) => f.scheduledAt),
+              post[0].scheduledAt,
+            ].sort()[0],
+          }
+        : {}),
     });
+    if (post.length) setFollowUps((prev) => [...post, ...prev]);
 
     addTimelineEvent({
       leadId: bookingData.leadId,
@@ -1194,7 +1261,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       authorName: effectiveUser.name,
       type: "booking_created",
       title: `تسجيل مشتريات: ${bookingData.courseName}`,
-      details: [`إجمالي المشتريات: ${bookingData.amount.toLocaleString("en-US")} ج.م`, bookingData.visitId ? "من زيارة الفرع" : "", bookingData.notes ? `الملاحظات: ${bookingData.notes}` : ""].filter(Boolean).join(" · "),
+      details: [`إجمالي المشتريات: ${bookingData.amount.toLocaleString("en-US")} ج.م`, bookingData.visitId ? "من زيارة الفرع" : "", post.length ? `جُدولت ${post.length} متابعات بعد البيع` : "", bookingData.notes ? `الملاحظات: ${bookingData.notes}` : ""].filter(Boolean).join(" · "),
     });
 
     logAudit(
@@ -1244,79 +1311,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     return record;
   };
 
-  /** Marks a booking as delivered and schedules the post-sale follow-ups. */
-  const completeBooking = (bookingId: string, deliveredAt?: string) => {
-    const booking = bookings.find((b) => b.id === bookingId);
-    if (!booking || booking.bookingStatus === "cancelled") return;
-    const delivered = deliveredAt || today();
-    const lead = leads.find((l) => l.id === booking.leadId);
-    const agentId = users.some((u) => u.id === booking.agentId)
-      ? booking.agentId
-      : lead?.assignedAgentId || booking.agentId;
-    const existing = new Set(
-      followUps
-        .filter((f) => f.bookingId === bookingId && f.category === "post_sale")
-        .map((f) => f.milestone),
-    );
-    const nowStr = today();
-    const created: FollowUp[] = buildPostSaleSchedule(delivered)
-      .filter((m) => !existing.has(m.milestone))
-      .map((m) => ({
-        id: `flw-${crypto.randomUUID()}`,
-        leadId: booking.leadId,
-        leadName: booking.leadName,
-        leadPhone: booking.leadPhone,
-        assignedAgentId: agentId,
-        assignedAgentName: users.find((u) => u.id === agentId)?.name,
-        branchId: booking.branchId,
-        scheduledAt: m.date,
-        reason: m.reason,
-        type: "call" as const,
-        notes: "",
-        status:
-          m.date < nowStr ? "overdue" : m.date === nowStr ? "due" : "upcoming",
-        category: "post_sale" as const,
-        origin: "auto" as const,
-        bookingId,
-        milestone: m.milestone,
-      }));
-
-    setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId
-          ? { ...b, bookingStatus: "completed", deliveredAt: delivered }
-          : b,
-      ),
-    );
-    if (created.length) {
-      setFollowUps((prev) => [...created, ...prev]);
-      const open = followUps
-        .filter(
-          (f) =>
-            f.leadId === booking.leadId &&
-            !["completed", "cancelled"].includes(followUpStatus(f)),
-        )
-        .map((f) => f.scheduledAt);
-      const earliest = [...open, ...created.map((f) => f.scheduledAt)].sort()[0];
-      updateLead(booking.leadId, { nextFollowUpDate: earliest });
-    }
-    addTimelineEvent({
-      leadId: booking.leadId,
-      authorId: effectiveUser.id,
-      authorName: effectiveUser.name,
-      type: "booking_created",
-      title: `تسليم الشغل: ${booking.courseName}`,
-      details: `تم التسليم بتاريخ ${delivered}. جُدولت ${created.length} متابعات بعد البيع (${created
-        .map((f) => milestoneLabel(f.milestone))
-        .join("، ")}).`,
-    });
-    logAudit(
-      "تسليم شغل",
-      "حجز",
-      bookingId,
-      `تسليم ${booking.courseName} للعميل ${booking.leadName} وجدولة متابعات بعد البيع`,
-    );
-  };
 
   // User & Organization CRUD
   const addUser = (userData: Omit<User, "id" | "createdAt">): User => {
@@ -1892,7 +1886,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         updateFollowUpResult,
 
         addBooking,
-        completeBooking,
         addNotBoughtRecord,
         notBoughtRecords,
         reminderDone,

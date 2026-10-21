@@ -42,7 +42,6 @@ export function buildCustomerBrief({ lead, visits, followUps, bookings, notBough
       date: b.bookingDate,
       totalEGP: b.amount,
       byDepartmentEGP: Object.fromEntries(Object.entries(bookingSplit(b)).filter(([, v]) => v > 0).map(([k, v]) => [departmentNames[k as keyof typeof departmentNames], v])),
-      delivered: b.deliveredAt ?? null,
     })),
     visits: visits
       .filter((v) => v.linkedLeadId === id)

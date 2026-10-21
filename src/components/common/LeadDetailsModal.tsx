@@ -355,7 +355,7 @@ export function LeadDetailsModal({
     timeline: "سجل التعاملات",
     followups: `المتابعات (${leadFollowUps.length})`,
     visits: `الزيارات (${leadVisits.length})`,
-    bookings: `التعاقدات (${leadBookings.length})`,
+    bookings: `المشتريات (${leadBookings.length})`,
     reviews: `التقييمات (${leadReviews.length})`,
   };
   return (
@@ -990,7 +990,7 @@ export function LeadDetailsModal({
                 ))
               ) : (
                 <div className="empty-state">
-                  <h3>مفيش تعاقدات مسجلة</h3>
+                  <h3>مفيش مشتريات مسجلة</h3>
                   {allowed("booking") && (
                     <button
                       className="btn-secondary btn-buy"
@@ -1007,7 +1007,7 @@ export function LeadDetailsModal({
               ) : (
                 <div className="empty-state">
                   <h3>لسه ما اتطلبش تقييم من العميل</h3>
-                  <p>اضغط «طلب تقييم» من الأزرار فوق، وهيوصله لينك على واتساب عن زيارته أو تعاقده.</p>
+                  <p>اضغط «طلب تقييم» من الأزرار فوق، وهيوصله لينك على واتساب عن زيارته أو شرائه.</p>
                 </div>
               ))}
           </div>

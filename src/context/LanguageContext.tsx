@@ -60,7 +60,7 @@ const translations: Record<Language, Record<string, string>> = {
     "nav.my_followups": "متابعاتي",
     "nav.due_followups": "المتابعات المستحقة",
     "nav.overdue_followups": "المتابعات المتأخرة",
-    "nav.bookings": "الحجوزات والتعاقدات",
+    "nav.bookings": "المشتريات",
     "nav.invoices": "فواتير المشتريات والتصنيفات",
     "nav.brokers": "الوسطاء وجاهات الترشيح",
     "nav.reports": "التقارير والتحليلات",

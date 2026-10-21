@@ -39,7 +39,7 @@ const titles: Record<string, string> = {
   followups: "المتابعات",
   due_followups: "متابعات اليوم",
   overdue_followups: "المتابعات المتأخرة",
-  bookings: "الحجوزات والتعاقدات",
+  bookings: "المشتريات",
   invoices: "الفواتير",
   brokers: "الوسطاء والشركاء",
   overview: "كبار العملاء والوسطاء",

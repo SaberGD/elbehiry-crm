@@ -8,13 +8,13 @@ interface MilestoneDef {
   months?: number;
 }
 
-// Follow-ups scheduled after the work is delivered, counted from the delivery date.
+// Follow-ups scheduled after a purchase, counted from the purchase date (buying means receiving: there is no separate delivery).
 export const postSaleMilestones: MilestoneDef[] = [
   {
     id: "7d",
-    label: "بعد أسبوع من التسليم",
+    label: "بعد أسبوع من الشراء",
     days: 7,
-    reason: "متابعة بعد التسليم: تأكد من رضا العميل وسجّل أي ملاحظات على الشغل.",
+    reason: "متابعة بعد الشراء: تأكد من رضا العميل وسجّل أي ملاحظات على الشغل.",
   },
   {
     id: "30d",
@@ -57,10 +57,15 @@ export function addToDate(
   return `${out.getUTCFullYear()}-${pad(out.getUTCMonth() + 1)}-${pad(out.getUTCDate())}`;
 }
 
-export function buildPostSaleSchedule(deliveredDate: string) {
+export function buildPostSaleSchedule(purchaseDate: string) {
   return postSaleMilestones.map((m) => ({
     milestone: m.id,
-    date: addToDate(deliveredDate, { days: m.days, months: m.months }),
+    date: addToDate(purchaseDate, { days: m.days, months: m.months }),
     reason: m.reason,
   }));
+}
+
+/** The post-sale follow-ups still ahead of today for a purchase (a late-recorded one skips what already passed). */
+export function upcomingPostSale(purchaseDate: string, todayStr: string, have: Set<string | undefined> = new Set()) {
+  return buildPostSaleSchedule(purchaseDate).filter((m) => m.date >= todayStr && !have.has(m.milestone));
 }

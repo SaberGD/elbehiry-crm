@@ -174,7 +174,7 @@ export function runTool(name: string, a: Args, d: ToolData): unknown {
         byDepartmentEGP: c ? byDeptNames(c.split) : {},
         purchases: d.bookings
           .filter((b) => b.leadId === l.id)
-          .map((b) => ({ date: b.bookingDate, totalEGP: b.amount, byDepartmentEGP: byDeptNames(bookingSplit(b)), cancelled: b.bookingStatus === "cancelled", deliveredAt: b.deliveredAt ?? null })),
+          .map((b) => ({ date: b.bookingDate, totalEGP: b.amount, byDepartmentEGP: byDeptNames(bookingSplit(b)), cancelled: b.bookingStatus === "cancelled" })),
         followUps: d.followUps
           .filter((f) => f.leadId === l.id)
           .sort((x, y) => x.scheduledAt.localeCompare(y.scheduledAt))
@@ -252,7 +252,7 @@ export function runTool(name: string, a: Args, d: ToolData): unknown {
         .filter((b) => !str(a.customer) || has(b.leadName, a.customer))
         .filter((b) => !dep || bookingSplit(b)[dep] > 0)
         .sort((x, y) => y.bookingDate.localeCompare(x.bookingDate))
-        .map((b) => ({ date: b.bookingDate, customer: b.leadName, branch: branchName(b.branchId), totalEGP: b.amount, byDepartmentEGP: byDeptNames(bookingSplit(b)), delivered: !!b.deliveredAt }));
+        .map((b) => ({ date: b.bookingDate, customer: b.leadName, branch: branchName(b.branchId), totalEGP: b.amount, byDepartmentEGP: byDeptNames(bookingSplit(b)) }));
       return { totalEGP: sum(rows.map((r) => r.totalEGP)), ...page(rows, limitOf(a)) };
     }
 

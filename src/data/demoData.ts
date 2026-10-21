@@ -319,7 +319,8 @@ rows.forEach((r, i) => {
     const total = Object.values(p.amounts).reduce((s, v) => s + (v || 0), 0);
     const primary = (Object.entries(p.amounts).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0][0]) as Department;
     const bid = `demo-booking-${i + 1}-${j + 1}`;
-    const delivered = p.deliveredAgo !== undefined ? iso(p.deliveredAgo) : undefined;
+    // Buying means receiving: every purchase is delivered the day it is made.
+    const delivered = p.cancelled ? undefined : iso(p.ago);
     gen.bookings.push({
       id: bid,
       leadId: id,

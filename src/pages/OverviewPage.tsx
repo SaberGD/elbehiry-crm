@@ -330,7 +330,7 @@ export function OverviewPage({ onOpenLead }: { onOpenLead: (id: string) => void 
         <div className="panel-header">
           <div>
             <h2>رأي العملاء فينا</h2>
-            <p>تقييمات العملاء بعد الشراء والتسليم</p>
+            <p>تقييمات العملاء بعد الشراء</p>
           </div>
         </div>
         {feedback.count ? (

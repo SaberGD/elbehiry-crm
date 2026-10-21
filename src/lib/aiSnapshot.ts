@@ -208,7 +208,7 @@ export function buildSnapshot(input: SnapshotInput) {
       .sort((a, b) => b.daysOverdue - a.daysOverdue || a.due.localeCompare(b.due))
       .slice(0, 60),
     postSale: {
-      delivered: bookings.filter((b) => b.deliveredAt).length,
+      purchases: bookings.filter((b) => b.bookingStatus !== "cancelled").length,
       followUpsOverdue: open.filter((f) => f.category === "post_sale" && followUpStatus(f) === "overdue").length,
       followUpsDueToday: open.filter((f) => f.category === "post_sale" && followUpStatus(f) === "due").length,
     },

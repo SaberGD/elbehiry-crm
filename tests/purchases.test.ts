@@ -67,3 +67,14 @@ test("purchase picked per category becomes a booking split across the four depar
   assert.equal(p.courseName, "ديكور + بستان");
   assert.equal(purchaseFromItems([{ categoryId: "cat-misc", categoryName: "متنوع", amount: 10 }]).department, "general");
 });
+
+import { upcomingPostSale } from "../src/lib/postSale";
+
+test("a purchase schedules its post-sale follow-ups from the purchase date; a late-recorded one skips what already passed", () => {
+  const all = upcomingPostSale("2026-10-20", "2026-10-20");
+  assert.deepEqual(all.map((m) => [m.milestone, m.date]), [["7d", "2026-10-27"], ["30d", "2026-11-19"], ["6m", "2027-04-20"], ["12m", "2027-10-20"]]);
+  // recorded two months late: the first two are already behind us
+  assert.deepEqual(upcomingPostSale("2026-08-20", "2026-10-20").map((m) => m.milestone), ["6m", "12m"]);
+  // never doubles what already exists
+  assert.deepEqual(upcomingPostSale("2026-10-20", "2026-10-20", new Set(["7d", "30d"])).map((m) => m.milestone), ["6m", "12m"]);
+});
