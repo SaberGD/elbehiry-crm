@@ -219,13 +219,17 @@ export function canAccessPage(u: User, page: string) {
   };
   return !!key[page] && has(u, key[page]);
 }
-export function scopeLabel(u: User) {
-  if (isGlobalManager(u)) return "جميع الفروع";
+export function scopeLabel(u: User, en = false) {
+  if (isGlobalManager(u)) return en ? "All branches" : "جميع الفروع";
   if (["regional_manager", "supervisor"].includes(u.role))
     return u.supervisedBranchIds?.length
-      ? `${u.supervisedBranchIds.length} فرع ضمن الإشراف`
+      ? en
+        ? `${u.supervisedBranchIds.length} supervised branches`
+        : `${u.supervisedBranchIds.length} فرع ضمن الإشراف`
       : u.role === "regional_manager"
-        ? "جميع الفروع"
-        : u.branchName || "لم يُحدد نطاق الإشراف";
-  return u.branchName || "لم يُحدد فرع";
+        ? en
+          ? "All branches"
+          : "جميع الفروع"
+        : u.branchName || (en ? "No supervision scope set" : "لم يُحدد نطاق الإشراف");
+  return u.branchName || (en ? "No branch set" : "لم يُحدد فرع");
 }

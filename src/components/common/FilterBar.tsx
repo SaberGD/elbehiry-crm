@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { ChevronDown, Search, SlidersHorizontal } from "lucide-react";
+import { useLanguage } from "../../context/LanguageContext";
 
 export interface FilterSelect {
   id: string;
@@ -29,6 +30,7 @@ interface Props {
 
 /** One filter toolbar for every list in the system: search, a few quick selects, extra filters, count and reset. */
 export function FilterBar({ search, selects = [], dates, count, actions, onReset }: Props) {
+  const { tr } = useLanguage();
   const visibleSelects = selects.filter((s) => s.options.length > 0);
   const primary = visibleSelects.filter((s) => s.primary);
   const more = visibleSelects.filter((s) => !s.primary);
@@ -65,7 +67,7 @@ export function FilterBar({ search, selects = [], dates, count, actions, onReset
         <details className="advanced-filters" open={activeExtra || undefined}>
           <summary>
             <SlidersHorizontal size={14} />
-            تصفية إضافية{activeExtra ? " (مفعّلة)" : ""}
+            {tr("تصفية إضافية", "More filters")}{activeExtra ? ` (${tr("مفعّلة", "active")})` : ""}
             <ChevronDown size={13} />
           </summary>
           <div className="field-grid">
@@ -78,11 +80,11 @@ export function FilterBar({ search, selects = [], dates, count, actions, onReset
             {dates && (
               <>
                 <label className="field">
-                  <span>{dates.label ?? "التاريخ"} من</span>
+                  <span>{dates.label ?? tr("التاريخ", "Date")} {tr("من", "from")}</span>
                   <input type="date" value={dates.from} max={dates.to || undefined} onChange={(e) => dates.onFrom(e.target.value)} />
                 </label>
                 <label className="field">
-                  <span>{dates.label ?? "التاريخ"} إلى</span>
+                  <span>{dates.label ?? tr("التاريخ", "Date")} {tr("إلى", "to")}</span>
                   <input type="date" value={dates.to} min={dates.from || undefined} onChange={(e) => dates.onTo(e.target.value)} />
                 </label>
               </>
@@ -93,9 +95,9 @@ export function FilterBar({ search, selects = [], dates, count, actions, onReset
       {count && (
         <div className="filter-count">
           <span>
-            {count.shown} {count.noun} {active ? "مطابق للبحث والفلاتر" : ""}
+            {count.shown} {count.noun} {active ? tr("مطابق للبحث والفلاتر", "match the search and filters") : ""}
           </span>
-          {active && <button onClick={onReset}>مسح الفلاتر</button>}
+          {active && <button onClick={onReset}>{tr("مسح الفلاتر", "Clear filters")}</button>}
         </div>
       )}
     </>

@@ -1,4 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { positionNames, positionNamesEn } from "../lib/permissions";
+import type { UserRole } from "../types/crm";
+import {
+  departmentNames, departmentNamesEn, statusNames, statusNamesEn, sourceNames, sourceNamesEn, followUpTypeNames, followUpTypeNamesEn,
+} from "../lib/presentation";
 
 export type Language = "ar" | "en";
 
@@ -7,6 +12,16 @@ interface LanguageContextType {
   direction: "rtl" | "ltr";
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  /** Inline pair: the Arabic text stays at the call site, the English one is shown when the language is English. */
+  tr: (ar: string, en: string) => string;
+  roleName: (role: UserRole) => string;
+  /** Display names of the shared enums (customer status, source, follow-up type, department) in the current language. */
+  labels: {
+    status: typeof statusNames;
+    source: typeof sourceNames;
+    followUpType: typeof followUpTypeNames;
+    department: typeof departmentNames;
+  };
 }
 
 const translations: Record<Language, Record<string, string>> = {
@@ -270,8 +285,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
     return translations[language][key] || translations["ar"][key] || key;
   };
 
+  const tr = (ar: string, en: string): string => (language === "en" ? en : ar);
+  const labels = language === "en"
+    ? { status: statusNamesEn, source: sourceNamesEn, followUpType: followUpTypeNamesEn, department: departmentNamesEn }
+    : { status: statusNames, source: sourceNames, followUpType: followUpTypeNames, department: departmentNames };
+  const roleName = (role: UserRole): string => (language === "en" ? positionNamesEn : positionNames)[role];
+
   return (
-    <LanguageContext.Provider value={{ language, direction, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language, direction, setLanguage, t, tr, roleName, labels }}>
       {children}
     </LanguageContext.Provider>
   );
