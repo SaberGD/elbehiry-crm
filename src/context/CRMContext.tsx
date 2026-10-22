@@ -1355,7 +1355,12 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       name: updates.name,
       supervisedBranchIds: updates.supervisedBranchIds,
     });
-    logAudit("تعديل موظف", "مستخدم", id, `تعديل بيانات الحساب رقم ${id}`);
+    const target = users.find((u) => u.id === id);
+    const labels: Record<string, string> = { name: "الاسم", phone: "الهاتف", email: "الإيميل", role: "الدور", branchId: "الفرع", teamId: "الفريق", departmentId: "القسم", jobPositionId: "المسمى الوظيفي", directManagerId: "المدير المباشر", supervisedBranchIds: "نطاق الإشراف", specialty: "الاختصاص" };
+    const changed = Object.keys(updates)
+      .filter((k) => labels[k] && JSON.stringify((target as unknown as Record<string, unknown> | undefined)?.[k]) !== JSON.stringify((updates as Record<string, unknown>)[k]))
+      .map((k) => labels[k]);
+    logAudit("تعديل موظف", "مستخدم", id, `${effectiveUser.name} عدّل بيانات ${target?.name ?? id}${changed.length ? `: ${changed.join("، ")}` : ""}`);
   };
 
   const toggleUserActive = (id: string) => {

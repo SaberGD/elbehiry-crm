@@ -41,6 +41,13 @@ service cloud.firestore {
       return role() == 'admin' || !(r in ['admin', 'general_manager']);
     }
 
+    // The general sales manager runs the people below the owner: edits their records, never the owner, developer or peers.
+    function isGsmEdit(oldRole, newRole) {
+      return isStaff() && role() == 'regional_manager'
+        && !(oldRole in ['admin', 'general_manager', 'regional_manager'])
+        && !(newRole in ['admin', 'general_manager', 'regional_manager']);
+    }
+
     function isBranchManager() {
       return isStaff() && role() == 'branch_manager';
     }
@@ -118,7 +125,7 @@ service cloud.firestore {
     }
 
     match /authProfiles/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isTop() || isBranchManager());
+      allow read: if signedIn() && (request.auth.uid == uid || isRegional() || isBranchManager());
 
       allow create: if (isTop() && mayGrant(request.resource.data.role))
         || branchManagerMayWrite(request.resource.data)
@@ -131,6 +138,7 @@ service cloud.firestore {
         || isFounder(uid);
 
       allow update: if (isTop() && mayGrant(request.resource.data.role) && mayGrant(resource.data.role))
+        || isGsmEdit(resource.data.role, request.resource.data.role)
         || (branchManagerMayWrite(request.resource.data) && isLowRole(resource.data.role)
             && resource.data.branchId == myBranch())
         || isFounder(uid)
@@ -148,6 +156,7 @@ service cloud.firestore {
       allow read: if isStaff() && (seesAll() || resource.data.get('id', '') == profile().userId || branchOk(resource.data.get('branchId', '')));
       allow create: if (isTop() && mayGrant(request.resource.data.role)) || branchManagerMayWrite(request.resource.data);
       allow update: if (isTop() && mayGrant(request.resource.data.role) && mayGrant(resource.data.role))
+        || isGsmEdit(resource.data.role, request.resource.data.role)
         || branchManagerMayWrite(request.resource.data);
       allow delete: if isTop() && mayGrant(resource.data.role);
     }

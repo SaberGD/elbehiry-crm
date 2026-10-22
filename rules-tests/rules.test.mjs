@@ -218,3 +218,18 @@ test("Zaki suggestions and reminder marks belong to one person: made pending, de
   await assertFails(setDoc(doc(db("agentA"), "reminderDone", "rs:v2:client"), { id: "rs:v2:client", branchId: "b1", agentId: userId("agentB"), doneAt: "x" }));
   await assertFails(updateDoc(doc(db("agentA"), "reminderDone", "rs:v1:client"), { doneAt: "y" }));
 });
+
+test("the general sales manager edits people below the owner in any branch, but not the owner, the developer or a peer; the branch manager only low roles in their branch", async () => {
+  await assertSucceeds(getDoc(doc(db("regional"), "authProfiles", uid("agentC"))));
+  await assertSucceeds(updateDoc(doc(db("regional"), "authProfiles", uid("agentC")), { name: "x" }));
+  await assertSucceeds(updateDoc(doc(db("regional"), "authProfiles", uid("bm1")), { name: "x" }));
+  await assertSucceeds(updateDoc(doc(db("regional"), "users", userId("agentC")), { name: "edited" }));
+  // never the owner, the developer, or another general sales manager; never promoting someone into those
+  await assertFails(updateDoc(doc(db("regional"), "authProfiles", uid("gm")), { name: "x" }));
+  await assertFails(updateDoc(doc(db("regional"), "authProfiles", uid("dev")), { name: "x" }));
+  await assertFails(updateDoc(doc(db("regional"), "authProfiles", uid("regionalList")), { name: "x" }));
+  await assertFails(updateDoc(doc(db("regional"), "authProfiles", uid("agentA")), { role: "general_manager" }));
+  await assertFails(updateDoc(doc(db("regional"), "users", userId("dev")), { name: "x" }));
+  // and a salesperson edits no one
+  await assertFails(updateDoc(doc(db("agentA"), "authProfiles", uid("agentB")), { name: "x" }));
+});

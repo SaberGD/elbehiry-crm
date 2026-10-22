@@ -114,6 +114,8 @@ function uid_from_token(string $idToken): ?string {
 function may_reset(string $callerRole, ?string $callerBranch, string $targetRole, ?string $targetBranch): bool {
     if ($callerRole === 'admin') return true;
     if ($callerRole === 'general_manager') return !in_array($targetRole, ['admin', 'general_manager'], true);
+    // The general sales manager: the sales managers and salespeople, never the owner, developer or a peer.
+    if ($callerRole === 'regional_manager') return in_array($targetRole, ['branch_manager', 'sales_agent', 'team_leader', 'supervisor'], true);
     if ($callerRole === 'branch_manager') {
         return in_array($targetRole, ['supervisor', 'team_leader', 'sales_agent'], true) && $callerBranch && $callerBranch === $targetBranch;
     }

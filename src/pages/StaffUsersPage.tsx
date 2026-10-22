@@ -10,6 +10,7 @@ import {
   canEditStaff,
   canManageOrganization,
   assignableRoles,
+  grantableOnEdit,
 } from "../lib/access";
 import {
   positionNames,
@@ -349,7 +350,7 @@ export const StaffUsersPage: React.FC = () => {
         <div>
           <span className="eyebrow">فريق العمل</span>
           <h1>الموظفون</h1>
-          <p>إضافة الموظفين وتحديد أدوارهم وفروعهم وأقسامهم ومسمياتهم الوظيفية.</p>
+          <p>{assignableRoles(effectiveUser).length ? "إضافة الموظفين وتحديد أدوارهم وفروعهم وأقسامهم ومسمياتهم الوظيفية." : "تعديل بيانات الموظفين وإعادة تعيين كلمات المرور وإيقاف الحسابات."}</p>
           {canManageStaff(effectiveUser) && (
             <p className="table-secondary">
               الباقة: مستخدم {uQuota.used} من {uQuota.max}
@@ -357,7 +358,7 @@ export const StaffUsersPage: React.FC = () => {
             </p>
           )}
         </div>
-        {canManageStaff(effectiveUser) && (
+        {assignableRoles(effectiveUser).length > 0 && (
           <button
             className="btn-primary"
             onClick={openAddEmployeeModal}
@@ -802,7 +803,7 @@ export const StaffUsersPage: React.FC = () => {
                       onChange={(e) => setRole(e.target.value as UserRole)}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-semibold"
                     >
-                      {[...new Set([...assignableRoles(effectiveUser), ...(editingUser ? [editingUser.role] : [])])].map((r) => (
+                      {[...new Set([...(editingUser ? grantableOnEdit(effectiveUser) : assignableRoles(effectiveUser)), ...(editingUser ? [editingUser.role] : [])])].map((r) => (
                         <option key={r} value={r}>
                           {positionNames[r]}
                         </option>

@@ -20,9 +20,8 @@ export function PermissionsPage() {
     useState<PermissionProfile>("branch");
   const [saved, setSaved] = useState(false);
   if (!isDirector(effectiveUser)) return null;
-  // The three current positions, plus an older one only while someone still holds it.
-  const inUse = new Set<PermissionProfile>(['director', 'general', 'branch', ...users.map(permissionProfile)]);
-  const profiles = (Object.keys(profileNames) as PermissionProfile[]).filter((p) => inUse.has(p));
+  // The four positions of the company, always. Older positions are not shown here.
+  const profiles: PermissionProfile[] = ["director", "general", "branch", "employee"];
   const toggle = (profile: PermissionProfile, permission: Permission) => {
     setSaved(false);
     setDraft((prev) => ({
@@ -66,8 +65,8 @@ export function PermissionsPage() {
           <div>
             <h2>صلاحيات كل منصب</h2>
             <p>
-              صاحب البيزنس ومدير المبيعات العام ومدير مبيعات الفرع. أي منصب قديم
-              بيظهر هنا بس لو لسه فيه موظف عليه.
+              صاحب البيزنس ومدير المبيعات العام ومدير مبيعات الفرع والسيلز.
+              مدير المبيعات العام بيدير الموظفين تحت صاحب البيزنس دايمًا (تعديل بياناتهم وإعادة تعيين كلمات المرور)، وده مش بيتقفل من هنا.
             </p>
           </div>
         </div>
@@ -118,6 +117,8 @@ export function PermissionsPage() {
                         type="checkbox"
                         aria-label={`${profileNames[profile]}: ${label}`}
                         checked={draft[profile].includes(key)}
+                        disabled={profile === "general" && (key === "staff.manage" || key === "staff.view")}
+                        title={profile === "general" && key === "staff.manage" ? "ثابتة لمدير المبيعات العام" : undefined}
                         onChange={() => toggle(profile, key)}
                       />
                     </td>

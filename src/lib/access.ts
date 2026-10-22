@@ -36,7 +36,8 @@ export const worksOwnCustomers = (u: User) => isSales(u) || u.role === "branch_m
 export const canCreateCustomer = (u: User) => has(u, "customers.create");
 export const canManageOrganization = (u: User) => has(u, "organization.manage");
 export const canManageCatalog = (u: User) => has(u, "catalog.manage");
-export const canManageStaff = (u: User) => has(u, "staff.manage");
+// The general sales manager always runs the people side (edit anyone below the owner, reset passwords), whatever the matrix says.
+export const canManageStaff = (u: User) => has(u, "staff.manage") || u.role === "regional_manager";
 export const canManageTeams = (u: User) => has(u, "teams.manage");
 export const canAssignCustomers = (u: User) => has(u, "customers.assign");
 export const canSeeBranch = (u: User, id: string, branches: Branch[]) => {
@@ -171,24 +172,35 @@ export const canCompleteFollowUp = (u: User, f: FollowUp) =>
   has(u, "followups.complete") &&
   f.assignedAgentId === u.id &&
   !["completed", "cancelled"].includes(f.status);
+/** Who a person may ADD: the developer everyone, the owner the sales side, a branch manager their own salespeople. */
 export const assignableRoles = (u: User): UserRole[] =>
   !canManageStaff(u)
     ? []
     : u.role === "admin"
-      ? (["general_manager", "regional_manager", "branch_manager", "admin"] as UserRole[]) // the developer creates the owner first, then managers, and other developers
+      ? (["general_manager", "regional_manager", "branch_manager", "sales_agent", "admin"] as UserRole[])
       : isDirector(u)
-        ? ["regional_manager", "branch_manager"] // the owner creates the general sales manager and the branch sales managers
+        ? ["regional_manager", "branch_manager", "sales_agent"]
         : u.role === "regional_manager"
-          ? [] // the owner adds the sales managers; the general sales manager works with them
-          : ["sales_agent"]; // later: a branch manager's own salespeople
-/** Older roles that still exist on saved accounts; they can be edited but no longer added. */
-const legacyRoles: UserRole[] = ["supervisor", "sales_agent", "team_leader"];
+          ? [] // the owner adds the sales managers; the general sales manager edits and supports them
+          : ["sales_agent"]; // a branch manager's own salespeople
+/** Roles whose accounts a person may change (data, password, on/off). Older roles stay editable until they are gone. */
+export const editableRoles = (u: User): UserRole[] => {
+  if (!canManageStaff(u)) return [];
+  const old: UserRole[] = ["supervisor", "team_leader"];
+  if (u.role === "admin") return ["general_manager", "regional_manager", "branch_manager", "sales_agent", "admin", ...old];
+  if (isDirector(u)) return ["regional_manager", "branch_manager", "sales_agent", ...old];
+  if (u.role === "regional_manager") return ["branch_manager", "sales_agent", ...old];
+  return ["sales_agent", ...old];
+};
+/** The roles an existing account may be switched to by this person. */
+export const grantableOnEdit = (u: User): UserRole[] =>
+  u.role === "regional_manager" ? ["branch_manager", "sales_agent"] : assignableRoles(u);
 export const canEditStaff = (actor: User, target: User, branches: Branch[]) =>
   canManageStaff(actor) &&
   actor.id !== target.id &&
-  (assignableRoles(actor).includes(target.role) ||
-    (legacyRoles.includes(target.role) && !["sales_agent", "team_leader"].includes(actor.role))) &&
+  editableRoles(actor).includes(target.role) &&
   (isGlobalManager(actor) ||
+    actor.role === "regional_manager" ||
     (!!target.branchId && canSeeBranch(actor, target.branchId, branches)));
 export function canAccessPage(u: User, page: string) {
   if (["dashboard", "analytics_dashboard", "settings"].includes(page))

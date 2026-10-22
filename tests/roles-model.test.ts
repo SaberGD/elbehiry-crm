@@ -17,10 +17,10 @@ test("role names follow the business: owner, general sales manager, branch sales
   assert.equal(positionNames.branch_manager, "مدير مبيعات الفرع");
 });
 
-test("who creates whom: developer anyone, owner the two sales managers, the general sales manager nobody", () => {
+test("who creates whom: developer anyone, owner the sales side, the general sales manager nobody, a branch manager their salespeople", () => {
   const withManage = (x: User) => ({ ...x, permissions: ["staff.manage", "staff.view", "branches.view"] }) as User;
-  assert.deepEqual(assignableRoles(u("dev", "admin")), ["general_manager", "regional_manager", "branch_manager", "admin"]);
-  assert.deepEqual(assignableRoles(owner), ["regional_manager", "branch_manager"]);
+  assert.deepEqual(assignableRoles(u("dev", "admin")), ["general_manager", "regional_manager", "branch_manager", "sales_agent", "admin"]);
+  assert.deepEqual(assignableRoles(owner), ["regional_manager", "branch_manager", "sales_agent"]);
   assert.deepEqual(assignableRoles(withManage(gsm)), []); // the owner adds managers
 });
 
@@ -35,4 +35,29 @@ test("a customer goes to the branch sales manager by default; the general sales 
   // an old branch list on the general sales manager never narrows them: every branch counts, new ones too
   const withOldList = u("g2", "regional_manager", { supervisedBranchIds: ["b1"] });
   assert.deepEqual(branchAgents([withOldList, bm2], "b2").map((x) => x.id).sort(), ["bm2", "g2"]);
+});
+
+import { canEditStaff, editableRoles, grantableOnEdit } from "../src/lib/access";
+import { sanitizeMatrix, profileNames } from "../src/lib/permissions";
+
+test("the general sales manager edits and resets everyone below the owner, in any branch, but never the owner, the developer or a peer", () => {
+  const branches = [{ id: "b1" }, { id: "b2" }] as never;
+  const dev = u("dev", "admin");
+  const agent = u("a1", "sales_agent", { branchId: "b2" });
+  assert.ok(canEditStaff(gsm, bm1, branches) && canEditStaff(gsm, agent, branches));
+  assert.ok(!canEditStaff(gsm, owner, branches) && !canEditStaff(gsm, dev, branches) && !canEditStaff(gsm, u("g2", "regional_manager"), branches));
+  assert.ok(!canEditStaff(gsm, gsm, branches), "not themselves");
+  assert.deepEqual(grantableOnEdit(gsm), ["branch_manager", "sales_agent"]);
+  // the developer anyone but themselves; the owner the sales side; a branch manager their own branch's salespeople
+  assert.ok(canEditStaff(dev, owner, branches) && canEditStaff(dev, u("dev2", "admin"), branches) && !canEditStaff(dev, dev, branches));
+  assert.ok(canEditStaff(owner, gsm, branches) && !canEditStaff(owner, dev, branches));
+  const bmWithStaff = { ...bm1, permissions: ["staff.manage", "staff.view", "branches.view"] } as User;
+  assert.ok(canEditStaff(bmWithStaff, u("a2", "sales_agent", { branchId: "b1" }), branches) && !canEditStaff(bmWithStaff, agent, branches));
+  assert.deepEqual(editableRoles(u("x", "sales_agent")), []);
+});
+
+test("the permission matrix is for four positions, and the general sales manager's people control cannot be switched off", () => {
+  assert.deepEqual(profileNames.employee, "سيلز");
+  const stripped = sanitizeMatrix({ general: ["customers.view"] });
+  assert.ok(stripped.general.includes("staff.manage") && stripped.general.includes("staff.view"));
 });

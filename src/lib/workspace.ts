@@ -593,7 +593,7 @@ export function createWorkspace(raw: CRMContextType) {
           (!("specialty" in data) && !("supervisedBranchIds" in data)),
       );
       validateStaff({ ...target, ...data }, data);
-      require(!data.role || access.assignableRoles(actor).includes(data.role));
+      require(!data.role || data.role === target!.role || access.grantableOnEdit(actor).includes(data.role));
       require(
         !("branchId" in data) ||
           (!!data.branchId && branchIds.has(data.branchId)),

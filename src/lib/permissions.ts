@@ -11,6 +11,7 @@ export const positionRoles: UserRole[] = [
   "general_manager",
   "regional_manager",
   "branch_manager",
+  "sales_agent",
 ];
 export const positionNames: Record<UserRole, string> = {
   admin: "مطوّر",
@@ -18,8 +19,8 @@ export const positionNames: Record<UserRole, string> = {
   regional_manager: "مدير المبيعات العام",
   supervisor: "مشرف مختص",
   branch_manager: "مدير مبيعات الفرع",
-  sales_agent: "سيلز بالفرع",
-  team_leader: "سيلز بالفرع",
+  sales_agent: "سيلز",
+  team_leader: "سيلز",
 };
 /** Roles that talk to customers and carry their own customers and ratings. */
 export const salesCapableRoles: UserRole[] = ["sales_agent", "team_leader", "branch_manager", "regional_manager"];
@@ -72,7 +73,7 @@ export const profileNames: Record<PermissionProfile, string> = {
   specialist_accounts: "مشرف مختص · حسابات",
   specialist_operations: "مشرف مختص · تشغيل الفروع",
   branch: "مدير مبيعات الفرع",
-  employee: "سيلز بالفرع",
+  employee: "سيلز",
 };
 const oversight: Permission[] = [
   "customers.view",
@@ -121,6 +122,7 @@ export const defaultPermissionMatrix: PermissionMatrix = {
     "bookings.create",
     "invoices.manage",
     "customers.assign",
+    "staff.manage",
   ],
   specialist_sales: [
     "customers.view",
@@ -191,6 +193,8 @@ export function sanitizeMatrix(
         ]
       : [...defaultPermissionMatrix[profile]];
   }
+  // The general sales manager always manages people below the owner: it cannot be switched off.
+  result.general = [...new Set([...result.general, "staff.view", "staff.manage"])] as Permission[];
   return result;
 }
 export const withPermissions = (

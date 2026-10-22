@@ -108,7 +108,7 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
   return { raw, calls, view: createWorkspace(raw) };
 }
 test("the available roles are developer, owner, general sales manager and branch sales manager, and legacy ones keep their saved IDs", () => {
-  assert.deepEqual(positionRoles, ["admin", "general_manager", "regional_manager", "branch_manager"]);
+  assert.deepEqual(positionRoles, ["admin", "general_manager", "regional_manager", "branch_manager", "sales_agent"]);
   assert.equal(normalizeUser(makeUser("general_manager")).role, "general_manager");
   assert.equal(
     normalizeUser(makeUser("team_leader", { jobPositionTitle: "قائد تنفيذ" }))
