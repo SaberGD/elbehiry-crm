@@ -215,6 +215,12 @@ await as("gm", async (page, go) => {
     indexed = { marker: (await getDoc(doc(f, "settings", "searchIndex"))).data()?.version, keys: (await getDoc(doc(f, "leads", "M07"))).data()?.searchKeys?.length };
   });
   check(indexed.marker === 1 && indexed.keys > 10, `earlier customers are indexed for search once (${JSON.stringify(indexed)})`);
+  let visitIndexed;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    visitIndexed = { marker: (await getDoc(doc(f, "settings", "searchIndex"))).data()?.visits, keys: (await getDoc(doc(f, "visits", "V100"))).data()?.searchKeys?.length };
+  });
+  check(visitIndexed.marker === 1 && visitIndexed.keys > 10, `earlier visits are indexed for search too (${JSON.stringify(visitIndexed)})`);
 });
 
 
@@ -264,6 +270,37 @@ await as("bm1", async (page, go, landing) => {
   await page.waitForTimeout(2000);
   check((await page.locator("body").innerText()).includes("عميل كثير 21"), "a customer found by search opens");
   await page.keyboard.press("Escape");
+  // Visits are read a page at a time too, with the same kind of search.
+  await go("الزيارات");
+  await page.waitForTimeout(1500);
+  const visitRows = () => page.locator(".data-table tbody tr").count();
+  check((await visitRows()) === 20, `the visits list loads 20 first (${await visitRows()})`);
+  check((await page.locator("main").innerText()).includes("من 141"), "the visits total comes from a count");
+  await page.getByRole("button", { name: "عرض المزيد" }).click();
+  await page.waitForTimeout(1500);
+  check((await visitRows()) === 40, `more visits load on request (${await visitRows()})`);
+  const visitSearch = page.locator("main input[type=search]").first();
+  await visitSearch.fill("عام 100");
+  await page.waitForTimeout(1500);
+  check((await visitRows()) === 1, `a visit is found by the visitor's name (${await visitRows()})`);
+  await visitSearch.fill("5555");
+  await page.waitForTimeout(1500);
+  check((await visitRows()) === 1 && (await page.locator("main").innerText()).includes("زائر جديد"), "a visit is found by the end of the phone number");
+  await visitSearch.fill("");
+  // Recording a visit for a customer found by the database search.
+  await page.getByRole("button", { name: "تسجيل زيارة" }).click();
+  await page.locator('input[placeholder="اكتب اسم العميل أو رقمه"]').fill("كثير 05");
+  await page.waitForTimeout(1500);
+  await page.locator('[role=option]').first().click();
+  await page.locator("button.outcome-tile.is-inquiry").click();
+  await page.getByRole("button", { name: "حفظ الزيارة" }).click();
+  await page.waitForTimeout(2500);
+  let savedVisit;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const qs = await getDocs(query(collection(ctx.firestore(), "visits"), where("linkedLeadId", "==", "M05")));
+    savedVisit = qs.docs.map((d) => d.data().searchKeys?.length);
+  });
+  check(savedVisit.length === 1 && savedVisit[0] > 5, `a visit for a found customer is saved on their file with its search keys (${JSON.stringify(savedVisit)})`);
   // The dashboard counts customers without reading them.
   await go("الرئيسية");
   await page.waitForTimeout(2000);

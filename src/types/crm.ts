@@ -276,6 +276,8 @@ export interface Visit {
   requiresFollowUp: boolean;
   followUpAgentId?: string;
   followUpDate?: string;
+  /** What the visit can be found by in the database search (see lib/leadSearch.ts). Written with every save. */
+  searchKeys?: string[];
   followUpReason?: string;
   /** "auto" when the system chose the follow-up (after a purchase), not the salesperson. */
   followUpOrigin?: "auto";

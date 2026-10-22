@@ -6,12 +6,16 @@ import { matchesPerson, norm } from "../../lib/searchText";
 /** Search a registered customer by name or number first; adding a new one is the fallback when nobody matches. */
 export function CustomerSearch({
   leads,
+  lookup,
   value,
   onChange,
   onCreate,
   label = "العميل",
 }: {
-  leads: Lead[];
+  /** The customers to search among, when they are all loaded. */
+  leads?: Lead[];
+  /** Or the database's search: asked once typing pauses. */
+  lookup?: (typed: string) => Promise<Lead[]>;
   value: Lead | null;
   onChange: (lead: Lead | null) => void;
   /** Called with whatever was typed when the person wants a new customer instead. */
@@ -20,7 +24,22 @@ export function CustomerSearch({
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [found, setFound] = useState<Lead[]>([]);
   const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!lookup || !q.trim()) return setFound([]);
+    let current = true;
+    const timer = setTimeout(() => {
+      lookup(q.trim())
+        .then((rows) => current && setFound(rows))
+        .catch(() => current && setFound([]));
+    }, 250);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
   useEffect(() => {
     const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
     document.addEventListener("mousedown", close);
@@ -44,7 +63,7 @@ export function CustomerSearch({
     );
 
   const t = norm(q);
-  const matches = t ? leads.filter((l) => matchesPerson(l, q)).slice(0, 8) : [];
+  const matches = !t ? [] : lookup ? found : (leads ?? []).filter((l) => matchesPerson(l, q)).slice(0, 8);
   return (
     <div className="field broker-search" ref={box}>
       <span>{label}: ابدأ بالبحث، يمكن يكون مسجّل قبل كده</span>

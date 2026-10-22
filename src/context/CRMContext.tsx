@@ -8,7 +8,7 @@ import { newReviewToken } from "../lib/reviews";
 import { REFERRAL_FOLLOWUP_DAYS, isReferralPhone, phoneKey } from "../lib/referrals";
 import { scopeAnd, scopesFor, scopeWhere, seesAll, unionScopes } from "../lib/scopes";
 import { REMINDER_WINDOW_DAYS } from "../lib/reminders";
-import { keysAreCurrent, leadSearchKeys, SEARCH_INDEX_VERSION } from "../lib/leadSearch";
+import { keysAreCurrent, leadSearchKeys, SEARCH_INDEX_VERSION, visitParty, visitSearchKeys } from "../lib/leadSearch";
 import { defaultLicense, type License } from "../lib/license";
 import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
@@ -164,7 +164,11 @@ export interface CRMContextType {
   /** True once every customer carries the keys the database search uses. */
   searchIndexReady: boolean;
   /** Developer / top management: brings every customer's search keys up to date (reads them all once). */
-  reindexSearch: () => Promise<{ customers: number; fixed: number }>;
+  reindexSearch: (only?: { customers?: boolean; visits?: boolean }) => Promise<{ customers: number; fixed: number; visits: number; visitsFixed: number }>;
+  /** Adds visits that were read elsewhere (a page of results) so they behave like any other. */
+  injectVisits: (rows: Visit[]) => void;
+  /** True once every visit carries the keys the database search uses. */
+  visitSearchReady: boolean;
   visits: Visit[];
   followUps: FollowUp[];
   bookings: Booking[];
@@ -551,43 +555,56 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   // every save; the ones saved earlier are indexed once, by top management, and the screens use the plain list
   // until that is done.
   // null until the marker has been read: indexing must not start on a guess.
-  const [indexMarker, setIndexMarker] = useState<number | null>(null);
+  const [indexMarker, setIndexMarker] = useState<{ customers: number; visits: number } | null>(null);
   useEffect(
     () =>
       onSnapshot(
         doc(db, "settings", "searchIndex"),
         (snap) => {
           if (snap.metadata.fromCache && !snap.exists()) return; // wait for the server before concluding it is missing
-          setIndexMarker(snap.exists() ? Number(snap.data().version) || 0 : 0);
+          const d = snap.exists() ? snap.data() : {};
+          setIndexMarker({ customers: Number(d.version) || 0, visits: Number(d.visits) || 0 });
         },
-        () => setIndexMarker(0),
+        () => setIndexMarker({ customers: 0, visits: 0 }),
       ),
     [],
   );
-  const searchIndexVersion = indexMarker ?? 0;
+  const searchIndexVersion = indexMarker?.customers ?? 0;
+  const visitIndexVersion = indexMarker?.visits ?? 0;
   const indexing = useRef(false);
-  const reindexSearch = useCallback(async () => {
-    const all = await fetchScoped<Lead>("leads", "all");
-    const stale = all.filter((l) => !keysAreCurrent(l as Lead & { searchKeys?: string[] }));
-    for (let i = 0; i < stale.length; i += 400) {
-      const batch = writeBatch(db);
-      for (const l of stale.slice(i, i + 400)) batch.set(doc(db, "leads", l.id), { searchKeys: leadSearchKeys(l) }, { merge: true });
-      await batch.commit();
-    }
-    await setDoc(doc(db, "settings", "searchIndex"), { version: SEARCH_INDEX_VERSION, customers: all.length, at: new Date().toISOString() });
-    return { customers: all.length, fixed: stale.length };
+  const reindexSearch = useCallback(async (only: { customers?: boolean; visits?: boolean } = { customers: true, visits: true }) => {
+    const fix = async (name: string, rows: { id: string }[], keysOf: (r: never) => string[], isCurrent: (r: never) => boolean) => {
+      const stale = rows.filter((r) => !isCurrent(r as never));
+      for (let i = 0; i < stale.length; i += 400) {
+        const batch = writeBatch(db);
+        for (const r of stale.slice(i, i + 400)) batch.set(doc(db, name, r.id), { searchKeys: keysOf(r as never) }, { merge: true });
+        await batch.commit();
+      }
+      return stale.length;
+    };
+    // Only what is not indexed yet is read: a part already done is left alone.
+    const all = only.customers ? await fetchScoped<Lead>("leads", "all") : [];
+    const fixed = await fix("leads", all, leadSearchKeys, (l) => keysAreCurrent(l as Lead & { searchKeys?: string[] }));
+    const allVisits = only.visits ? await fetchScoped<Visit>("visits", "all") : [];
+    const visitsFixed = await fix("visits", allVisits, visitSearchKeys, (v: Visit) => keysAreCurrent({ ...visitParty(v), searchKeys: v.searchKeys }));
+    await setDoc(doc(db, "settings", "searchIndex"), { version: SEARCH_INDEX_VERSION, visits: SEARCH_INDEX_VERSION, customers: all.length, visitRows: allVisits.length, at: new Date().toISOString() });
+    return { customers: all.length, fixed, visits: allVisits.length, visitsFixed };
   }, []);
   useEffect(() => {
-    if (!topWriter || indexMarker === null || searchIndexVersion >= SEARCH_INDEX_VERSION || indexing.current) return;
+    if (!topWriter || indexMarker === null || (searchIndexVersion >= SEARCH_INDEX_VERSION && visitIndexVersion >= SEARCH_INDEX_VERSION) || indexing.current) return;
     indexing.current = true;
-    reindexSearch().catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
-  }, [topWriter, indexMarker, searchIndexVersion, reindexSearch]);
+    reindexSearch({ customers: searchIndexVersion < SEARCH_INDEX_VERSION, visits: visitIndexVersion < SEARCH_INDEX_VERSION }).catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
+  }, [topWriter, indexMarker, searchIndexVersion, visitIndexVersion, reindexSearch]);
   useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: notBoughtScope, lazy: true });
   useFirestoreCollection("reminderDone", reminderDone, setReminderDone, { scope: scope.reminderDone });
   useFirestoreCollection("aiSuggestions", aiSuggestions, setAiSuggestions, { scope: scope.aiSuggestions });
   useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests, { scope: reviewScope, lazy: true });
   useFirestoreCollection("reviewNotes", reviewNotes, setReviewNotes, { scope: scope.reviewNotes });
-  useFirestoreCollection("visits", visits, setVisits, { scope: visitScope, lazy: true });
+  const { inject: injectVisits } = useFirestoreCollection("visits", visits, setVisits, {
+    scope: visitScope,
+    lazy: true,
+    beforeWrite: (v) => ({ ...v, searchKeys: visitSearchKeys(v) }),
+  });
   useFirestoreCollection("followUps", followUps, setFollowUps, { scope: followUpScope });
   useFirestoreCollection("bookings", bookings, setBookings, { scope: bookingScope, lazy: true });
   useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents, {
@@ -2105,6 +2122,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         watchLead,
         searchIndexReady: searchIndexVersion >= SEARCH_INDEX_VERSION,
         reindexSearch,
+        injectVisits,
+        visitSearchReady: visitIndexVersion >= SEARCH_INDEX_VERSION,
         users,
         companies,
         governorates,

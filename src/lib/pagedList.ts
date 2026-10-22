@@ -1,39 +1,32 @@
 import { collection, documentId, getCountFromServer, getDocs, limit, orderBy, query, startAfter, where, type Query } from "firebase/firestore";
 import { countRead, db } from "./firebase";
-import { hasMoreRows, takeNext, type Key, type StreamState } from "./pagedMerge";
-import type { ScopeFilter } from "./useFirestoreSync";
-
-/** A query that already holds an array-contains filter cannot take a second one, so a search on it is checked on the rows. */
-const hasArrayFilter = (filters: ScopeFilter[]) => filters.some(([, op]) => op === "array-contains" || op === "array-contains-any");
+import { hasMoreRows, rowMatches, takeNext, type Key, type PlannedStream, type StreamState } from "./pagedMerge";
 
 export interface PagedOptions<T> {
   collection: string;
-  /** What the person may read, already narrowed by their filters (see `restrictStreams`). */
-  streams: ScopeFilter[][];
+  /** What to ask of the database (see `planStreams`). */
+  streams: PlannedStream[];
   /** Field the list is ordered by, newest first. */
   orderField: string;
   pageSize: number;
-  /** A key from `searchKeys`; the database returns only rows that carry it. */
+  /** A key from `searchKeys`; the queries that can take it return only rows that carry it. */
   searchKey?: string;
-  /** Checks on rows the database could not check (words typed besides the key). */
-  keep?: (row: T) => boolean;
-  /** The full check for queries that could not use the key. */
-  keepWithoutKey?: (row: T) => boolean;
+  /** Any further check on a row read (the rest of a search, a condition the database cannot check). */
+  check?: (row: T, stream: PlannedStream) => boolean;
 }
 
 interface Stream<T> extends StreamState<T> {
-  filters: ScopeFilter[];
-  useKey: boolean;
+  planned: PlannedStream;
 }
 
 const MAX_ROUNDS = 12;
 const EARLY_ROUNDS = 1;
 
-function build(name: string, s: { filters: ScopeFilter[]; useKey: boolean }, o: { searchKey?: string; orderField: string }, cursor: Key | null, n: number): Query {
+function build(name: string, s: PlannedStream, o: { searchKey?: string; orderField: string }, cursor: Key | null, n: number): Query {
   return query(
     collection(db, name),
     ...s.filters.map(([f, op, v]) => where(f, op, v)),
-    ...(s.useKey && o.searchKey ? [where("searchKeys", "array-contains", o.searchKey)] : []),
+    ...(s.db && o.searchKey ? [where("searchKeys", "array-contains", o.searchKey)] : []),
     orderBy(o.orderField, "desc"),
     orderBy(documentId(), "desc"),
     ...(cursor ? [startAfter(cursor.v, cursor.id)] : []),
@@ -46,19 +39,19 @@ function build(name: string, s: { filters: ScopeFilter[]; useKey: boolean }, o: 
  * delegated to them, say) are merged so the list is in the same order as one query would give.
  */
 export function createPagedList<T extends { id: string }>(o: PagedOptions<T>) {
-  const streams: Stream<T>[] = o.streams.map((filters) => ({ filters, useKey: !(o.searchKey && hasArrayFilter(filters)), buffer: [], cursor: null, done: false }));
+  const streams: Stream<T>[] = o.streams.map((planned) => ({ planned, buffer: [], cursor: null, done: false }));
   const keyOf = (r: T): Key => ({ v: String((r as Record<string, unknown>)[o.orderField] ?? ""), id: r.id });
   const seen = new Set<string>();
-  const filtering = !!o.keep || (!!o.searchKey && streams.some((s) => !s.useKey));
+  const filtering = !!o.check || streams.some((s) => s.planned.client.length > 0);
 
   async function fill(s: Stream<T>) {
     const n = filtering ? o.pageSize * 2 : o.pageSize;
-    const snap = await getDocs(build(o.collection, s, o, s.cursor, n));
+    const snap = await getDocs(build(o.collection, s.planned, o, s.cursor, n));
     countRead(snap.size, `${o.collection}/page`);
     const rows = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
     if (rows.length) s.cursor = keyOf(rows[rows.length - 1]);
     if (snap.docs.length < n) s.done = true;
-    s.buffer.push(...rows.filter((r) => (s.useKey ? (o.keep ? o.keep(r) : true) : (o.keepWithoutKey ?? o.keep ?? (() => true))(r))));
+    s.buffer.push(...rows.filter((r) => rowMatches(r, s.planned.client) && (o.check ? o.check(r, s.planned) : true)));
   }
 
   return {
@@ -77,10 +70,10 @@ export function createPagedList<T extends { id: string }>(o: PagedOptions<T>) {
     },
     /** How many rows match, or null when that cannot be told without reading them. */
     async count(): Promise<number | null> {
-      if (o.keep || streams.some((s) => !s.useKey)) return null;
+      if (o.check || streams.some((s) => s.planned.client.length > 0 || (o.searchKey && !s.planned.db))) return null;
       const counts = await Promise.all(
         streams.map(async (s) => {
-          const q = query(collection(db, o.collection), ...s.filters.map(([f, op, v]) => where(f, op, v)), ...(o.searchKey ? [where("searchKeys", "array-contains", o.searchKey)] : []));
+          const q = query(collection(db, o.collection), ...s.planned.filters.map(([f, op, v]) => where(f, op, v)), ...(o.searchKey ? [where("searchKeys", "array-contains", o.searchKey)] : []));
           const n = (await getCountFromServer(q)).data().count;
           countRead(Math.max(1, Math.ceil(n / 1000)), `${o.collection}/count`);
           return n;

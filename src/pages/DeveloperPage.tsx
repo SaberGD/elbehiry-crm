@@ -212,7 +212,7 @@ export function DeveloperPage() {
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-header">
           <div>
-            <h2>فهرسة البحث عن العملاء</h2>
+            <h2>فهرسة البحث (العملاء والزيارات)</h2>
             <p>
               البحث بيدور في قاعدة البيانات بمفاتيح محفوظة مع كل عميل. الحالة: <strong>{searchIndexReady ? "جاهزة" : "لسه ما اتعملتش"}</strong>.
               اضغط الزرار بعد أي رفع لنسخة قديمة من الموقع كانت بتعدّل عملاء (النسخة القديمة بتمسح المفاتيح من اللي بتعدّله)، أو لو بحث ما لقاش عميل موجود.
@@ -226,7 +226,7 @@ export function DeveloperPage() {
               setIndexNote("جاري الفهرسة…");
               try {
                 const r = await reindexSearch();
-                setIndexNote(`تمت الفهرسة: ${r.customers} عميل، اتصلّح ${r.fixed}.`);
+                setIndexNote(`تمت الفهرسة: ${r.customers} عميل (اتصلّح ${r.fixed}) و${r.visits} زيارة (اتصلّح ${r.visitsFixed}).`);
               } catch {
                 setIndexNote("تعذّرت الفهرسة. جرّب تاني.");
               }

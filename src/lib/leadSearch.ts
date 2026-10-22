@@ -1,4 +1,4 @@
-import type { Lead } from "../types/crm";
+import type { Lead, Visit } from "../types/crm";
 
 /**
  * Customer search that runs in the database instead of the browser.
@@ -140,3 +140,10 @@ export function matchesKey(lead: Pick<Lead, "name" | "phone" | "whatsappPhone" |
   const phones = [phoneDigits(lead.phone), phoneDigits(lead.whatsappPhone || "")];
   return kind === "p:" ? phones.some((p) => p.startsWith(value)) : phones.some((p) => p.slice(-10).endsWith(value));
 }
+
+/** What a visit can be found by, in the shape the customer search works on: the visitor and the broker, and the phones. */
+export function visitParty(v: Pick<Visit, "visitorName" | "brokerName" | "phone" | "whatsappPhone">): Pick<Lead, "name" | "phone" | "whatsappPhone" | "courseOfInterest"> {
+  return { name: `${v.visitorName || ""} ${v.brokerName || ""}`.trim(), phone: v.phone || "", whatsappPhone: v.whatsappPhone };
+}
+
+export const visitSearchKeys = (v: Pick<Visit, "visitorName" | "brokerName" | "phone" | "whatsappPhone">) => leadSearchKeys(visitParty(v));

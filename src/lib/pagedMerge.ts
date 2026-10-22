@@ -85,3 +85,76 @@ export function takeNext<T>(
 
 /** True when some stream still has rows to show or to read. */
 export const hasMoreRows = <T,>(streams: StreamState<T>[]) => streams.some((s) => s.buffer.length > 0 || !s.done);
+
+export const RANGE_OPS = ["<", "<=", ">", ">="];
+
+/** A value inside a row, by dotted path ("response.rating"). */
+export function valueAt(row: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((v, k) => (v && typeof v === "object" ? (v as Record<string, unknown>)[k] : undefined), row);
+}
+
+/** Whether a row satisfies filters the way the database would (for the ones the database is not asked). */
+export function rowMatches(row: unknown, filters: ScopeFilter[]): boolean {
+  return filters.every(([field, op, want]) => {
+    const v = valueAt(row, field);
+    switch (op) {
+      case "==":
+        return v === want;
+      case "in":
+        return Array.isArray(want) && want.includes(v);
+      case "array-contains":
+        return Array.isArray(v) && v.includes(want);
+      case ">=":
+        return v !== undefined && v !== null && (v as never) >= (want as never);
+      case ">":
+        return v !== undefined && v !== null && (v as never) > (want as never);
+      case "<=":
+        return v !== undefined && v !== null && (v as never) <= (want as never);
+      case "<":
+        return v !== undefined && v !== null && (v as never) < (want as never);
+      default:
+        return false;
+    }
+  });
+}
+
+export interface FilterPlan {
+  /** Asked of the database. */
+  db: ScopeFilter[];
+  /** Checked on the rows that come back. */
+  client: ScopeFilter[];
+}
+
+/**
+ * Which filters the database is asked and which are checked on the rows. Equality filters alone are merged from
+ * single-field indexes, so they all go to the database. A text search, or a date/number range, would need an index
+ * for every combination with other filters, so then only the filters on the fields the person's scope already pins
+ * (branch, employee) go with a range, and none go with a search.
+ */
+export function planFilters(filters: ScopeFilter[], opts: { searching: boolean; scopeFields: string[] }): FilterPlan {
+  if (opts.searching) return { db: [], client: filters };
+  const range = filters.some(([, op]) => RANGE_OPS.includes(op));
+  if (!range) return { db: filters, client: [] };
+  const db = filters.filter(([field, op]) => RANGE_OPS.includes(op) || opts.scopeFields.includes(field));
+  return { db, client: filters.filter((f) => !db.includes(f)) };
+}
+
+export interface PlannedStream {
+  filters: ScopeFilter[];
+  /** False for a query that already holds an array filter: it can take no more, so the rest is checked on the rows. */
+  db: boolean;
+  /** Filters checked on this stream's rows. */
+  client: ScopeFilter[];
+}
+
+const hasArray = (filters: ScopeFilter[]) => filters.some(([, op]) => op === "array-contains" || op === "array-contains-any");
+
+/** The queries to run for a scope and a plan; queries the filters rule out are left out. */
+export function planStreams(scope: Scope, plan: FilterPlan): PlannedStream[] {
+  if (scope === "none") return [];
+  const base: ScopeFilter[][] = scope === "all" ? [[]] : scope;
+  return base.flatMap((stream): PlannedStream[] => {
+    if (hasArray(stream)) return [{ filters: stream, db: false, client: [...plan.db, ...plan.client] }];
+    return restrictStreams([stream], plan.db).map((filters) => ({ filters, db: true, client: plan.client }));
+  });
+}

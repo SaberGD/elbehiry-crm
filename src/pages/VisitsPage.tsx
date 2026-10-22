@@ -1,12 +1,18 @@
 import { useAllData } from "../lib/useAllData";
 import { useAllLeads } from "../lib/useAllLeads";
+import { useDebounced } from "../lib/useDebounced";
+import { usePagedList } from "../lib/usePagedList";
+import { findLeadsByPhone, searchLeads } from "../lib/leadQueries";
+import { visitParty } from "../lib/leadSearch";
+import { profileOf, scopesFor } from "../lib/scopes";
+import type { ScopeFilter } from "../lib/useFirestoreSync";
 import { PageGuide } from "../components/common/PageGuide";
 import { BrokerSearch } from "../components/common/BrokerSearch";
 import { CustomerSearch } from "../components/common/CustomerSearch";
 import { PostVisitReview, type VisitReviewTarget } from "../components/common/PostVisitReview";
 import { CustomerRatingModal } from "../components/common/CustomerRatingModal";
 import { MessageCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ArrowUpLeft, CheckCircle2, ChevronDown, Handshake, MessageSquare, PlusCircle, ShoppingBag, UserRound, Users, CalendarClock, SlidersHorizontal } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
 import { branchAgents, canCreateCustomer, canSeeBranch, defaultAgent } from "../lib/access";
@@ -34,9 +40,12 @@ const typeChoices: { id: VisitorType; title: string; hint: string; Icon: typeof 
 ];
 
 export function VisitsPage({ onOpenLead }: Props) {
-  const { effectiveUser, visits, branches, users, leads, brokers, addVisit, addBroker, addBooking, addNotBoughtRecord, updateLead } = useCRM();
-  useAllLeads();
-  useAllData(["visits"]);
+  const { effectiveUser, visits, branches, users, leads, brokers, addVisit, addBroker, addBooking, addNotBoughtRecord, updateLead, injectLeads, injectVisits, searchIndexReady, visitSearchReady } = useCRM();
+  // Customers and visits are asked of the database (a page of visits, a handful of matching customers). Until their
+  // search keys are built, the screen works on the full lists as it used to.
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const serverLookup = searchIndexReady && !lookupFailed;
+  useAllLeads(!serverLookup);
   const [mode, setMode] = useState<"list" | "form">("list");
   const [notice, setNotice] = useState("");
   // Offered right after saving a visit of a customer: optional, one tap.
@@ -61,18 +70,60 @@ export function VisitsPage({ onOpenLead }: Props) {
     setFFrom("");
     setFTo("");
   };
-  const uniq = (l: string[]) => [...new Set(l.filter(Boolean))];
-  const rows = visits.filter((v) => {
-    const t = q.trim().toLowerCase();
-    return (
-      (!t || [v.visitorName, v.phone, v.reason, v.outcome, v.brokerName].some((x) => (x || "").toLowerCase().includes(t))) &&
-      (fType === "all" || (v.visitorType || "client") === fType) &&
-      (fBranch === "all" || v.branchId === fBranch) &&
-      (fAgent === "all" || v.receivedByAgentId === fAgent) &&
-      (fOutcome === "all" || v.outcome === fOutcome) &&
-      inDateRange(v.date, fFrom, fTo)
-    );
+  const typedQuery = useDebounced(q, 300);
+  const listFilters = useMemo<ScopeFilter[]>(
+    () => [
+      // A visit with no type written down is a customer's, so that filter is checked on the rows (see `keep` below).
+      ...(fType !== "all" && fType !== "client" ? [["visitorType", "==", fType] as ScopeFilter] : []),
+      ...(fBranch !== "all" ? [["branchId", "==", fBranch] as ScopeFilter] : []),
+      ...(fAgent !== "all" ? [["receivedByAgentId", "==", fAgent] as ScopeFilter] : []),
+      ...(fOutcome !== "all" ? [["outcome", "==", fOutcome] as ScopeFilter] : []),
+      ...(fFrom ? [["date", ">=", fFrom] as ScopeFilter] : []),
+      ...(fTo ? [["date", "<=", fTo] as ScopeFilter] : []),
+    ],
+    [fType, fBranch, fAgent, fOutcome, fFrom, fTo],
+  );
+  const visitScope = useMemo(
+    () => scopesFor(profileOf(effectiveUser)).visits,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effectiveUser.id, effectiveUser.role, effectiveUser.branchId, JSON.stringify(effectiveUser.supervisedBranchIds ?? [])],
+  );
+  const list = usePagedList<Visit>({
+    collection: "visits",
+    scope: visitScope,
+    filters: listFilters,
+    text: typedQuery,
+    orderField: "date",
+    pageSize: 20,
+    searchReady: visitSearchReady,
+    toParty: visitParty,
+    keep: fType === "client" ? (v) => (v.visitorType || "client") === "client" : undefined,
+    listKey: fType,
+    scopeFields: ["branchId", "receivedByAgentId"],
+    inject: injectVisits,
   });
+  const legacy = list.needsFullList;
+  useAllData(["visits"], legacy);
+  const [shown, setShown] = useState(20);
+  useEffect(() => setShown(20), [typedQuery, fType, fBranch, fAgent, fOutcome, fFrom, fTo]);
+  const legacyRows = useMemo(() => {
+    if (!legacy) return [];
+    const t = typedQuery.trim().toLowerCase();
+    return visits
+      .filter(
+        (v) =>
+          (!t || [v.visitorName, v.phone, v.reason, v.outcome, v.brokerName].some((x) => (x || "").toLowerCase().includes(t))) &&
+          (fType === "all" || (v.visitorType || "client") === fType) &&
+          (fBranch === "all" || v.branchId === fBranch) &&
+          (fAgent === "all" || v.receivedByAgentId === fAgent) &&
+          (fOutcome === "all" || v.outcome === fOutcome) &&
+          inDateRange(v.date, fFrom, fTo),
+      )
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [legacy, visits, typedQuery, fType, fBranch, fAgent, fOutcome, fFrom, fTo]);
+  const rows: Visit[] = legacy ? legacyRows.slice(0, shown) : list.rows;
+  const rowsTotal = legacy ? legacyRows.length : list.total;
+  const hasMoreRows = legacy ? legacyRows.length > shown : list.hasMore;
 
   // ---------- the form ----------
   const availableBranches = branches.filter((b) => b.active && canSeeBranch(effectiveUser, b.id, branches));
@@ -102,14 +153,34 @@ export function VisitsPage({ onOpenLead }: Props) {
   const hasBroker = type !== "client";
   const validAgent = agents.some((u) => u.id === agentId) ? agentId : defaultAgent(users, effectiveUser, branchId);
   const typedPhone = phone.replace(/\D/g, "");
-  const duplicate = hasClient && clientMode === "new" && typedPhone.length >= 10 ? leads.find((l) => l.phone.replace(/\D/g, "") === typedPhone) : undefined;
+  const checkPhone = hasClient && clientMode === "new" && typedPhone.length >= 10;
+  const [foundByPhone, setFoundByPhone] = useState<Lead | undefined>();
+  useEffect(() => {
+    if (!checkPhone || !serverLookup) return setFoundByPhone(undefined);
+    let current = true;
+    const timer = setTimeout(() => {
+      findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone)
+        .then((rows) => {
+          if (!current) return;
+          injectLeads(rows);
+          setFoundByPhone(rows[0]);
+        })
+        .catch(() => current && (setFoundByPhone(undefined), setLookupFailed(true)));
+    }, 350);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, checkPhone, serverLookup, effectiveUser.id]);
+  const duplicate = !checkPhone ? undefined : serverLookup ? foundByPhone : leads.find((l) => l.phone.replace(/\D/g, "") === typedPhone);
   const activeBrokers = brokers.filter((b) => b.active);
   const pickedBroker = brokers.find((b) => b.id === brokerId);
   const total = outcome.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
   const openForm = () => {
     setType("client");
-    setClientMode(leads.length ? "existing" : "new");
+    setClientMode("existing");
     setPickedLead(null);
     setName("");
     setPhone("");
@@ -133,7 +204,7 @@ export function VisitsPage({ onOpenLead }: Props) {
     setMode("form");
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canCreateCustomer(effectiveUser)) return;
     setError("");
@@ -147,6 +218,22 @@ export function VisitsPage({ onOpenLead }: Props) {
     if (hasClient && outcome.result === "bought" && !hasPermission(effectiveUser, "bookings.create")) return setError("حسابك مش مسموحله يسجل مشتريات. اختار «لسه» أو «استفسار فقط».");
     if (followUp && hasClient && !followUpDate) return setError("حدد تاريخ المتابعة.");
     if (!agents.some((u) => u.id === validAgent) && validAgent !== effectiveUser.id) return setError("اختار موظف نشط من نفس الفرع.");
+
+    // A number that is already a customer's of this branch is the same customer: the visit goes on their file. The check
+    // on screen may still be waiting for the typing to pause, so it is made once more here.
+    let linkTo = pickedLead?.id;
+    if (hasClient && !pickedLead && clientMode === "new") {
+      const known = duplicate ?? (serverLookup ? (await findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, clientPhone).catch(() => []))[0] : undefined);
+      if (known && known.branchId === branchId) {
+        injectLeads([known]);
+        if (!duplicate) {
+          // Found only now: show it, and the next save goes on its file.
+          setFoundByPhone(known);
+          return setError(`الرقم ده موجود عندنا باسم ${known.name}، والزيارة هتتسجل على ملفه. اضغط حفظ تاني.`);
+        }
+        linkTo = known.id;
+      }
+    }
 
     // The broker: pick the existing one or register the new one.
     const broker = hasBroker ? (brokerMode === "existing" ? pickedBroker : addBroker({ name: brokerName.trim(), phone: brokerPhone.trim(), type: "individual", active: true, notes: "", branchIds: [branchId] })) : undefined;
@@ -177,7 +264,7 @@ export function VisitsPage({ onOpenLead }: Props) {
         outcome: finalOutcome,
         notes: bits.filter(Boolean).join(" | "),
         hasPreviousRecord: false,
-        linkedLeadId: pickedLead?.id,
+        linkedLeadId: linkTo,
         requiresFollowUp: followUpOn && hasPermission(effectiveUser, "followups.create"),
         followUpAgentId: validAgent,
         followUpDate: followUpOn ? followUpOnDate : undefined,
@@ -234,6 +321,7 @@ export function VisitsPage({ onOpenLead }: Props) {
           : null,
       );
       setMode("list");
+      list.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذر تسجيل الزيارة.");
     }
@@ -277,15 +365,23 @@ export function VisitsPage({ onOpenLead }: Props) {
             search={{ value: q, onChange: setQ, placeholder: "ابحث باسم الزائر أو الوسيط أو الهاتف…" }}
             selects={[
               { id: "type", label: "نوع الزائر", value: fType, onChange: setFType, allLabel: "كل الزوار", primary: true, options: (Object.keys(typeLabels) as VisitorType[]).map((t) => ({ value: t, label: typeLabels[t] })) },
-              { id: "branch", label: "الفرع", value: fBranch, onChange: setFBranch, allLabel: "كل الفروع", primary: true, options: uniq(visits.map((v) => v.branchId)).map((id) => ({ value: id, label: visits.find((v) => v.branchId === id)?.branchName || id })) },
-              { id: "agent", label: "الموظف المستقبِل", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", options: uniq(visits.map((v) => v.receivedByAgentId)).map((id) => ({ value: id, label: visits.find((v) => v.receivedByAgentId === id)?.receivedByAgentName || id })) },
-              { id: "outcome", label: "نتيجة الزيارة", value: fOutcome, onChange: setFOutcome, allLabel: "كل النتائج", options: uniq(visits.map((v) => v.outcome)).map((o) => ({ value: o, label: o })) },
+              { id: "branch", label: "الفرع", value: fBranch, onChange: setFBranch, allLabel: "كل الفروع", primary: true, options: branches.filter((b) => canSeeBranch(effectiveUser, b.id, branches)).map((b) => ({ value: b.id, label: b.name })) },
+              { id: "agent", label: "الموظف المستقبِل", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", options: users.filter((u) => u.active).map((u) => ({ value: u.id, label: u.name })) },
+              { id: "outcome", label: "نتيجة الزيارة", value: fOutcome, onChange: setFOutcome, allLabel: "كل النتائج", options: [...Object.values(outcomeLabel), "زيارة وسيط"].map((o) => ({ value: o, label: o })) },
             ]}
             dates={{ from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, label: "تاريخ الزيارة" }}
-            count={{ shown: rows.length, noun: "زيارة" }}
+            count={{ shown: rowsTotal ?? rows.length, noun: "زيارة" }}
             onReset={resetFilters}
           />
-          {rows.length ? (
+          {list.error && !legacy && (
+            <div className="notice" role="alert">
+              {list.error} <button className="btn-text" onClick={list.refresh}>إعادة المحاولة</button>
+            </div>
+          )}
+          {list.searchTooShort && !legacy && <div className="quiet-note" role="status">اكتب حرفين من الاسم أو 4 أرقام من الهاتف عشان يشتغل البحث.</div>}
+          {!legacy && list.loading && !rows.length ? (
+            <div className="quiet-note" role="status" style={{ padding: 30 }}>جاري تحميل الزيارات…</div>
+          ) : rows.length ? (
             <div className="overflow-x-auto">
               <table className="data-table stack-table">
                 <thead>
@@ -358,6 +454,17 @@ export function VisitsPage({ onOpenLead }: Props) {
               <p>سجّل أول زيارة بزر «تسجيل زيارة».</p>
             </div>
           )}
+          {hasMoreRows && (
+            <div className="filter-count">
+              <span>
+                معروض {rows.length}
+                {rowsTotal !== null ? ` من ${rowsTotal}` : ""} زيارة
+              </span>
+              <button className="btn-secondary" onClick={legacy ? () => setShown((n) => n + 20) : list.loadMore} disabled={!legacy && list.loadingMore}>
+                {!legacy && list.loadingMore ? "جاري التحميل…" : "عرض المزيد"}
+              </button>
+            </div>
+          )}
         </section>
       </div>
     );
@@ -401,7 +508,20 @@ export function VisitsPage({ onOpenLead }: Props) {
               <h3>العميل</h3>
               {clientMode === "existing" ? (
                 <CustomerSearch
-                  leads={leads}
+                  {...(serverLookup
+                    ? {
+                        lookup: async (typed: string) => {
+                          try {
+                            const rows = await searchLeads(scopesFor(profileOf(effectiveUser)).leads, typed, 8);
+                            injectLeads(rows);
+                            return rows;
+                          } catch {
+                            setLookupFailed(true);
+                            return [];
+                          }
+                        },
+                      }
+                    : { leads })}
                   value={pickedLead}
                   onChange={(l) => {
                     setPickedLead(l);

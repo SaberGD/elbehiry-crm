@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
 import { useLeadsList, LEADS_PAGE_SIZE } from "../lib/useLeadsList";
+import { useDebounced } from "../lib/useDebounced";
 import type { ScopeFilter } from "../lib/useFirestoreSync";
 import {
   statusNames,
@@ -33,16 +34,6 @@ interface Props {
   onOpenLead: (id: string) => void;
   onNavigateAddLead: () => void;
 }
-/** What was typed, once the typing pauses (the database is asked then, not on every key). */
-function useDebounced<T>(value: T, ms: number) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
-
 export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
   const { effectiveUser, leads, branches, users, followUps, reassignLead, requestAllLeads } = useCRM();
   const [typed, setTyped] = useState("");

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { keysAreCurrent, leadSearchKeys, matchesSearch, normalizeText, parseSearch, phoneDigits } from "../src/lib/leadSearch";
+import { keysAreCurrent, leadSearchKeys, matchesKey, matchesSearch, normalizeText, parseSearch, phoneDigits, visitParty, visitSearchKeys } from "../src/lib/leadSearch";
 
 const lead = { name: "أحمد عبد الرحمن", phone: "+20 100 123 4567", whatsappPhone: "01223334445", courseOfInterest: "فيلا" };
 
@@ -73,4 +73,14 @@ test("keys are recognised as current only for the customer as it is", () => {
   assert.ok(keysAreCurrent({ ...lead, searchKeys: leadSearchKeys(lead) }));
   assert.ok(!keysAreCurrent({ ...lead }));
   assert.ok(!keysAreCurrent({ ...lead, name: "سعيد", searchKeys: leadSearchKeys(lead) }));
+});
+
+test("a visit is found by its visitor, its broker and its phones", () => {
+  const visit = { visitorName: "سمير علي", brokerName: "المهندس هاني", phone: "01012345678", whatsappPhone: "" };
+  const keys = visitSearchKeys(visit);
+  for (const k of ["n:سمير", "n:علي", "n:هاني", "p:0101", "s:5678"]) assert.ok(keys.includes(k), k);
+  assert.ok(matchesSearch(visitParty(visit), parseSearch("هاني 5678")!));
+  const wrong = parseSearch("هاني 9999")!;
+  assert.ok(!matchesKey(visitParty(visit), wrong.key), "the key itself is what the database checks");
+  assert.ok(keysAreCurrent({ ...visitParty(visit), searchKeys: keys }));
 });
