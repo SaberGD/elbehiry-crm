@@ -60,3 +60,17 @@ Google Cloud ← Billing ← Budgets & alerts: حد شهري مناسب مع ت�
   - الاستنساخ أو الاسترجاع: 0.20 دولار لكل جيجابايت، وقت ما تعمله بس.
   - التصدير: تكلفة قراءة المستندات (حوالي 0.06 دولار لكل 100 ألف مستند) + تخزين الملف.
   - لقاعدة بيانات CRM بحجم جيجابايت أو اتنين: مجموع ده كله في حدود دولار أو اتنين في الشهر.
+
+## تفعيل زرار «نقطة استرجاع الآن» (قسم المطورين)
+الزرار بيعمل تصدير كامل للبيانات في Cloud Storage عن طريق السيرفر (`api/admin.php`) بنفس مفتاح الخدمة `crm-firebase-admin.json`. للتفعيل مرة واحدة:
+1. فعّل فاتورة **Blaze** على `albehairy-group`.
+2. اعرف منطقة Firestore: `gcloud firestore databases describe --database='(default)' --project=albehairy-group --format='value(locationId)'`
+3. اعمل bucket في **نفس المنطقة**: `gcloud storage buckets create gs://albehairy-group-backups --location=<المنطقة> --project=albehairy-group`
+4. افتح `crm-firebase-admin.json` وخد قيمة `client_email` (إيميل مفتاح الخدمة، مش سر). بعدين:
+   - `gcloud projects add-iam-policy-binding albehairy-group --member=serviceAccount:<client_email> --role=roles/datastore.importExportAdmin`
+   - `gcloud storage buckets add-iam-policy-binding gs://albehairy-group-backups --member=serviceAccount:<client_email> --role=roles/storage.objectAdmin`
+   - ولو التصدير رجّع «no_permission» جرّب كمان نفس صلاحية الـ bucket لحساب `albehairy-group@appspot.gserviceaccount.com`.
+5. لو عايز bucket باسم تاني: ملف `crm-backup.json` جنب `crm-firebase-admin.json` فيه `{"bucket": "اسم-الـbucket"}`.
+6. فعّل الاسترجاع لأي دقيقة: `gcloud firestore databases update --database='(default)' --enable-pitr --project=albehairy-group`
+7. افتح قسم المطورين ← «نقاط الاسترجاع» ← «نقطة استرجاع الآن».
+مفاتيح الخدمة بتفضل على السيرفر بس ومبتتبعتش لأي حد.

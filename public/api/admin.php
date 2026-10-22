@@ -6,6 +6,11 @@
  *   POST {"action":"create_login","userId":"…","loginId":"…","password":"…"} -> creates the sign-in account
  *   POST {"action":"delete_login","userId":"…"}  -> developer only: removes that person's sign-in account
  *        (so self sign-up can be switched off in Firebase: nobody can make an account from the browser)
+ *   POST {"action":"backup_now"}                -> developer only: exports the whole database to a restore point in Cloud Storage
+ *   POST {"action":"backup_status","operation":"…"} -> is that export finished?
+ *   POST {"action":"list_backups"}              -> the restore points already in the bucket
+ *        (the bucket is `<project>-backups`, or the one named in crm-backup.json next to the service-account file;
+ *         the service account needs "Cloud Datastore Import Export Admin" and write access to the bucket)
  *
  * Why a server: changing someone else's password needs the Firebase Admin credentials,
  * which must never reach the browser. They live in a service-account file OUTSIDE public_html:
@@ -159,7 +164,56 @@ if ($sa === null) fail(503, 'not_configured');
 
 $in = json_decode((string) file_get_contents('php://input'), true);
 $action = is_array($in) ? (string) ($in['action'] ?? '') : '';
-if (!in_array($action, ['reset_password', 'create_login', 'delete_login'], true)) fail(400, 'bad_action');
+const BACKUP_ACTIONS = ['backup_now', 'backup_status', 'list_backups'];
+if (!in_array($action, ['reset_password', 'create_login', 'delete_login', ...BACKUP_ACTIONS], true)) fail(400, 'bad_action');
+
+/** The bucket restore points are written to. */
+function backup_bucket(): string {
+    $path = find_file('crm-backup.json');
+    $cfg = $path ? json_decode((string) file_get_contents($path), true) : null;
+    $name = is_array($cfg) ? (string) ($cfg['bucket'] ?? '') : '';
+    return preg_match('/^[a-z0-9][a-z0-9._-]{2,62}$/', $name) ? $name : FIREBASE_PROJECT_ID . '-backups';
+}
+
+if (in_array($action, BACKUP_ACTIONS, true)) {
+    if ($callerRole !== 'admin') fail(403, 'forbidden');
+    rate_limit($callerUid);
+    $token = google_token($sa);
+    if ($token === null) fail(502, 'admin_auth_failed');
+    $auth = ['Authorization: Bearer ' . $token, 'Content-Type: application/json'];
+    $bucket = backup_bucket();
+    $db = 'projects/' . FIREBASE_PROJECT_ID . '/databases/' . rawurlencode('(default)');
+
+    if ($action === 'backup_now') {
+        $prefix = 'manual-' . gmdate('Y-m-d-His');
+        [$st, $res] = http('POST', 'https://firestore.googleapis.com/v1/' . $db . ':exportDocuments', $auth, json_encode(['outputUriPrefix' => 'gs://' . $bucket . '/' . $prefix]));
+        if ($st !== 200 || empty($res['name'])) {
+            $msg = (string) ($res['error']['message'] ?? '');
+            fail($st === 403 ? 403 : ($st === 404 ? 404 : 502), $st === 403 ? 'no_permission' : ($st === 404 ? 'bucket_missing' : 'export_failed'), 'firestore_' . $st . ': ' . mb_substr($msg, 0, 160));
+        }
+        echo json_encode(['operation' => (string) $res['name'], 'point' => $prefix, 'bucket' => $bucket]);
+        exit;
+    }
+    if ($action === 'backup_status') {
+        $op = (string) ($in['operation'] ?? '');
+        if (!preg_match('#^projects/[A-Za-z0-9_-]+/databases/\(default\)/operations/[A-Za-z0-9_.-]+$#', $op)) fail(400, 'bad_operation');
+        [$st, $res] = http('GET', 'https://firestore.googleapis.com/v1/' . $op, $auth);
+        if ($st !== 200) fail(502, 'status_failed', 'firestore_' . $st);
+        echo json_encode([
+            'done' => ($res['done'] ?? false) === true,
+            'error' => isset($res['error']) ? mb_substr((string) ($res['error']['message'] ?? 'failed'), 0, 200) : null,
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    // list_backups: the restore points (folders) in the bucket, newest first.
+    [$st, $res] = http('GET', 'https://storage.googleapis.com/storage/v1/b/' . rawurlencode($bucket) . '/o?prefix=manual-&delimiter=/', $auth);
+    if ($st === 404) fail(404, 'bucket_missing');
+    if ($st !== 200) fail($st === 403 ? 403 : 502, $st === 403 ? 'no_permission' : 'list_failed', 'storage_' . $st);
+    $points = array_values(array_filter(array_map(fn($p) => rtrim((string) $p, '/'), $res['prefixes'] ?? []), fn($p) => preg_match('/^manual-\d{4}-\d{2}-\d{2}-\d{6}$/', $p)));
+    rsort($points);
+    echo json_encode(['bucket' => $bucket, 'points' => array_slice($points, 0, 20)]);
+    exit;
+}
 $userId = (string) ($in['userId'] ?? '');
 if (!preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $userId)) fail(400, 'bad_user');
 rate_limit($callerUid);

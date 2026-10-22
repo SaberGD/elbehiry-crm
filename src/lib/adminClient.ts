@@ -82,3 +82,31 @@ export async function deleteLoginOnServer(userId: string): Promise<boolean> {
   if (!res.ok) throw new Error(data?.error === "forbidden" ? "مش مسموح لك تمسح حساب الدخول ده." : "تعذر مسح حساب الدخول من السيرفر، حاول تاني.");
   return true;
 }
+
+async function adminPost(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const token = await auth.currentUser?.getIdToken();
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code = data?.error as string | undefined;
+    const msg: Record<string, string> = {
+      not_configured: "السيرفر لسه مش متوصّل بمفتاح Firebase Admin (crm-firebase-admin.json).",
+      no_permission: "حساب السيرفر ما عندوش صلاحية: لازم دور «Cloud Datastore Import Export Admin» وصلاحية الكتابة على الـ bucket.",
+      bucket_missing: "الـ bucket مش موجود. اعمله في Cloud Storage بالاسم المعروض.",
+      forbidden: "الإجراء ده للمطوّر بس.",
+      rate_limited: "محاولات كتير، جرّب بعد شوية.",
+      unauthorized: "سجّل الدخول من جديد وحاول تاني.",
+    };
+    throw new Error(`${(code && msg[code]) || "تعذر تنفيذ الطلب، حاول تاني."}${data?.detail ? ` (${data.detail})` : ""}`);
+  }
+  return data;
+}
+
+/** Developer only: starts a full export of the database into the backup bucket (a restore point). */
+export const startBackup = () => adminPost({ action: "backup_now" }) as Promise<{ operation: string; point: string; bucket: string }>;
+export const backupStatus = (operation: string) => adminPost({ action: "backup_status", operation }) as Promise<{ done: boolean; error: string | null }>;
+export const listBackups = () => adminPost({ action: "list_backups" }) as Promise<{ bucket: string; points: string[] }>;
