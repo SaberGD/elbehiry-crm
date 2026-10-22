@@ -62,7 +62,7 @@ jobs:
             *)    exit 0 ;;
           esac
           git fetch origin "$prev"
-          if ! git diff --quiet "origin/$prev" HEAD -- . ':!.github'; then
+          if ! git diff --quiet "origin/$prev" HEAD -- . ':!.github' ':!docs'; then
             echo "::error::$GITHUB_REF_NAME can only be deployed after the same code is deployed to $prev. Merge $prev first."
             exit 1
           fi

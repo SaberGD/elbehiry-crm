@@ -2,7 +2,7 @@ import { PWAProvider } from "./pwa/PWAContext";
 import { PWAStatus } from "./pwa/PWAControls";
 import { canAccessPage } from "./lib/access";
 import React, { Suspense, lazy, useEffect, useState } from "react";
-import { LanguageProvider } from "./context/LanguageContext";
+import { LanguageProvider, useLanguage } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SessionTracker } from "./components/common/SessionTracker";
@@ -52,6 +52,7 @@ const FeedbackPage = lazy(() => import("./pages/FeedbackPage").then((m) => ({ de
 
 const AppContent: React.FC = () => {
   const { leads, effectiveUser, watchLead, injectLeads } = useCRM();
+  const { tr } = useLanguage();
 
   const [requestedTab, setRequestedTab] = useState("dashboard");
   const activeTab = canAccessPage(effectiveUser, requestedTab)
@@ -102,7 +103,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="behery-app">
       <a className="skip-link" href="#main-content">
-        انتقل للمحتوى
+        {tr("انتقل للمحتوى", "Skip to content")}
       </a>
       {/* Executive Sidebar */}
       <Sidebar
@@ -130,7 +131,7 @@ const AppContent: React.FC = () => {
           {activeTab !== "settings" && <DemoBanner onOpenSettings={() => setActiveTab("settings")} />}
           {activeTab !== "feedback" && <LateComplaintsBanner onOpen={() => setActiveTab("feedback")} />}
           <div key={activeTab} className="animate-page-enter min-w-0">
-            <Suspense fallback={<div className="quiet-note" style={{ padding: 30 }}>جاري التحميل…</div>}>
+            <Suspense fallback={<div className="quiet-note" style={{ padding: 30 }}>{tr("جاري التحميل…", "Loading…")}</div>}>
             {activeTab === "dept_dashboard" && (
               <DepartmentDashboardPage
                 setActiveTab={setActiveTab}

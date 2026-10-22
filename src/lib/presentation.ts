@@ -6,6 +6,40 @@ export const departmentNames = {
   garden: "البستان واللاندسكيب",
   general: "خدمات أخرى",
 };
+export const departmentNamesEn: Record<keyof typeof departmentNames, string> = {
+  construction: "Construction & contracting",
+  decor: "Paints & decor",
+  garden: "Garden & landscape",
+  general: "Other services",
+};
+export const statusNamesEn: Record<Lead["status"], string> = {
+  new: "New",
+  uncontacted: "Not contacted yet",
+  contacted: "Contacted",
+  interested: "Interested",
+  prospect: "Sales opportunity",
+  needs_followup: "Needs follow-up",
+  not_interested: "Not interested",
+  booked: "Purchased",
+};
+export const followUpTypeNamesEn: Record<string, string> = {
+  call: "Call",
+  whatsapp: "WhatsApp",
+  branch_visit: "Branch visit",
+  email: "Email",
+  meeting: "Meeting",
+};
+export const sourceNamesEn: Record<Lead["source"], string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  google: "Google",
+  walk_in: "Walk-in",
+  referral: "Referral",
+  phone_inquiry: "Phone inquiry",
+  whatsapp: "WhatsApp",
+  exhibition: "Exhibition",
+  other: "Other source",
+};
 export const statusNames: Record<Lead["status"], string> = {
   new: "جديد",
   uncontacted: "لم نتواصل بعد",

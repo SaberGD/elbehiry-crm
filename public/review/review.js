@@ -1,5 +1,7 @@
 (function(){
-var PROJECT="albehairy-group",KEY="AIzaSyAQdI3hTzx-LFgANKnIzeeYiKuUgCeqZUE",DB="(default)";
+// The test site (test-*) has its own Firebase project; every other site uses the production one.
+var TEST=/^test-/.test(location.hostname);
+var PROJECT=TEST?"albehairy-test":"albehairy-group",KEY=TEST?"AIzaSyCF1e5Pu_bXLWhe17qCHpkYBvunWIyh9ao":"AIzaSyAQdI3hTzx-LFgANKnIzeeYiKuUgCeqZUE",DB="(default)";
 var BASE="https://firestore.googleapis.com/v1/projects/"+PROJECT+"/databases/"+encodeURIComponent(DB)+"/documents/reviewRequests/";
 var app=document.getElementById("app");
 var token=(new URLSearchParams(location.search).get("t")||"").trim();

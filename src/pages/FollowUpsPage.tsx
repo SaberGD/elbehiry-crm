@@ -19,6 +19,7 @@ import {
   Star,
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
+import { useLanguage } from "../context/LanguageContext";
 import { followUpStatus, phoneNumber } from "../lib/presentation";
 import type { FollowUp } from "../types/crm";
 import { useDialog } from "../components/common/useDialog";
@@ -41,6 +42,8 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
   const { effectiveUser, leads, branches, followUps, updateFollowUpResult, reviewRequests, addReferralLead, bookings, notBoughtRecords, visits, brokers, reminderDone, markReminderDone, markReviewReminderSent, aiSuggestions } =
     useCRM();
   useAllLeads();
+  const { tr, language } = useLanguage();
+  const en = language === "en";
   // The one 48-hour nudge for review requests the customer has not answered.
   const tasks = reminderTasks({ visits, reviewRequests, leads, brokers, reminderDone }, effectiveUser.id);
   const [view, setView] = useState<"followups" | "reminders" | "suggestions">("followups");
@@ -105,7 +108,7 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
       return;
     const hasReferral = isPostSale(selected) && rating >= REFERRAL_MIN_STARS && !!(referralName.trim() || referralPhone.trim());
     if (hasReferral && (!referralName.trim() || !isReferralPhone(referralPhone))) {
-      setFormError("اكتب اسم المرشَّح ورقم موبايله بشكل صحيح، أو سيب الخانتين فاضيين.");
+      setFormError(tr("اكتب اسم المرشَّح ورقم موبايله بشكل صحيح، أو سيب الخانتين فاضيين.", "Enter the referral's name and a valid mobile number, or leave both fields empty."));
       return;
     }
     setFormError("");
@@ -332,8 +335,8 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
     <div>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">كل تواصل له خطوة جاية</span>
-          <h1>المتابعات</h1>
+          <span className="eyebrow">{tr("كل تواصل له خطوة جاية", "Every contact has a next step")}</span>
+          <h1>{tr("المتابعات", "Follow-ups")}</h1>
           <p>
             {worksOwnCustomers(effectiveUser)
               ? "ابدأ بالمتأخر، وبعدين النهارده. سجّل نتيجة كل تواصل."
@@ -457,14 +460,14 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                   id="followup-result-title"
                   style={{ fontSize: 20, fontWeight: 600 }}
                 >
-                  نتيجة التواصل
+                  {tr("نتيجة التواصل", "Contact result")}
                 </h2>
                 <p>{selected.leadName}</p>
               </div>
               <button
                 className="icon-button"
                 onClick={() => setSelected(null)}
-                aria-label="إغلاق تسجيل النتيجة"
+                aria-label={tr(tr("إغلاق تسجيل النتيجة", "Close result logging"), "Close result logging")}
               >
                 <X size={18} />
               </button>
@@ -476,25 +479,25 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
               })()}
               <label className="field">
                 <span>
-                  إيه اللي حصل؟ <em>مطلوب</em>
+                  {tr("إيه اللي حصل؟", "What happened?")} <em>{tr("مطلوب", "required")}</em>
                 </span>
                 <VoiceNoteField
                   rows={3}
                   required
                   value={result}
                   onChange={setResult}
-                  placeholder="مثلاً: العميل طلب عرض سعر وهيرد يوم الأحد."
+                  placeholder={tr(tr("مثلاً: العميل طلب عرض سعر وهيرد يوم الأحد.", "e.g. the customer asked for a quote and will reply on Sunday."), "e.g. the customer asked for a quote and will reply on Sunday.")}
                 />
               </label>
               {isPostSale(selected) && (
                 <>
                   <div className="field">
                     <span>
-                      رضا العميل عن الشغل <em>مطلوب</em>
+                      {tr("رضا العميل عن الشغل", "Customer satisfaction with the work")} <em>{tr("مطلوب", "required")}</em>
                     </span>
                     <div
                       role="radiogroup"
-                      aria-label="تقييم الرضا"
+                      aria-label={tr(tr("تقييم الرضا", "Satisfaction rating"), "Satisfaction rating")}
                       style={{ display: "flex", gap: 6 }}
                     >
                       {[1, 2, 3, 4, 5].map((n) => (
@@ -503,7 +506,7 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                           key={n}
                           role="radio"
                           aria-checked={rating === n}
-                          aria-label={`${n} من 5`}
+                          aria-label={tr(`${n} من 5`, `${n} of 5`)}
                           onClick={() => setRating(n)}
                           className="icon-button"
                         >
@@ -518,37 +521,37 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                   </div>
                   <label className="field">
                     <span>
-                      ملاحظة العميل <em className="optional-tag">اختياري</em>
+                      {tr("ملاحظة العميل", "Customer note")} <em className="optional-tag">{tr("اختياري", "optional")}</em>
                     </span>
                     <textarea
                       rows={2}
                       value={ratingComment}
                       onChange={(e) => setRatingComment(e.target.value)}
-                      placeholder="إيه اللي عجبه أو ما عجبوش؟"
+                      placeholder={tr(tr("إيه اللي عجبه أو ما عجبوش؟", "What did they like or dislike?"), "What did they like or dislike?")}
                     />
                   </label>
                   {rating >= REFERRAL_MIN_STARS ? (
                     <>
                   <div className="field">
                     <span>
-                      حد من قرايبه أو معارفه محتاج؟{" "}
-                      <em className="optional-tag">اختياري</em>
+                      {tr("حد من قرايبه أو معارفه محتاج؟", "Does anyone they know need something?")}{" "}
+                      <em className="optional-tag">{tr("اختياري", "optional")}</em>
                     </span>
                     <div className="field-grid">
-                      <input value={referralName} onChange={(e) => setReferralName(e.target.value)} placeholder="اسمه" />
+                      <input value={referralName} onChange={(e) => setReferralName(e.target.value)} placeholder={tr(tr("اسمه", "Their name"), "Their name")} />
                       <input dir="ltr" type="tel" inputMode="tel" value={referralPhone} onChange={(e) => setReferralPhone(e.target.value)} placeholder="01xxxxxxxxx" />
                     </div>
-                    <p className="quiet-note">لو العميل سمح، هيتسجل كعميل محتمل وتتجدول متابعة بعد يومين.</p>
+                    <p className="quiet-note">{tr("لو العميل سمح، هيتسجل كعميل محتمل وتتجدول متابعة بعد يومين.", "If the customer agrees, they are saved as a prospect and a follow-up is scheduled in two days.")}</p>
                   </div>
                   <label className="field">
                     <span>
-                      ملاحظة عن احتياجه <em className="optional-tag">اختياري</em>
+                      {tr("ملاحظة عن احتياجه", "Note about their need")} <em className="optional-tag">{tr("اختياري", "optional")}</em>
                     </span>
-                    <textarea rows={2} value={referralNote} onChange={(e) => setReferralNote(e.target.value)} placeholder="محتاج إيه؟ (دهان شقة، تشطيب…)" />
+                    <textarea rows={2} value={referralNote} onChange={(e) => setReferralNote(e.target.value)} placeholder={tr("محتاج إيه؟ (دهان شقة، تشطيب…)", "What do they need? (apartment paint, finishing…)")} />
                   </label>
                     </>
                   ) : (
-                    <p className="quiet-note">الترشيحات بنسألها بس للعميل اللي قيّم 4 أو 5 نجوم. اللي مش راضي بنركّز على حل مشكلته الأول.</p>
+                    <p className="quiet-note">{tr("الترشيحات بنسألها بس للعميل اللي قيّم 4 أو 5 نجوم. اللي مش راضي بنركّز على حل مشكلته الأول.", "We only ask for referrals from customers who rated 4 or 5 stars. If they are unhappy we focus on solving their problem first.")}</p>
                   )}
                 </>
               )}
@@ -559,11 +562,11 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                   checked={hasNext}
                   onChange={(e) => setHasNext(e.target.checked)}
                 />
-                تحديد متابعة تانية <em className="optional-tag">اختياري</em>
+                {tr("تحديد متابعة تانية", "Schedule another follow-up")} <em className="optional-tag">{tr("اختياري", "optional")}</em>
               </label>
               {hasNext && (
                 <label className="field">
-                  <span>الموعد القادم</span>
+                  <span>{tr("الموعد القادم", "Next date")}</span>
                   <input
                     type="date"
                     required
@@ -577,7 +580,7 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
                 type="submit"
                 style={{ marginTop: 22 }}
               >
-                حفظ النتيجة
+                {tr("حفظ النتيجة", "Save result")}
               </button>
             </form>
           </div>

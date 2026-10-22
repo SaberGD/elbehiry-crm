@@ -19,6 +19,7 @@ import {
 import { useCRM } from "../context/CRMContext";
 import { useLeadCounts } from "../lib/useLeadCounts";
 import { useAllData } from "../lib/useAllData";
+import { useLanguage } from "../context/LanguageContext";
 import {
   canAccessPage,
   canCreateCustomer,
@@ -54,6 +55,8 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
     bookings: scopeBookings,
     branches: scopeBranches,
   } = useCRM();
+  const { tr, language, roleName } = useLanguage();
+  const en = language === "en";
   const [branchFilter, setBranchFilter] = useState("all");
   const [sort, setSort] = useState("amount");
   const [showAllBranches, setShowAllBranches] = useState(false);
@@ -132,21 +135,21 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const maxAmount = Math.max(...branchRows.map((b) => b.amount), 1);
   const hasBranchSummary =
     !sales && (has("branches.view") || has("staff.view"));
-  const date = new Intl.DateTimeFormat("ar-EG", {
+  const date = new Intl.DateTimeFormat(en ? "en-GB" : "ar-EG-u-nu-latn", {
     weekday: "long",
     day: "numeric",
     month: "long",
     timeZone: "Africa/Cairo",
   }).format(new Date());
   const title = sales
-    ? "يومك في الفرع"
+    ? tr("يومك في الفرع", "Your day at the branch")
     : isDirector(u)
-      ? "نظرة على المؤسسة"
+      ? tr("نظرة على المؤسسة", "Organization overview")
       : u.role === "branch_manager"
-        ? "عملاؤك ومبيعات فرعك"
+        ? tr("عملاؤك ومبيعات فرعك", "Your customers and branch sales")
         : u.role === "regional_manager"
-          ? "مبيعات كل الفروع"
-          : "نطاق الإشراف";
+          ? tr("مبيعات كل الفروع", "Sales across all branches")
+          : tr("نطاق الإشراف", "Supervision scope");
   const metric = (
     page: string,
     label: string,
@@ -182,7 +185,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
       <div className="studio-heading">
         <div>
           <span className="eyebrow">
-            {positionNames[u.role]}
+            {roleName(u.role)}
             {u.role === "supervisor"
               ? ` · ${specialties[u.specialty || "sales"]}`
               : ""}
@@ -195,8 +198,8 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
           </h1>
           <p>
             {sales
-              ? "كل عميل، وموعده، وخطوتك الجاية."
-              : "أداء الفروع وأولويات المتابعة في مساحة واحدة."}
+              ? tr("كل عميل، وموعده، وخطوتك الجاية.", "Every customer, their appointment, and your next step.")
+              : tr("أداء الفروع وأولويات المتابعة في مساحة واحدة.", "Branch performance and follow-up priorities in one place.")}
           </p>
         </div>
         <div className="studio-heading-tools">
@@ -210,7 +213,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
               onClick={() => setActiveTab("add_client")}
             >
               <Plus size={18} />
-              عميل جديد
+              {tr("عميل جديد", "New customer")}
             </button>
           ) : isDirector(u) ? (
             <button
@@ -218,7 +221,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
               onClick={() => setActiveTab("permissions")}
             >
               <SlidersHorizontal size={16} />
-              الصلاحيات
+              {tr("الصلاحيات", "Permissions")}
             </button>
           ) : null}
         </div>
@@ -226,21 +229,21 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
       <div className="scope-strip">
         <span>
           <Building2 size={16} />
-          {scopeLabel(u)}
+          {scopeLabel(u, en)}
         </span>
-        <span className="scope-period">جميع الفترات</span>
+        <span className="scope-period">{tr("جميع الفترات", "All periods")}</span>
         {scopeBranches.length > 1 && (
           <label className="scope-select">
-            <span className="sr-only">تصفية بيانات الرئيسية بالفرع</span>
+            <span className="sr-only">{tr("تصفية بيانات الرئيسية بالفرع", "Filter home data by branch")}</span>
             <select
-              aria-label="تصفية بيانات الرئيسية بالفرع"
+              aria-label={tr(tr("تصفية بيانات الرئيسية بالفرع", "Filter home data by branch"), "Filter home data by branch")}
               value={branchFilter}
               onChange={(e) => {
                 setBranchFilter(e.target.value);
                 setShowAllBranches(false);
               }}
             >
-              <option value="all">كل الفروع المتاحة</option>
+              <option value="all">{tr("كل الفروع المتاحة", "All available branches")}</option>
               {scopeBranches
                 .filter((b) => b.active)
                 .map((b) => (
@@ -256,15 +259,15 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
       <div
         className={`studio-overview ${!attention ? "without-attention" : ""}`}
       >
-        <section className="performance-hero" aria-label="ملخص الأداء">
+        <section className="performance-hero" aria-label={tr(tr("ملخص الأداء", "Performance summary"), "Performance summary")}>
           <div className="hero-copy">
             <span className="hero-kicker">
               <span />{" "}
               {has("bookings.view")
-                ? "إجمالي المشتريات المسجلة"
+                ? tr("إجمالي المشتريات المسجلة", "Total recorded purchases")
                 : has("customers.view")
-                  ? "العملاء في نطاقك"
-                  : "ملخص نطاق العمل"}
+                  ? tr("العملاء في نطاقك", "Customers in your scope")
+                  : tr("ملخص نطاق العمل", "Scope summary")}
             </span>
             <div className="hero-amount">
               <strong dir="ltr">
@@ -276,23 +279,23 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
               </strong>
               <span>
                 {has("bookings.view")
-                  ? "جنيه مصري"
+                  ? tr("جنيه مصري", "Egyptian pounds")
                   : has("customers.view")
-                    ? "عميل مسجل"
-                    : "فرع متاح"}
+                    ? tr("عميل مسجل", "registered customers")
+                    : tr("فرع متاح", "available branches")}
               </span>
             </div>
             <p>
               {has("bookings.view")
-                ? `${active.length} عملية شراء · إجمالي المشتريات على الأقسام الأربعة`
-                : "المؤشرات المتاحة وفق اختصاصك وفروعك."}
+                ? tr(`${active.length} عملية شراء · إجمالي المشتريات على الأقسام الأربعة`, `${active.length} purchases · total purchases across the four departments`)
+                : tr("المؤشرات المتاحة وفق اختصاصك وفروعك.", "Indicators available for your specialty and branches.")}
             </p>
             {canAccessPage(u, "reports") && (
               <button
                 className="hero-link"
                 onClick={() => setActiveTab("reports")}
               >
-                قراءة التقارير
+                {tr("قراءة التقارير", "Read reports")}
                 <ArrowUpLeft size={18} />
               </button>
             )}
@@ -300,21 +303,21 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
           <div className="hero-mark" aria-hidden="true">
             <div />
             <div />
-            <span>البحيري</span>
+            <span>{tr("البحيري", "El Behery")}</span>
           </div>
           <span className="hero-footnote">
-            {branchFilter === "all" ? "داخل نطاق عملك" : branches[0]?.name}
+            {branchFilter === "all" ? tr("داخل نطاق عملك", "Within your scope") : branches[0]?.name}
           </span>
         </section>
         {attention && (
           <section
             className={`attention-card ${overdue.length ? "needs-attention" : ""}`}
-            aria-label="ملخص المتابعات"
+            aria-label={tr(tr("ملخص المتابعات", "Follow-ups summary"), "Follow-ups summary")}
           >
             <div className="attention-top">
               <span className="attention-tag">
                 <CircleAlert size={14} />
-                {overdue.length ? "يحتاج مراجعة" : "أولويات اليوم"}
+                {overdue.length ? tr("يحتاج مراجعة", "Needs review") : tr("أولويات اليوم", "Today's priorities")}
               </span>
               <span className="attention-icon">
                 {overdue.length ? <Clock3 size={21} /> : <Check size={21} />}
@@ -323,25 +326,25 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
             <h2>
               {sales
                 ? overdue.length
-                  ? "نبدأ بالمتابعات المتأخرة؟"
-                  : "مواعيدك، خطوة بخطوة."
+                  ? tr("نبدأ بالمتابعات المتأخرة؟", "Start with the overdue follow-ups?")
+                  : tr("مواعيدك، خطوة بخطوة.", "Your appointments, step by step.")
                 : overdue.length
-                  ? "متابعات تحتاج مراجعتك."
-                  : "تابع التزام فريقك اليوم."}
+                  ? tr("متابعات تحتاج مراجعتك.", "Follow-ups that need your review.")
+                  : tr("تابع التزام فريقك اليوم.", "Track your team's commitment today.")}
             </h2>
             <p>
               {sales
-                ? "شوف الموعد وسجّل نتيجة التواصل من ملف العميل."
-                : "راجع الموظف المسؤول والخطوة التالية لكل متابعة."}
+                ? tr("شوف الموعد وسجّل نتيجة التواصل من ملف العميل.", "See the appointment and log the contact result from the customer file.")
+                : tr("راجع الموظف المسؤول والخطوة التالية لكل متابعة.", "Review the responsible employee and next step for each follow-up.")}
             </p>
             <div className="attention-numbers">
               <div>
                 <strong>{overdue.length}</strong>
-                <span>متابعات متأخرة</span>
+                <span>{tr("متابعات متأخرة", "Overdue follow-ups")}</span>
               </div>
               <div>
                 <strong>{due.length}</strong>
-                <span>مستحقة اليوم</span>
+                <span>{tr("مستحقة اليوم", "Due today")}</span>
               </div>
             </div>
             <button
@@ -352,7 +355,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                 )
               }
             >
-              {sales ? "عرض متابعاتي" : "مراجعة المتابعات"}
+              {sales ? tr("عرض متابعاتي", "View my follow-ups") : tr("مراجعة المتابعات", "Review follow-ups")}
               <ArrowLeft size={17} />
             </button>
           </section>
@@ -361,31 +364,31 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
       <div className="metric-grid studio-metrics">
         {metric(
           "clients",
-          sales ? "عملاؤك" : "العملاء المسجلون",
+          sales ? tr("عملاؤك", "Your customers") : tr("العملاء المسجلون", "Registered customers"),
           customers,
-          "داخل نطاق العمل",
+          tr("داخل نطاق العمل", "Within scope"),
           Users,
         )}
         {metric(
           "bookings",
-          "عمليات الشراء",
+          tr("عمليات الشراء", "Purchases"),
           active.length,
-          "باستبعاد الملغى",
+          tr("باستبعاد الملغى", "Excluding cancelled"),
           ShoppingBag,
         )}
         {metric(
           "followups",
-          sales ? "متابعات اليوم" : "متابعات متأخرة",
+          sales ? tr("متابعات اليوم", "Today's follow-ups") : tr("متابعات متأخرة", "Overdue follow-ups"),
           sales ? due.length : overdue.length,
-          sales ? `${overdue.length} متابعة متأخرة` : "داخل الفروع المتاحة",
+          sales ? `${overdue.length} متابعة متأخرة` : tr("داخل الفروع المتاحة", "Within available branches"),
           PhoneCall,
           overdue.length ? "warning" : "neutral",
         )}
         {metric(
           "invoices",
-          "لم يشتروا بعد",
+          tr("لم يشتروا بعد", "Haven't bought yet"),
           notBoughtYet,
-          "عملاء بلا عملية شراء، فرص للمتابعة",
+          tr("عملاء بلا عملية شراء، فرص للمتابعة", "Customers with no purchase, follow-up opportunities"),
           FileText,
         )}
       </div>
@@ -396,33 +399,33 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
           <section className="panel branch-performance">
             <div className="studio-panel-heading">
               <div>
-                <span className="eyebrow">من الإجمالي للتفاصيل</span>
+                <span className="eyebrow">{tr("من الإجمالي للتفاصيل", "From totals to details")}</span>
                 <h2>
                   {isDirector(u) || u.role === "regional_manager"
-                    ? "مقارنة الفروع"
-                    : "ملخص نطاق العمل"}
+                    ? tr("مقارنة الفروع", "Branch comparison")
+                    : tr("ملخص نطاق العمل", "Scope summary")}
                 </h2>
-                <p>راجع الأرقام، ثم افتح الفرع للتفاصيل.</p>
+                <p>{tr("راجع الأرقام، ثم افتح الفرع للتفاصيل.", "Review the numbers, then open the branch for details.")}</p>
               </div>
               <select
                 className="studio-select"
-                aria-label="ترتيب الفروع"
+                aria-label={tr(tr("ترتيب الفروع", "Sort branches"), "Sort branches")}
                 value={activeSort}
                 onChange={(e) => setSort(e.target.value)}
               >
                 {has("bookings.view") && (
-                  <option value="amount">إجمالي المشتريات</option>
+                  <option value="amount">{tr("إجمالي المشتريات", "Total purchases")}</option>
                 )}
                 {has("followups.view") && (
-                  <option value="late">تأخر المتابعة</option>
+                  <option value="late">{tr("تأخر المتابعة", "Follow-up delays")}</option>
                 )}
                 {has("customers.view") && (
-                  <option value="missing">بدون خطوة تالية</option>
+                  <option value="missing">{tr("بدون خطوة تالية", "No next step")}</option>
                 )}
                 {!has("bookings.view") &&
                   !has("followups.view") &&
                   !has("customers.view") && (
-                    <option value="amount">الترتيب الحالي</option>
+                    <option value="amount">{tr("الترتيب الحالي", "Current order")}</option>
                   )}
               </select>
             </div>
@@ -430,13 +433,13 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>الفرع / المسؤول</th>
-                    {has("bookings.view") && <th>إجمالي المشتريات</th>}
-                    {has("followups.view") && <th>متابعات متأخرة</th>}
-                    {has("customers.view") && <th>بدون خطوة تالية</th>}
-                    {has("customers.view") && <th>لم يشتروا بعد</th>}
+                    <th>{tr("الفرع / المسؤول", "Branch / manager")}</th>
+                    {has("bookings.view") && <th>{tr("إجمالي المشتريات", "Total purchases")}</th>}
+                    {has("followups.view") && <th>{tr("متابعات متأخرة", "Overdue follow-ups")}</th>}
+                    {has("customers.view") && <th>{tr("بدون خطوة تالية", "No next step")}</th>}
+                    {has("customers.view") && <th>{tr("لم يشتروا بعد", "Haven't bought yet")}</th>}
                     <th>
-                      <span className="sr-only">تفاصيل الفرع</span>
+                      <span className="sr-only">{tr("تفاصيل الفرع", "Branch details")}</span>
                     </th>
                   </tr>
                 </thead>
@@ -451,14 +454,14 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                           {b.name}
                         </button>
                         <span className="table-secondary">
-                          {b.managerName || "مدير الفرع غير محدد"}
+                          {b.managerName || tr("مدير الفرع غير محدد", "Branch manager not set")}
                         </span>
                       </td>
                       {has("bookings.view") && (
                         <td className="branch-value">
                           <strong>
                             <bdi>{formatMoney(b.amount)}</bdi>{" "}
-                            <small>ج.م</small>
+                            <small>{tr("ج.م", "EGP")}</small>
                           </strong>
                           <div className="branch-volume" aria-hidden="true">
                             <span
@@ -469,7 +472,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                           </div>
                           {!b.contracts && (
                             <span className="no-records">
-                              لا توجد مشتريات مسجلة
+                              {tr("لا توجد مشتريات مسجلة", "No purchases recorded")}
                             </span>
                           )}
                         </td>
@@ -497,7 +500,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                         <button
                           className="branch-open"
                           onClick={() => setSelectedBranch(b)}
-                          aria-label={`عرض فرع ${b.name}`}
+                          aria-label={tr(`عرض فرع ${b.name}`, `View branch ${b.name}`)}
                         >
                           <ArrowUpLeft size={17} />
                         </button>
@@ -519,30 +522,30 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                     </button>
                     <button
                       className="branch-open"
-                      aria-label={`عرض فرع ${b.name}`}
+                      aria-label={tr(`عرض فرع ${b.name}`, `View branch ${b.name}`)}
                       onClick={() => setSelectedBranch(b)}
                     >
                       <ArrowUpLeft size={17} />
                     </button>
                   </div>
-                  <p>{b.managerName || "مدير الفرع غير محدد"}</p>
+                  <p>{b.managerName || tr("مدير الفرع غير محدد", "Branch manager not set")}</p>
                   {has("bookings.view") && (
                     <strong className="branch-mobile-amount">
-                      <bdi>{formatMoney(b.amount)}</bdi> <small>ج.م</small>
+                      <bdi>{formatMoney(b.amount)}</bdi> <small>{tr("ج.م", "EGP")}</small>
                     </strong>
                   )}
                   <div className="branch-mobile-meta">
                     {has("followups.view") && (
                       <span>
                         <i className={b.late ? "dot-alert" : "dot-neutral"} />
-                        {b.late} متابعة متأخرة
+                        {tr(`${b.late} متابعة متأخرة`, `${b.late} overdue follow-ups`)}
                       </span>
                     )}
                     {has("customers.view") && (
-                      <span>{b.missing} بدون خطوة تالية</span>
+                      <span>{tr(`${b.missing} بدون خطوة تالية`, `${b.missing} with no next step`)}</span>
                     )}
                     {has("invoices.view") && (
-                      <span>{b.notBought} لم يشتروا بعد</span>
+                      <span>{tr(`${b.notBought} لم يشتروا بعد`, `${b.notBought} haven't bought yet`)}</span>
                     )}
                   </div>
                 </article>
@@ -551,14 +554,13 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
             {!branchRows.length && (
               <div className="empty-state">
                 <Building2 size={25} />
-                <h3>نطاق العمل لم يُحدد بعد</h3>
-                <p>حدد فروع الموظف من ملفه لعرض مؤشرات أدائه.</p>
+                <h3>{tr("نطاق العمل لم يُحدد بعد", "Scope not set yet")}</h3>
+                <p>{tr("حدد فروع الموظف من ملفه لعرض مؤشرات أدائه.", "Set the employee's branches from their profile to show their performance indicators.")}</p>
               </div>
             )}
             <div className="studio-panel-footer">
               <p>
-                إجمالي المشتريات لكل الفترات. غياب السجلات لا يكفي لتقييم أداء
-                الفرع.
+                {tr("إجمالي المشتريات لكل الفترات. غياب السجلات لا يكفي لتقييم أداء الفرع.", "Total purchases for all periods. Missing records are not enough to judge a branch's performance.")}
               </p>
               {branchRows.length > 5 && (
                 <button
@@ -566,8 +568,8 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                   onClick={() => setShowAllBranches((v) => !v)}
                 >
                   {showAllBranches
-                    ? "عرض مختصر"
-                    : `كل الفروع (${branchRows.length})`}
+                    ? tr("عرض مختصر", "Show less")
+                    : tr(`كل الفروع (${branchRows.length})`, `All branches (${branchRows.length})`)}
                   <ChevronDown
                     size={15}
                     className={showAllBranches ? "is-rotated" : ""}
@@ -581,9 +583,9 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
           <section className="panel department-composition">
             <div className="studio-panel-heading">
               <div>
-                <span className="eyebrow">توزيع النشاط</span>
-                <h2>كل قسم، ونصيبه</h2>
-                <p>من إجمالي المشتريات</p>
+                <span className="eyebrow">{tr("توزيع النشاط", "Activity distribution")}</span>
+                <h2>{tr("كل قسم، ونصيبه", "Each department and its share")}</h2>
+                <p>{tr("من إجمالي المشتريات", "Of total purchases")}</p>
               </div>
               <ShoppingBag size={20} />
             </div>
@@ -607,7 +609,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                   />
                   <div>
                     <h3>{d.name}</h3>
-                    <p>{d.count} عملية شراء</p>
+                    <p>{d.count} {tr("عملية شراء", "purchases")}</p>
                   </div>
                   <div className="department-figure">
                     <strong>
@@ -621,9 +623,9 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
               ))}
             </div>
             <div className="department-note">
-              <span>ج.م</span>
+              <span>{tr("ج.م", "EGP")}</span>
               <p>
-                القيم هي إجمالي المشتريات غير الملغاة موزّعة على الأقسام الأربعة.
+                {tr("القيم هي إجمالي المشتريات غير الملغاة موزّعة على الأقسام الأربعة.", "Values are the total of non-cancelled purchases split across the four departments.")}
               </p>
             </div>
           </section>
@@ -633,21 +635,21 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
         <section className="panel studio-followups">
           <div className="studio-panel-heading">
             <div>
-              <span className="eyebrow">الخطوة القادمة</span>
+              <span className="eyebrow">{tr("الخطوة القادمة", "Next step")}</span>
               <h2>
-                {sales ? "المتابعات الأقرب" : "المتابعات التي تحتاج مراجعة"}
+                {sales ? tr("المتابعات الأقرب", "Nearest follow-ups") : tr("المتابعات التي تحتاج مراجعة", "Follow-ups needing review")}
               </h2>
               <p>
                 {sales
-                  ? "المتأخر أولًا، وبعده أقرب موعد."
-                  : "الموعد والمسؤول وآخر سبب مسجل للمتابعة."}
+                  ? tr("المتأخر أولًا، وبعده أقرب موعد.", "Overdue first, then the nearest appointment.")
+                  : tr("الموعد والمسؤول وآخر سبب مسجل للمتابعة.", "Appointment, owner, and last recorded follow-up reason.")}
               </p>
             </div>
             <button
               className="btn-text"
               onClick={() => setActiveTab("followups")}
             >
-              كل المتابعات
+              {tr("كل المتابعات", "All follow-ups")}
               <ArrowLeft size={16} />
             </button>
           </div>
@@ -663,7 +665,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                     <h3>{f.leadName}</h3>
                     <p>{f.reason}</p>
                     <span>
-                      {f.assignedAgentName || "الموظف المسؤول"} ·{" "}
+                      {f.assignedAgentName || tr("الموظف المسؤول", "Responsible employee")} ·{" "}
                       <bdi>{f.scheduledAt.replace("T", " ").slice(0, 16)}</bdi>
                     </span>
                   </div>
@@ -672,17 +674,17 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                   >
                     <i />
                     {status === "overdue"
-                      ? "متأخرة"
+                      ? tr("متأخرة", "Overdue")
                       : status === "due"
-                        ? "اليوم"
-                        : "قادمة"}
+                        ? tr("اليوم", "Today")
+                        : tr("قادمة", "Upcoming")}
                   </span>
                   {has("customers.view") && (
                       <button
                         className="btn-secondary"
                         onClick={() => onOpenLead(f.leadId)}
                       >
-                        ملف العميل
+                        {tr("ملف العميل", "Customer file")}
                         <ArrowUpLeft size={16} />
                       </button>
                     )}
@@ -692,8 +694,8 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
             {!tasks.length && (
               <div className="empty-state">
                 <Check size={27} />
-                <h3>لا توجد متابعات معلّقة</h3>
-                <p>أي مواعيد جديدة داخل نطاقك هتظهر هنا.</p>
+                <h3>{tr("لا توجد متابعات معلّقة", "No pending follow-ups")}</h3>
+                <p>{tr("أي مواعيد جديدة داخل نطاقك هتظهر هنا.", "Any new appointments in your scope will appear here.")}</p>
               </div>
             )}
           </div>
@@ -702,9 +704,9 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
       <footer className="studio-page-footer">
         <span>
           <span className="brand-dot" />
-          البحيري للدهانات والديكور
+          {tr("البحيري للدهانات والديكور", "El Behery for Paints and Decor")}
         </span>
-        <span>تفاصيل وجودة تليق بذوقك</span>
+        <span>{tr("تفاصيل وجودة تليق بذوقك", "Quality and detail that suit your taste")}</span>
       </footer>
       <BranchDetailsModal
         key={selectedBranch?.id}

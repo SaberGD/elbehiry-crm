@@ -22,6 +22,15 @@ export const positionNames: Record<UserRole, string> = {
   sales_agent: "سيلز",
   team_leader: "سيلز",
 };
+export const positionNamesEn: Record<UserRole, string> = {
+  admin: "Developer",
+  general_manager: "Business owner",
+  regional_manager: "General sales manager",
+  supervisor: "Specialist supervisor",
+  branch_manager: "Branch sales manager",
+  sales_agent: "Branch sales",
+  team_leader: "Branch sales",
+};
 /** Roles that talk to customers and carry their own customers and ratings. */
 export const salesCapableRoles: UserRole[] = ["sales_agent", "team_leader", "branch_manager", "regional_manager"];
 export const isSalesCapable = (user: Pick<User, "role">) => salesCapableRoles.includes(user.role);

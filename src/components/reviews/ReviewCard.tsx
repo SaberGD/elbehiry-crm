@@ -26,9 +26,9 @@ const phaseLabel: Record<ReviewPhase, string> = {
   cancelled: "اتلغى",
 };
 
-const when = (iso: string) => new Date(iso).toLocaleString("ar-EG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-export const Stars = ({ n }: { n: number }) => (
-  <span aria-label={`${n} من 5`} style={{ color: "#f5a623", letterSpacing: 2, direction: "ltr", display: "inline-block" }}>
+const when = (iso: string) => new Date(iso).toLocaleString("ar-EG-u-nu-latn", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+export const Stars = ({ n, size }: { n: number; size?: number }) => (
+  <span aria-label={`${n} من 5`} style={{ color: "#f5a623", letterSpacing: 2, direction: "ltr", display: "inline-block", ...(size ? { fontSize: size } : {}) }}>
     {"★".repeat(n)}
     <span style={{ color: "var(--line)" }}>{"★".repeat(5 - n)}</span>
   </span>
@@ -81,36 +81,44 @@ export function ReviewCard({ request: r, showCustomer = false, onOpenLead }: { r
       <h3 className="review-title">
         {showCustomer &&
           (r.partyKind === "broker" ? (
-            <span style={{ fontWeight: 700 }}>وسيط: {r.leadName}</span>
+            <span style={{ fontWeight: 700 }}>وسيط: <bdi>{r.leadName}</bdi></span>
           ) : (
             <button className="btn-text" style={{ padding: 0, fontWeight: 700 }} onClick={() => onOpenLead?.(r.leadId)}>
-              {r.leadName}
+              <bdi>{r.leadName}</bdi>
             </button>
           ))}
         {showCustomer && " · "}
         {r.subjectLabel}
       </h3>
       <p className="table-secondary">
-        اتبعت {when(r.sentAt)} · {r.agentName || "—"}
+        اتبعت {when(r.sentAt)} · <bdi>{r.agentName || "—"}</bdi>
         {r.reminderSentAt && ` · تذكير ${when(r.reminderSentAt)}`}
       </p>
 
       {r.status === "answered" && resp && (
         <div style={{ marginTop: 10 }}>
-          <p>
-            <Stars n={resp.rating} /> <strong>{resp.rating}/5</strong>
-            {r.answeredAt && <span className="table-secondary"> · {when(r.answeredAt)}</span>}
+          <p style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 17 }}>
+            <strong>التقييم العام</strong> <Stars n={resp.rating} size={20} />
           </p>
-          <p className="table-secondary">
-            {[
-              resp.treatment ? `المعاملة ${resp.treatment}/5` : "",
-              resp.price ? `السعر ${resp.price}/5` : "",
-              resp.quality ? `الجودة ${resp.quality}/5` : "",
-              resp.wouldRecommend === true ? "هيرشحنا" : resp.wouldRecommend === false ? "مش متأكد إنه يرشحنا" : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
+          {r.answeredAt && <p className="table-secondary">وصل التقييم {when(r.answeredAt)}</p>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
+            {(
+              [
+                ["المعاملة", resp.treatment],
+                ["السعر", resp.price],
+                ["الجودة", resp.quality],
+              ] as const
+            )
+              .filter(([, n]) => n)
+              .map(([label, n]) => (
+                <span key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, maxWidth: 260, fontSize: 15 }}>
+                  <span>{label}</span> <Stars n={n!} size={17} />
+                </span>
+              ))}
+          </div>
+          {(resp.wouldRecommend === true || resp.wouldRecommend === false) && (
+            <p className="table-secondary">{resp.wouldRecommend ? "هيرشحنا" : "مش متأكد إنه يرشحنا"}</p>
+          )}
           {resp.comment && (
             <blockquote style={{ margin: "8px 0", padding: "10px 12px", background: "var(--surface-soft)", borderInlineStart: "3px solid #c8232b", borderRadius: 8 }}>
               {resp.comment}

@@ -37,8 +37,9 @@ export const postSaleMilestones: MilestoneDef[] = [
   },
 ];
 
-export const milestoneLabel = (id?: PostSaleMilestone) =>
-  postSaleMilestones.find((m) => m.id === id)?.label ?? "";
+const milestoneLabelsEn: Record<string, string> = { "30d": "After 1 month", "6m": "After 6 months", "12m": "After 1 year" };
+export const milestoneLabel = (id?: PostSaleMilestone, en = false) =>
+  en ? (id ? milestoneLabelsEn[id] ?? "" : "") : postSaleMilestones.find((m) => m.id === id)?.label ?? "";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
