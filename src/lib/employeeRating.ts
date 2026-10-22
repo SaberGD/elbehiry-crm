@@ -5,6 +5,8 @@ import { isSalesCapable } from "./permissions";
 /** A new employee starts near this score and moves toward their real average as ratings come in. */
 export const PRIOR_STARS = 4;
 export const PRIOR_WEIGHT = 5;
+/** Below this many ratings an employee is shown as "too early" instead of being judged. */
+export const MIN_RATINGS_FOR_LEVEL = 3;
 const DAY = 86_400_000;
 
 export type RatingLevel = "excellent" | "good" | "needs_work" | "new";
@@ -48,7 +50,7 @@ export function scoreOf(stars: number[]): { average: number | null; score: numbe
 }
 
 export function levelOf(count: number, score: number | null): RatingLevel {
-  if (count < 3 || score === null) return "new";
+  if (count < MIN_RATINGS_FOR_LEVEL || score === null) return "new";
   return score >= 4.5 ? "excellent" : score >= 4 ? "good" : "needs_work";
 }
 

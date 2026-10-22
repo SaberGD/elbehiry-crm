@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import { FilterBar } from "../components/common/FilterBar";
 import { canManageCatalog, canCreateCustomer } from '../lib/access';
 import React, { useState } from 'react';
@@ -151,6 +152,7 @@ export const BrokersPage: React.FC = () => {
           </button>
         )}
       </div>
+      <PageGuide id="brokers" />
 
       {/* Analytics Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

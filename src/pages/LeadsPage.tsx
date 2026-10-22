@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import {
   canCreateCustomer,
   canAssignCustomers,
@@ -142,6 +143,7 @@ export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
           </button>
         )}
       </div>
+      <PageGuide id="customers" />
       <section className="panel">
         <FilterBar
           search={{ value: query, onChange: setQuery, placeholder: "اسم العميل أو رقم الهاتف…" }}

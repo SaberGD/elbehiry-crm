@@ -69,3 +69,10 @@ export function buildPostSaleSchedule(purchaseDate: string) {
 export function upcomingPostSale(purchaseDate: string, todayStr: string, have: Set<string | undefined> = new Set()) {
   return buildPostSaleSchedule(purchaseDate).filter((m) => m.date >= todayStr && !have.has(m.milestone));
 }
+
+/** "أسبوع"، "شهر"، "6 شهور"، "سنة": how long after the purchase a milestone comes, in words. */
+export function milestoneSpan(m: { days?: number; months?: number }): string {
+  if (m.months) return m.months === 12 ? "سنة" : m.months === 1 ? "شهر" : m.months <= 10 ? `${m.months} شهور` : `${m.months} شهر`;
+  const d = m.days ?? 0;
+  return d === 7 ? "أسبوع" : d === 30 ? "شهر" : d === 1 ? "يوم" : d === 2 ? "يومين" : `${d} يوم`;
+}

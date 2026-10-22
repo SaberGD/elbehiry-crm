@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import { BrokerSearch } from "../components/common/BrokerSearch";
 import { CustomerSearch } from "../components/common/CustomerSearch";
 import { PostVisitReview, type VisitReviewTarget } from "../components/common/PostVisitReview";
@@ -251,6 +252,7 @@ export function VisitsPage({ onOpenLead }: Props) {
             </button>
           )}
         </div>
+        <PageGuide id="visits" />
         {notice && (
           <div className="notice" role="status">
             {notice}
@@ -370,6 +372,7 @@ export function VisitsPage({ onOpenLead }: Props) {
           رجوع
         </button>
       </div>
+      <PageGuide id="visits" />
       <form className="panel" onSubmit={submit} noValidate>
         <section className="form-section">
           <div className="section-title">

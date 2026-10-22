@@ -5,7 +5,7 @@ import {
 } from "../lib/permissions";
 import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
-import { isReferralPhone, phoneKey } from "../lib/referrals";
+import { REFERRAL_FOLLOWUP_DAYS, isReferralPhone, phoneKey } from "../lib/referrals";
 import { scopesFor, seesAll } from "../lib/scopes";
 import { defaultLicense, type License } from "../lib/license";
 import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
@@ -750,7 +750,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       assignedAgentId: agentId,
       branchId: lead.branchId,
       origin: "auto",
-      scheduledAt: addToDate(today(), { days: 2 }),
+      scheduledAt: addToDate(today(), { days: REFERRAL_FOLLOWUP_DAYS }),
       reason: `كلّم ${lead.name}: رشّحه ${from.name}. افتح الكلام بـ«${from.name} قالنا إنك ممكن تحتاج شغل» وانسق معاه زيارة للفرع.`,
       type: "call",
       notes: "",

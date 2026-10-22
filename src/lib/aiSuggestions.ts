@@ -4,7 +4,9 @@ import { followUpStatus } from "./presentation";
 import { reviewsText } from "./aiSuggestionsText";
 
 export const MAX_CHECKS_PER_DAY = 25;
-const RECENT_DAYS = 60;
+export const RECENT_DAYS = 60;
+/** A follow-up this close to a suggested day already covers it. */
+export const NEARBY_FOLLOWUP_DAYS = 10;
 const MIN_TEXT = 12;
 const DAY = 86_400_000;
 
@@ -155,7 +157,7 @@ export function suggestionBudget(list: AiSuggestion[], userId: string, today: st
 }
 
 /** A follow-up for the same customer or broker close to the suggested day: it would double up. */
-export function nearbyFollowUp(followUps: FollowUp[], party: { leadId?: string; brokerId?: string }, date: string, windowDays = 10): FollowUp | undefined {
+export function nearbyFollowUp(followUps: FollowUp[], party: { leadId?: string; brokerId?: string }, date: string, windowDays = NEARBY_FOLLOWUP_DAYS): FollowUp | undefined {
   const t = new Date(date).getTime();
   return openOf(followUps).find(
     (f) => (party.leadId ? f.leadId === party.leadId : f.brokerId === party.brokerId) && Math.abs(new Date(day(f.scheduledAt)).getTime() - t) <= windowDays * DAY,

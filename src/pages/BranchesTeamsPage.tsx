@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import { branchLimitMessage, branchQuota } from "../lib/license";
 import { canManageOrganization } from "../lib/access";
 import React, { useState } from "react";
@@ -182,6 +183,7 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
           </button>
         )}
       </div>
+      <PageGuide id="branches" />
 
       <p className={`notice${quota.full ? " warning" : ""}`} role="status">
         الباقة الحالية: {quota.max === 2 ? "فرعين" : `${quota.max} فرع`}. مستخدم {quota.used} من {quota.max}.

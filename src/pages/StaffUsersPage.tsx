@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import { RatingBadge } from "../components/reviews/EmployeeRatings";
 import { employeeRatings } from "../lib/employeeRating";
 import { userLimitMessage, userQuota } from "../lib/license";
@@ -368,6 +369,7 @@ export const StaffUsersPage: React.FC = () => {
           </button>
         )}
       </div>
+      <PageGuide id="staff" />
 
       {/* Tabs Navigation */}
       <div className="tab-filter" role="group" aria-label="الموظفون والأقسام" style={{ marginBottom: 12 }}>

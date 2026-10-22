@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import { BrokerSearch } from "../components/common/BrokerSearch";
 import { CustomerRatingModal } from "../components/common/CustomerRatingModal";
 import {
@@ -291,6 +292,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
           رجوع
         </button>
       </div>
+      <PageGuide id="addCustomer" />
       {availableBranches.length === 0 && (
         <p className="notice warning" role="alert">
           لسه مفيش أي فرع مسجّل. أضف الفرع الأول من «إدارة المؤسسة ← الهيكل الإداري»، وأضف موظفين من «الموظفون»، وبعدها سجّل عملاءك.

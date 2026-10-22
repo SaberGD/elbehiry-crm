@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import { canAccessPage } from "../lib/access";
 import { useState } from "react";
 import { ArrowUpLeft, ShoppingBag } from "lucide-react";
@@ -55,6 +56,7 @@ export function BookingsPage({ onOpenLead }: Props) {
           <p>ملخص عمليات الشراء: كام، بكام، في أنهي قسم، وحالة متابعات ما بعد البيع. الشراء معناه إن العميل استلم، فمفيش خطوة تسليم.</p>
         </div>
       </div>
+      <PageGuide id="purchases" />
       <div className="metric-grid">
         <div className="metric">
           <span className="metric-top">عمليات الشراء</span>

@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import { useMemo, useState } from "react";
 import { useCRM } from "../context/CRMContext";
 import { ReviewCard } from "../components/reviews/ReviewCard";
@@ -72,6 +73,7 @@ export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void 
           </p>
         </div>
       </div>
+      <PageGuide id="feedback" />
 
       <EmployeeRatings />
 

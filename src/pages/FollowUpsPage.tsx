@@ -22,7 +22,7 @@ import { FilterBar, inDateRange } from "../components/common/FilterBar";
 import { ReviewCard } from "../components/reviews/ReviewCard";
 import { reviewPhase, reminderMessage, reviewLink, whatsappUrl } from "../lib/reviews";
 import { reminderTasks, type ReminderTask } from "../lib/reminders";
-import { autoFollowUpRules } from "../lib/followUpRules";
+import { PageGuide } from "../components/common/PageGuide";
 import { PostVisitReview } from "../components/common/PostVisitReview";
 import { SuggestionsTab } from "../components/followups/SuggestionsTab";
 import { lastOutcome } from "../lib/purchases";
@@ -328,18 +328,7 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
           {toast}
         </p>
       )}
-      <details className="auto-rules panel">
-        <summary>
-          قواعد المتابعة التلقائية: السيستم بيجدول إيه لوحده؟ <span>({autoFollowUpRules.length})</span>
-        </summary>
-        <ul>
-          {autoFollowUpRules.map((r) => (
-            <li key={r.when}>
-              <strong>{r.when}</strong> ← {r.what} <em>({r.after})</em>
-            </li>
-          ))}
-        </ul>
-      </details>
+      <PageGuide id="followups" />
       <div className="tab-filter" role="group" aria-label="أقسام المتابعات" style={{ marginBottom: 12 }}>
         <button aria-pressed={view === "followups"} onClick={() => setView("followups")}>
           المتابعات

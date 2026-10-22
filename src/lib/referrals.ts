@@ -12,6 +12,8 @@ export const pendingReferral = (r: ReviewRequest) => hasReferral(r) && !r.referr
 
 /** We only take a recommendation from a customer who is happy: 4 or 5 stars. Someone upset is not asked. */
 export const REFERRAL_MIN_STARS = 4;
+/** A recommended person is called this many days after being registered. */
+export const REFERRAL_FOLLOWUP_DAYS = 2;
 export const hasReferral = (r: ReviewRequest) =>
   r.status === "answered" && !!r.response?.referral && (r.response.rating ?? 0) >= REFERRAL_MIN_STARS;
 

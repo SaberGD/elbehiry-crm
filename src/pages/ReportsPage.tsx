@@ -1,3 +1,4 @@
+import { PageGuide } from "../components/common/PageGuide";
 import { departmentIds, splitTotals } from "../lib/purchases";
 import { notBoughtReasons } from "../lib/notBought";
 import { useCRM } from "../context/CRMContext";
@@ -71,6 +72,7 @@ export function ReportsPage() {
           <p>{scopeLabel(u)} · جميع الفترات · المؤشرات المتاحة لصلاحياتك</p>
         </div>
       </div>
+      <PageGuide id="reports" />
       <div className="metric-grid">
         {metrics
           .filter((m) => m.allowed)
