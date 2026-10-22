@@ -108,6 +108,12 @@ const modelRoles: User["role"][] = ["general_manager", "regional_manager", "bran
 export const demoUsers: User[] = [...initialUsers.filter((u) => u.role !== "admin"), ...demoStaffExtras, ...demoAgents].filter((u) =>
   modelRoles.includes(u.role),
 );
+/**
+ * Every employee any version of the sample data ever created (managers, and the old salespeople, supervisors and
+ * team leaders too). Older versions saved them without the sample flag, so removal recognises them by id.
+ * The sample developer is left out: a real developer account may share its id.
+ */
+export const allSampleUsers: User[] = [...initialUsers.filter((u) => u.role !== "admin"), ...demoStaffExtras, ...demoAgents];
 const managerOf: Record<string, User> = Object.fromEntries(demoUsers.filter((u) => u.role === "branch_manager").map((u) => [u.branchId!, u]));
 // Old salespeople and supervisors in the sample set map to their branch's sales manager.
 const toManager: Record<string, User> = Object.fromEntries(

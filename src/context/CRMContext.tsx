@@ -1490,7 +1490,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const ids = (xs: { id: string }[]) => new Set(xs.map((x) => x.id));
     return {
       companies: ids(d.initialCompanies), warehouses: ids(d.initialWarehouses), branches: ids(d.initialBranches), teams: ids(d.initialTeams),
-      departmentEntities: ids(d.initialDepartments), jobPositions: ids(d.initialJobPositions), users: ids(d.demoUsers), leads: ids(d.demoLeads),
+      departmentEntities: ids(d.initialDepartments), jobPositions: ids(d.initialJobPositions), users: ids(d.allSampleUsers), leads: ids(d.demoLeads),
       visits: ids(d.demoVisits), followUps: ids(d.demoFollowUps), bookings: ids(d.demoBookings), timelineEvents: ids(d.demoTimeline),
       purchaseInvoices: ids(d.demoInvoices), brokers: ids(d.demoBrokers), notBoughtRecords: ids(d.demoNotBought), reviewRequests: ids(d.demoReviews),
     };
@@ -1535,7 +1535,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
   /** Developer-only: empties branches, companies, warehouses, teams, departments and job titles so the real structure can be entered from scratch. */
   const clearOrganizationData = async () => {
-    const { initialUsers } = await import("../data/initialData");
+    const { allSampleUsers } = await import("../data/demoData");
     setCompanies([]);
     setWarehouses([]);
     setBranches([]);
@@ -1543,7 +1543,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setDepartmentEntities([]);
     setJobPositions([]);
     // The sample staff go too; anyone with a real login (or the signed-in developer) stays.
-    const sample = new Set(initialUsers.map((u) => u.id));
+    const sample = new Set(allSampleUsers.map((u) => u.id));
     setUsers((prev) => prev.filter((u) => u.id === currentUser.id || u.authUid || !sample.has(u.id)));
     logAudit("تفريغ الهيكل الإداري", "إعدادات", "org", "تفريغ الفروع والشركات والمخازن والفرق والأقسام والمسميات");
   };

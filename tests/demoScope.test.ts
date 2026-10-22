@@ -55,3 +55,18 @@ test("a real customer tied to a sample branch or employee is not removed, only r
   assert.equal(plan.drop.leads.size, 0);
   assert.equal(plan.realLinked, 2);
 });
+
+import { allSampleUsers } from "../src/data/demoData";
+
+test("sample employees an older version saved without the flag are recognised by id; real logins and the developer stay", () => {
+  const oldAgent = allSampleUsers.find((u) => u.role === "sales_agent")!; // e.g. an old sample salesperson
+  assert.ok(oldAgent, "the sample set includes old-style salespeople");
+  const known = { users: new Set(allSampleUsers.map((u) => u.id)) };
+  const w = world({
+    users: [user(oldAgent.id), user("real-with-login", { authUid: "uid1" }), user("real-no-login"), user("me", { role: "admin" })],
+  });
+  const { drop } = planDemoRemoval(w, known, "me");
+  assert.deepEqual([...drop.users], [oldAgent.id]);
+  // the sample developer record is not on the list, so a real developer sharing its id is safe
+  assert.ok(!known.users.has("usr-admin"));
+});
