@@ -5,6 +5,7 @@ import React, { Suspense, lazy, useState } from "react";
 import { LanguageProvider } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SessionTracker } from "./components/common/SessionTracker";
 import { CRMProvider, useCRM } from "./context/CRMContext";
 import {
   LoginPage,
@@ -217,6 +218,7 @@ const AppContent: React.FC = () => {
       />
       <SaveErrorToast />
       <ReviewWatcher />
+      <SessionTracker />
       <ZakiChat />
     </div>
   );

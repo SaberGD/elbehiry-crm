@@ -289,6 +289,24 @@ service cloud.firestore {
         && request.resource.data.branchId == resource.data.branchId;
     }
 
+    // Sign-in / sign-out / app-open log and live presence: every member writes
+    // only about themselves; only the developer can read.
+    match /sessionEvents/{docId} {
+      allow read: if isStaff() && role() == 'admin';
+      allow create: if isStaff()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'role', 'branchId', 'type', 'at', 'device'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.type in ['sign_in', 'sign_out', 'app_open'];
+    }
+
+    match /presence/{uid} {
+      allow read: if isStaff() && role() == 'admin';
+      allow create, update: if isStaff()
+        && uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'role', 'branchId', 'online', 'lastSeen', 'since', 'device'])
+        && request.resource.data.uid == request.auth.uid;
+    }
+
     // "Done" marks on reminders: a person's own, never edited or removed.
     match /reminderDone/{docId} {
       allow read: if rowOk(resource.data, 'agentId');

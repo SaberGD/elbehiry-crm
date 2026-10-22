@@ -18,6 +18,10 @@ import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserRole, User } from '../types/crm';
 import { normalizeLoginId, toAuthEmail } from '../lib/loginId';
 import { createLoginOnServer } from '../lib/adminClient';
+import { logSessionEvent, writePresence, type Who } from '../lib/sessionLog';
+
+const SIGNED_IN_FLAG = 'sessionlog_signed_in';
+const whoOf = (p: { uid: string; name: string; role: string; branchId?: string }): Who => ({ uid: p.uid, name: p.name, role: p.role, branchId: p.branchId });
 
 /** Server-trusted access record, keyed by Firebase Auth uid. Only admins write it. */
 export interface AuthProfile {
@@ -161,10 +165,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   else status = 'ready';
 
   const login = async (loginId: string, password: string) => {
-    await signInWithEmailAndPassword(auth, toAuthEmail(loginId), password);
+    const cred = await signInWithEmailAndPassword(auth, toAuthEmail(loginId), password);
+    try {
+      const snap = await getDoc(doc(db, 'authProfiles', cred.user.uid));
+      if (snap.exists()) {
+        const who = whoOf({ ...(snap.data() as AuthProfile), uid: cred.user.uid });
+        sessionStorage.setItem(SIGNED_IN_FLAG, '1');
+        await logSessionEvent(who, 'sign_in');
+        await writePresence(who, true, Date.now());
+      }
+    } catch {
+      /* logging is best-effort */
+    }
   };
 
   const logout = async () => {
+    if (profile && auth.currentUser) {
+      const who = whoOf({ ...profile, uid: auth.currentUser.uid });
+      await Promise.all([logSessionEvent(who, 'sign_out'), writePresence(who, false, Date.now())]);
+    }
     try {
       Object.keys(localStorage)
         .filter((k) => k.startsWith(CACHE_PREFIX))

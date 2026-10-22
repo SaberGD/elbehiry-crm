@@ -1,7 +1,7 @@
 import test, { before, after } from "node:test";
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { collection, doc, getDoc, getDocs, query, where, setDoc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, where, setDoc, updateDoc } from "firebase/firestore";
 
 let env;
 const people = {
@@ -217,6 +217,21 @@ test("Zaki suggestions and reminder marks belong to one person: made pending, de
   await assertSucceeds(setDoc(doc(db("agentA"), "reminderDone", "rs:v1:client"), { id: "rs:v1:client", branchId: "b1", agentId: userId("agentA"), doneAt: "x" }));
   await assertFails(setDoc(doc(db("agentA"), "reminderDone", "rs:v2:client"), { id: "rs:v2:client", branchId: "b1", agentId: userId("agentB"), doneAt: "x" }));
   await assertFails(updateDoc(doc(db("agentA"), "reminderDone", "rs:v1:client"), { doneAt: "y" }));
+  // sign-in log and presence: own writes only, developer reads
+  const ev = (k2, extra = {}) => ({ uid: uid(k2), name: k2, role: "sales_agent", type: "sign_in", at: 1, device: "x", ...extra });
+  await assertSucceeds(addDoc(collection(db("agentA"), "sessionEvents"), ev("agentA")));
+  await assertFails(addDoc(collection(db("agentA"), "sessionEvents"), ev("agentB")));
+  await assertFails(addDoc(collection(db("agentA"), "sessionEvents"), ev("agentA", { type: "other" })));
+  await assertFails(addDoc(collection(db("agentA"), "sessionEvents"), ev("agentA", { extra: 1 })));
+  await assertFails(getDocs(collection(db("agentA"), "sessionEvents")));
+  await assertFails(getDocs(collection(db("gm"), "sessionEvents")));
+  await assertSucceeds(getDocs(collection(db("dev"), "sessionEvents")));
+  const pr = (k2) => ({ uid: uid(k2), name: k2, role: "sales_agent", online: true, lastSeen: 1, since: 1, device: "x" });
+  await assertSucceeds(setDoc(doc(db("agentA"), "presence", uid("agentA")), pr("agentA")));
+  await assertSucceeds(setDoc(doc(db("agentA"), "presence", uid("agentA")), { ...pr("agentA"), online: false }));
+  await assertFails(setDoc(doc(db("agentA"), "presence", uid("agentB")), pr("agentB")));
+  await assertFails(getDoc(doc(db("agentA"), "presence", uid("agentA"))));
+  await assertSucceeds(getDoc(doc(db("dev"), "presence", uid("agentA"))));
 });
 
 test("the general sales manager edits people below the owner in any branch, but not the owner, the developer or a peer; the branch manager only low roles in their branch", async () => {

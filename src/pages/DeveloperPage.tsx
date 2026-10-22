@@ -1,4 +1,5 @@
 import { BackupPanel } from "../components/common/BackupPanel";
+import { SessionLogPanel } from "../components/common/SessionLogPanel";
 import { DEFAULT_AI_PER_DAY, DEFAULT_AI_PER_HOUR, DEFAULT_SUGGESTIONS_PER_DAY, branchQuota, userQuota } from "../lib/license";
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, Code2, RefreshCw, Server } from "lucide-react";
@@ -257,6 +258,7 @@ export function DeveloperPage() {
         </div>
       </section>
 
+      <SessionLogPanel />
       <BackupPanel />
 
       <section className="panel" style={{ marginTop: 20 }}>
