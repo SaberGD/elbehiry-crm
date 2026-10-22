@@ -512,16 +512,21 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   // The database search needs every customer to carry its search keys. Customers saved from now on get them with
   // every save; the ones saved earlier are indexed once, by top management, and the screens use the plain list
   // until that is done.
-  const [searchIndexVersion, setSearchIndexVersion] = useState(0);
+  // null until the marker has been read: indexing must not start on a guess.
+  const [indexMarker, setIndexMarker] = useState<number | null>(null);
   useEffect(
     () =>
       onSnapshot(
         doc(db, "settings", "searchIndex"),
-        (snap) => setSearchIndexVersion(snap.exists() ? Number(snap.data().version) || 0 : 0),
-        () => setSearchIndexVersion(0),
+        (snap) => {
+          if (snap.metadata.fromCache && !snap.exists()) return; // wait for the server before concluding it is missing
+          setIndexMarker(snap.exists() ? Number(snap.data().version) || 0 : 0);
+        },
+        () => setIndexMarker(0),
       ),
     [],
   );
+  const searchIndexVersion = indexMarker ?? 0;
   const indexing = useRef(false);
   const reindexSearch = useCallback(async () => {
     const all = await fetchScoped<Lead>("leads", "all");
@@ -535,10 +540,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     return { customers: all.length, fixed: stale.length };
   }, []);
   useEffect(() => {
-    if (!topWriter || searchIndexVersion >= SEARCH_INDEX_VERSION || indexing.current) return;
+    if (!topWriter || indexMarker === null || searchIndexVersion >= SEARCH_INDEX_VERSION || indexing.current) return;
     indexing.current = true;
     reindexSearch().catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
-  }, [topWriter, searchIndexVersion, reindexSearch]);
+  }, [topWriter, indexMarker, searchIndexVersion, reindexSearch]);
   useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: scope.notBought });
   useFirestoreCollection("reminderDone", reminderDone, setReminderDone, { scope: scope.reminderDone });
   useFirestoreCollection("aiSuggestions", aiSuggestions, setAiSuggestions, { scope: scope.aiSuggestions });

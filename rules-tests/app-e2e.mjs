@@ -262,6 +262,11 @@ await as("agentC", async (page, go) => {
   check((await page.locator("button.customer-name").count()) === 0, "a search never returns another branch's customers");
 });
 
+// Signing in again as top management does not read the customers again: the index is already built.
+await as("gm", async (page, go, landing) => {
+  check(landing.total < 120 && !(landing.by["leads/fetch"] > 0), `a later sign-in as top management does not re-read the customers (${landing.total} read, ${landing.by["leads/fetch"] || 0} for indexing)`);
+});
+
 await browser.close();
 server.close();
 await env.cleanup();
