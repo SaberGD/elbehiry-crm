@@ -1,3 +1,4 @@
+import { useAllLeads } from "../lib/useAllLeads";
 import { CustomerBrief } from "../components/common/CustomerBrief";
 import { REFERRAL_MIN_STARS, isReferralPhone } from "../lib/referrals";
 import { canCompleteFollowUp, canAccessPage, isSales, worksOwnCustomers } from "../lib/access";
@@ -35,6 +36,7 @@ interface Props {
 export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
   const { effectiveUser, leads, branches, followUps, updateFollowUpResult, reviewRequests, addReferralLead, bookings, notBoughtRecords, visits, brokers, reminderDone, markReminderDone, markReviewReminderSent, aiSuggestions } =
     useCRM();
+  useAllLeads();
   // The one 48-hour nudge for review requests the customer has not answered.
   const tasks = reminderTasks({ visits, reviewRequests, leads, brokers, reminderDone }, effectiveUser.id);
   const [view, setView] = useState<"followups" | "reminders" | "suggestions">("followups");

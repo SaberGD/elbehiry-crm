@@ -1,3 +1,4 @@
+import { useAllLeads } from "../lib/useAllLeads";
 import { PageGuide } from "../components/common/PageGuide";
 import { useMemo, useState } from "react";
 import { useCRM } from "../context/CRMContext";
@@ -12,6 +13,7 @@ type Tab = "complaints" | "referrals" | "all" | "waiting";
 /** Customer reviews and complaints inside the viewer's scope. */
 export function FeedbackPage({ onOpenLead }: { onOpenLead: (id: string) => void }) {
   const { reviewRequests, reviewNotes, effectiveUser } = useCRM();
+  useAllLeads();
   const [tab, setTab] = useState<Tab>("complaints");
   const [q, setQ] = useState("");
   const [fBranch, setFBranch] = useState("all");

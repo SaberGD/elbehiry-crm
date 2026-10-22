@@ -1,3 +1,4 @@
+import { useAllLeads } from "../lib/useAllLeads";
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
@@ -58,6 +59,7 @@ function SplitLegend({ split }: { split: Split }) {
 
 export function OverviewPage({ onOpenLead }: { onOpenLead: (id: string) => void }) {
   const { effectiveUser: u, leads, bookings, brokers } = useCRM();
+  useAllLeads();
   const [sortBy, setSortBy] = useState<"total" | Department>("total");
   const [openCustomer, setOpenCustomer] = useState<string | null>(null);
   const [openBroker, setOpenBroker] = useState<string | null>(null);

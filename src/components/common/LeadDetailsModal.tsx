@@ -34,6 +34,8 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import type { Lead, Department, LeadStatus, Booking } from "../../types/crm";
+import { narrowScope, fetchScoped } from "../../lib/useFirestoreSync";
+import { profileOf, scopesFor } from "../../lib/scopes";
 import { useCRM } from "../../context/CRMContext";
 import {
   statusNames,
@@ -79,7 +81,6 @@ export function LeadDetailsModal({
 }: Props) {
   const {
     effectiveUser,
-    leads,
     users,
     branches,
     timelineEvents,
@@ -184,12 +185,25 @@ export function LeadDetailsModal({
       setFeedback("");
     }
   }, [isOpen, lead?.id, initialAction]);
+  // The customers this one recommended are asked for by the database, not found in a loaded list.
+  const [broughtLeads, setBroughtLeads] = useState<Lead[]>([]);
+  useEffect(() => {
+    setBroughtLeads([]);
+    if (!isOpen || !lead) return;
+    let current = true;
+    fetchScoped<Lead>("leads", narrowScope(scopesFor(profileOf(effectiveUser)).leads, "referredByLeadId", [lead.id]))
+      .then((rows) => current && setBroughtLeads(rows))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, lead?.id]);
   if (!isOpen || !lead) return null;
   const events = buildTimeline(lead.id, timelineEvents, reviewRequests, reviewNotes);
   const shownEvents = timelineFilter === "all" ? events : events.filter((e) => e.group === timelineFilter);
   const timelineGroups = (Object.keys(timelineGroupLabels) as TimelineGroup[]).filter((g) => events.some((e) => e.group === g));
   const leadVisits = visits.filter((v) => v.linkedLeadId === lead.id);
-  const broughtLeads = leads.filter((l) => l.referredByLeadId === lead.id);
   const leadFollowUps = followUps
     .filter((f) => f.leadId === lead.id)
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));

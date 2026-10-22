@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
 import { useTheme } from "../../context/ThemeContext";
-import type { UserRole } from "../../types/crm";
+import type { Lead, UserRole } from "../../types/crm";
+import { searchLeads } from "../../lib/leadQueries";
+import { profileOf, scopesFor } from "../../lib/scopes";
 import { roleNames } from "../../lib/presentation";
 
 interface Props {
@@ -65,6 +67,9 @@ export function Navbar({
     previewUsers: users,
     leads,
     branches,
+    injectLeads,
+    requestAllLeads,
+    searchIndexReady,
   } = useCRM();
   const { theme, setTheme } = useTheme();
   const [query, setQuery] = useState("");
@@ -105,14 +110,34 @@ export function Navbar({
     }
     if (accountRef.current && value !== "me" && !value.startsWith("role:")) accountRef.current.open = false;
   };
-  const matches = query.trim()
-    ? leads
-        .filter(
-          (l) =>
-            l.name.includes(query.trim()) || l.phone.includes(query.trim()),
-        )
-        .slice(0, 5)
-    : [];
+  // The database looks the customer up (an indexed search, a few rows). Until the customers are indexed, the full
+  // list is read for as long as someone is searching, and searched here.
+  const typed = query.trim();
+  const [found, setFound] = useState<Lead[]>([]);
+  useEffect(() => (typed && !searchIndexReady ? requestAllLeads() : undefined), [!!typed, searchIndexReady, requestAllLeads]);
+  useEffect(() => {
+    if (!typed || !searchIndexReady) return setFound([]);
+    let current = true;
+    const timer = setTimeout(() => {
+      searchLeads(scopesFor(profileOf(effectiveUser)).leads, typed, 6)
+        .then((rows) => {
+          if (!current) return;
+          injectLeads(rows);
+          setFound(rows);
+        })
+        .catch(() => current && setFound([]));
+    }, 250);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typed, searchIndexReady, effectiveUser.id, effectiveUser.role, effectiveUser.branchId]);
+  const matches = !typed
+    ? []
+    : searchIndexReady
+      ? found
+      : leads.filter((l) => l.name.includes(typed) || l.phone.includes(typed)).slice(0, 5);
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (!searchRef.current?.contains(e.target as Node)) setShowResults(false);

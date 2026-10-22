@@ -1,3 +1,4 @@
+import { useAllLeads } from "../lib/useAllLeads";
 import { PageGuide } from "../components/common/PageGuide";
 import { FilterBar } from "../components/common/FilterBar";
 import { canManageCatalog, canCreateCustomer } from '../lib/access';
@@ -25,6 +26,7 @@ import {
 
 export const BrokersPage: React.FC = () => {
   const { brokers, purchaseInvoices, leads, bookings, reviewRequests, addBroker, updateBroker, effectiveUser } = useCRM();
+  useAllLeads();
   const { t } = useLanguage();
 
   const [searchTerm, setSearchTerm] = useState('');

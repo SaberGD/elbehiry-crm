@@ -7,6 +7,7 @@ import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
 import { REFERRAL_FOLLOWUP_DAYS, isReferralPhone, phoneKey } from "../lib/referrals";
 import { scopesFor, seesAll } from "../lib/scopes";
+import { keysAreCurrent, leadSearchKeys, SEARCH_INDEX_VERSION } from "../lib/leadSearch";
 import { defaultLicense, type License } from "../lib/license";
 import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
 import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
@@ -29,7 +30,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, getCountFromServer, getDoc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { deleteLoginOnServer } from "../lib/adminClient";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
@@ -137,7 +138,20 @@ export interface CRMContextType {
   branches: Branch[];
   teams: Team[];
   courses: Course[];
+  /**
+   * The customers loaded so far. They are not read in full: lists read a page at a time (`injectLeads`),
+   * a customer on screen is kept live (`watchLead`), and only screens that need every customer ask for them
+   * all (`requestAllLeads`).
+   */
   leads: Lead[];
+  /** Asks for every customer in the person's scope to be loaded until the returned function is called. */
+  requestAllLeads: () => () => void;
+  /** Adds customers that were read elsewhere (a page of results) so they can be opened and edited. */
+  injectLeads: (rows: Lead[]) => void;
+  /** Keeps one customer live while it is on screen. Returns the stop function. */
+  watchLead: (id: string) => () => void;
+  /** True once every customer carries the keys the database search uses. */
+  searchIndexReady: boolean;
   visits: Visit[];
   followUps: FollowUp[];
   bookings: Booking[];
@@ -419,6 +433,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   const requestAuditLogs = useCallback(() => setAuditWanted(true), []);
   const loadMoreAuditLogs = useCallback(() => setAuditLimit((n) => n + AUDIT_PAGE), []);
 
+  // Customers are read a page at a time. Screens that really need all of them say so; each is counted, so the
+  // whole list is read while any of them is open and no longer followed when none is.
+  const [allLeadsAsked, setAllLeadsAsked] = useState(0);
+  const requestAllLeads = useCallback(() => {
+    setAllLeadsAsked((n) => n + 1);
+    return () => setAllLeadsAsked((n) => n - 1);
+  }, []);
+  const leadsRef = useRef<Lead[]>([]);
+  leadsRef.current = leads;
+
   // Only top management may write the shared setup (structure, catalogue, settings), so only they seed it.
   const topWriter = !!authForScope && ["admin", "general_manager"].includes(authForScope.role);
 
@@ -442,7 +466,50 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     scope: scope.notifications,
     window: { orderBy: "createdAt", limit: NOTIFICATIONS_WINDOW },
   });
-  useFirestoreCollection("leads", leads, setLeads, { scope: scope.leads });
+  const { inject: syncInjectLeads, watchDoc: watchLead } = useFirestoreCollection("leads", leads, setLeads, {
+    scope: allLeadsAsked > 0 ? scope.leads : "none",
+    lazy: true,
+    beforeWrite: (l) => ({ ...l, searchKeys: leadSearchKeys(l) }),
+  });
+  const injectLeads = useCallback(
+    (rows: Lead[]) => {
+      // Lookups made in the same breath as the injection (before the next render) must already see these customers.
+      const have = new Set(leadsRef.current.map((l) => l.id));
+      const fresh = rows.filter((r) => !have.has(r.id));
+      if (fresh.length) leadsRef.current = [...fresh, ...leadsRef.current];
+      syncInjectLeads(rows);
+    },
+    [syncInjectLeads],
+  );
+
+  // The database search needs every customer to carry its search keys. Customers saved from now on get them with
+  // every save; the ones saved earlier are indexed once, by top management, and the screens use the plain list
+  // until that is done.
+  const [searchIndexVersion, setSearchIndexVersion] = useState(0);
+  useEffect(
+    () =>
+      onSnapshot(
+        doc(db, "settings", "searchIndex"),
+        (snap) => setSearchIndexVersion(snap.exists() ? Number(snap.data().version) || 0 : 0),
+        () => setSearchIndexVersion(0),
+      ),
+    [],
+  );
+  const indexing = useRef(false);
+  useEffect(() => {
+    if (!topWriter || searchIndexVersion >= SEARCH_INDEX_VERSION || indexing.current) return;
+    indexing.current = true;
+    (async () => {
+      const all = await fetchScoped<Lead>("leads", "all");
+      const stale = all.filter((l) => !keysAreCurrent(l as Lead & { searchKeys?: string[] }));
+      for (let i = 0; i < stale.length; i += 400) {
+        const batch = writeBatch(db);
+        for (const l of stale.slice(i, i + 400)) batch.set(doc(db, "leads", l.id), { searchKeys: leadSearchKeys(l) }, { merge: true });
+        await batch.commit();
+      }
+      await setDoc(doc(db, "settings", "searchIndex"), { version: SEARCH_INDEX_VERSION, customers: all.length, at: new Date().toISOString() });
+    })().catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
+  }, [topWriter, searchIndexVersion]);
   useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: scope.notBought });
   useFirestoreCollection("reminderDone", reminderDone, setReminderDone, { scope: scope.reminderDone });
   useFirestoreCollection("aiSuggestions", aiSuggestions, setAiSuggestions, { scope: scope.aiSuggestions });
@@ -499,7 +566,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const profilesBackfilled = useRef(false);
   // One-time backfill, run by top management: older rows get the fields the security rules scope on.
-  // Safe to run repeatedly; it only fills what is missing.
+  // Safe to run repeatedly; it only fills what is missing. It works from the customers loaded at that moment.
   useEffect(() => {
     if (!authForScope || !seesAll({ role: authForScope.role, userId: authForScope.userId, supervisedBranchIds: authForScope.supervisedBranchIds })) return;
     if (!leads.length) return;
@@ -535,16 +602,19 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
           return want.length !== (b.branchIds || []).length ? { ...b, branchIds: want } : b;
         }),
       );
-    // Supervisors' branch lists must be on their server-trusted profile for the rules to see them.
-    if (!profilesBackfilled.current && users.length) {
-      profilesBackfilled.current = true;
-      users.forEach((u) => {
-        if (u.authUid && u.supervisedBranchIds?.length)
-          updateDoc(doc(db, "authProfiles", u.authUid), { supervisedBranchIds: u.supervisedBranchIds }).catch(() => {});
-      });
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authForScope?.role, leads.length > 0, timelineEvents.length, reviewNotes.length, brokers.length]);
+  // Supervisors' branch lists must be on their server-trusted profile for the rules to see them.
+  useEffect(() => {
+    if (!authForScope || !seesAll({ role: authForScope.role, userId: authForScope.userId, supervisedBranchIds: authForScope.supervisedBranchIds })) return;
+    if (profilesBackfilled.current || !users.length) return;
+    profilesBackfilled.current = true;
+    users.forEach((u) => {
+      if (u.authUid && u.supervisedBranchIds?.length)
+        updateDoc(doc(db, "authProfiles", u.authUid), { supervisedBranchIds: u.supervisedBranchIds }).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authForScope?.role, users.length > 0]);
 
   const [viewAsUser, setViewAsUser] = useState<User | null>(null);
 
@@ -611,7 +681,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   // Customers created in this render are not in `leads` yet; remember where they belong.
   const justCreated = useRef(new Map<string, { branchId: string; assignedAgentId?: string }>());
   const addTimelineEvent = (event: Omit<TimelineEvent, "id" | "timestamp">) => {
-    const lead = leads.find((l) => l.id === event.leadId) || justCreated.current.get(event.leadId);
+    const lead = leadsRef.current.find((l) => l.id === event.leadId) || justCreated.current.get(event.leadId);
     const newEv: TimelineEvent = {
       branchId: lead?.branchId,
       leadOwnerId: lead?.assignedAgentId,
@@ -701,7 +771,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       logAudit("رفض اقتراح زكي", "اقتراح", id, `${s.name}: ${decision.reason || "من غير سبب"}`);
       return;
     }
-    const lead = s.leadId ? leads.find((l) => l.id === s.leadId) : undefined;
+    const lead = s.leadId ? leadsRef.current.find((l) => l.id === s.leadId) : undefined;
     const broker = s.brokerId ? brokers.find((b) => b.id === s.brokerId) : undefined;
     const fu = addFollowUp({
       leadId: s.leadId ?? "",
@@ -764,7 +834,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
    * customer who recommended them, and schedule the first call. A number we already have is not added twice.
    */
   const addReferralLead: CRMContextType["addReferralLead"] = ({ fromLeadId, name, phone, reviewId, followUpId }) => {
-    const from = leads.find((l) => l.id === fromLeadId);
+    const from = leadsRef.current.find((l) => l.id === fromLeadId);
     if (!from) throw new Error("العميل اللي رشّحه مش موجود.");
     const person = name.trim();
     if (!person || !isReferralPhone(phone)) throw new Error("اكتب اسم المرشَّح ورقم هاتف صحيح.");
@@ -772,7 +842,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       if (reviewId) setReviewRequests((prev) => prev.map((r) => (r.id === reviewId ? { ...r, referralLeadId: leadId } : r)));
       if (followUpId) setFollowUps((prev) => prev.map((f) => (f.id === followUpId ? { ...f, referralLeadId: leadId } : f)));
     };
-    const existing = leads.find((l) => [l.phone, l.whatsappPhone || ""].some((p) => p && phoneKey(p) === phoneKey(phone)));
+    const existing = leadsRef.current.find((l) => [l.phone, l.whatsappPhone || ""].some((p) => p && phoneKey(p) === phoneKey(phone)));
     if (existing) {
       addTimelineEvent({
         leadId: from.id,
@@ -860,7 +930,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const cleanPhone = phone.replace(/\D/g, "");
     if (!cleanPhone || cleanPhone.length < 6) return [];
 
-    return leads.filter((l) => {
+    return leadsRef.current.filter((l) => {
       if (excludeId && l.id === excludeId) return false;
       const mainClean = l.phone ? l.phone.replace(/\D/g, "") : "";
       const waClean = l.whatsappPhone ? l.whatsappPhone.replace(/\D/g, "") : "";
@@ -916,6 +986,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const updateLead = (id: string, updates: Partial<Lead>) => {
+    if (!leadsRef.current.some((l) => l.id === id) && !justCreated.current.has(id)) {
+      // Not loaded here (the screen reads customers a page at a time): change only the fields given, on the server.
+      const fields = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
+      updateDoc(doc(db, "leads", id), fields).catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
+      logAudit("تعديل عميل", "عميل", id, `تم تعديل بيانات العميل رقم ${id}`);
+      return;
+    }
     setLeads((prev) =>
       prev.map((l) => {
         if (l.id !== id) return l;
@@ -1139,7 +1216,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setFollowUps((prev) => [newFollowUp, ...prev]);
 
     // A follow-up given to someone other than the owner lets them open that customer.
-    const owner = leads.find((l) => l.id === followUpData.leadId);
+    const owner = leadsRef.current.find((l) => l.id === followUpData.leadId);
     const delegatedTo =
       owner && followUpData.assignedAgentId && followUpData.assignedAgentId !== owner.assignedAgentId && !(owner.delegatedTo || []).includes(followUpData.assignedAgentId)
         ? [...(owner.delegatedTo || []), followUpData.assignedAgentId]
@@ -1159,7 +1236,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         followUpData.scheduledAt,
       ].sort()[0],
       status:
-        leads.find((l) => l.id === followUpData.leadId)?.status === "booked"
+        leadsRef.current.find((l) => l.id === followUpData.leadId)?.status === "booked"
           ? "booked"
           : "needs_followup",
     });
@@ -1214,7 +1291,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         hasSubmittedRating: true,
       });
     }
-    const lead = leads.find((l) => l.id === original.leadId);
+    const lead = leadsRef.current.find((l) => l.id === original.leadId);
     // A follow-up about a broker has no customer history to write into.
     if (original.leadId)
       addTimelineEvent({
@@ -1265,7 +1342,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   // Booking Operations
   /** The post-sale follow-ups still ahead for a purchase, with fixed ids so doing it twice can never double them. */
   const postSaleFollowUps = (booking: Booking, have: Set<string | undefined>): FollowUp[] => {
-    const lead = leads.find((l) => l.id === booking.leadId);
+    const lead = leadsRef.current.find((l) => l.id === booking.leadId);
     const agentId = users.some((u) => u.id === booking.agentId) ? booking.agentId : lead?.assignedAgentId || booking.agentId;
     return upcomingPostSale(booking.bookingDate, today(), have).map((m) => ({
       id: `flw-ps-${booking.id}-${m.milestone}`,
@@ -1365,7 +1442,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       addFollowUp({
         leadId: data.leadId,
         leadName: data.leadName,
-        leadPhone: leads.find((l) => l.id === data.leadId)?.phone || "",
+        leadPhone: leadsRef.current.find((l) => l.id === data.leadId)?.phone || "",
         assignedAgentId: data.agentId,
         branchId: data.branchId,
         origin: "auto",
@@ -1555,6 +1632,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setBrokers((p) => addMissing(p, asDemo(demoBrokers)));
     setNotBoughtRecords((p) => addMissing(p, asDemo(demoNotBought)));
     setReviewRequests((p) => addMissing(p, asDemo(demoReviews)));
+    setTimeout(countDemoCustomers, 3000);
   };
 
   /** Ids that older versions of the sample data loaded without a flag. */
@@ -1568,14 +1646,34 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       purchaseInvoices: ids(d.demoInvoices), brokers: ids(d.demoBrokers), notBoughtRecords: ids(d.demoNotBought), reviewRequests: ids(d.demoReviews),
     };
   };
+  // Sample customers are counted by the database: the customer list is not kept loaded.
+  const [demoCustomers, setDemoCustomers] = useState(0);
+  const countDemoCustomers = useCallback(async () => {
+    if (scope.leads === "none") return setDemoCustomers(0);
+    try {
+      const streams = scope.leads === "all" ? [[]] : scope.leads;
+      const counts = await Promise.all(
+        streams.map(async (filters) =>
+          (await getCountFromServer(query(collection(db, "leads"), ...filters.map(([f, op, v]) => where(f, op, v)), where("isDemo", "==", true)))).data().count,
+        ),
+      );
+      setDemoCustomers(counts.reduce((a, b) => a + b, 0));
+    } catch {
+      /* the count is only a reminder; leave it as it was */
+    }
+  }, [scope.leads]);
+  const isDeveloper = authForScope?.role === "admin";
+  useEffect(() => {
+    if (isDeveloper) countDemoCustomers();
+  }, [isDeveloper, countDemoCustomers]);
   const demoSummary = useMemo(() => {
     const n = (xs: { isDemo?: boolean }[]) => xs.filter((x) => x.isDemo).length;
-    const d = { customers: n(leads), branches: n(branches), staff: n(users), brokers: n(brokers) };
+    const d = { customers: demoCustomers, branches: n(branches), staff: n(users), brokers: n(brokers) };
     return { ...d, any: d.customers + d.branches + d.staff + d.brokers > 0 };
-  }, [leads, branches, users, brokers]);
+  }, [demoCustomers, branches, users, brokers]);
   // Customer history is not kept loaded, so it is read in full here.
   const demoWorld = async (): Promise<DemoWorld> => ({
-    users, companies, warehouses, branches, teams, departmentEntities, jobPositions, leads, visits, followUps, bookings,
+    users, companies, warehouses, branches, teams, departmentEntities, jobPositions, leads: await fetchScoped<Lead>("leads", scope.leads), visits, followUps, bookings,
     timelineEvents: await fetchScoped<TimelineEvent>("timelineEvents", scope.timeline),
     purchaseInvoices, brokers, notBoughtRecords, reviewRequests, reviewNotes, notifications,
     // The audit log can't be deleted (rules), so only what is loaded matters here.
@@ -1597,6 +1695,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setJobPositions(keep("jobPositions"));
     setUsers(keep("users"));
     setLeads(keep("leads"));
+    deleteDocs("leads", [...drop.leads]).catch((e) => handleFirestoreError(e, OperationType.DELETE, "leads"));
     setVisits(keep("visits"));
     setFollowUps(keep("followUps"));
     setBookings(keep("bookings"));
@@ -1609,6 +1708,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setReviewNotes(keep("reviewNotes"));
     setNotifications(keep("notifications"));
     setAuditLogs(keep("auditLogs"));
+    setTimeout(countDemoCustomers, 3000);
   };
 
   /** Developer-only: empties branches, companies, warehouses, teams, departments and job titles so the real structure can be entered from scratch. */
@@ -1911,6 +2011,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         permissionMatrix,
         updatePermissionMatrix,
 
+        requestAllLeads,
+        injectLeads,
+        watchLead,
+        searchIndexReady: searchIndexVersion >= SEARCH_INDEX_VERSION,
         users,
         companies,
         governorates,

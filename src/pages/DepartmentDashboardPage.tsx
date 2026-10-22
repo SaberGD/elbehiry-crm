@@ -1,3 +1,4 @@
+import { useAllLeads } from "../lib/useAllLeads";
 import { useState } from "react";
 import { bookingSplit } from "../lib/purchases";
 import { useCRM } from "../context/CRMContext";
@@ -12,6 +13,7 @@ interface Props {
 }
 export function DepartmentDashboardPage({ setActiveTab, onOpenLead }: Props) {
   const { effectiveUser: u, leads, bookings, visits, branches } = useCRM();
+  useAllLeads();
   const [department, setDepartment] = useState<Department>("decor");
   const [branch, setBranch] = useState<Branch | null>(null);
   const has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);

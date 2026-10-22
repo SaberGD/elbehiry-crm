@@ -65,3 +65,8 @@ export function scopesFor(p: ScopeProfile | null) {
     audit: (["admin", "general_manager"].includes(p.role) ? "all" : "none") as Scope,
   };
 }
+
+/** The facts the rules and the queries are built from, taken from a staff record. */
+export function profileOf(u: { id: string; role: string; branchId?: string; supervisedBranchIds?: string[] }): ScopeProfile {
+  return { role: u.role, userId: u.id, branchId: u.branchId, supervisedBranchIds: u.supervisedBranchIds };
+}

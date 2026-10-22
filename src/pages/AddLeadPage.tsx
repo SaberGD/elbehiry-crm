@@ -16,7 +16,9 @@ import { OutcomeSection, emptyOutcome, outcomeError, type OutcomeState } from ".
 import { InterestPicker, interestNames } from "../components/common/InterestPicker";
 import { NameWithTitle } from "../components/common/NameWithTitle";
 import { hasPermission } from "../lib/permissions";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { findLeadsByPhone } from "../lib/leadQueries";
+import { profileOf, scopesFor } from "../lib/scopes";
 import {
   ArrowRight,
   ChevronDown,
@@ -65,6 +67,9 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
     addBooking,
     addNotBoughtRecord,
     findDuplicateLeadsByPhone,
+    injectLeads,
+    requestAllLeads,
+    searchIndexReady,
   } = useCRM();
   const availableBranches = branches.filter(
     (b) => b.active && canSeeBranch(effectiveUser, b.id, branches),
@@ -93,17 +98,37 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   const [error, setError] = useState("");
   const [created, setCreated] = useState<Lead | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const duplicates =
-    phone.replace(/\D/g, "").length >= 10
-      ? findDuplicateLeadsByPhone(phone)
-      : [];
+  // Is the number already ours? The database answers (customers the person can see). Until the customers are
+  // indexed it is checked against the full list instead.
+  const phoneReady = phone.replace(/\D/g, "").length >= 10;
+  const [found, setFound] = useState<Lead[]>([]);
+  useEffect(() => (phoneReady && !searchIndexReady ? requestAllLeads() : undefined), [phoneReady, searchIndexReady, requestAllLeads]);
+  useEffect(() => {
+    if (!phoneReady || !searchIndexReady) return setFound([]);
+    let current = true;
+    const timer = setTimeout(() => {
+      findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone)
+        .then((rows) => {
+          if (!current) return;
+          injectLeads(rows);
+          setFound(rows);
+        })
+        .catch(() => current && setFound([]));
+    }, 350);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, phoneReady, searchIndexReady, effectiveUser.id]);
+  const duplicates = !phoneReady ? [] : searchIndexReady ? found : findDuplicateLeadsByPhone(phone);
   const total = outcome.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const selectedAgent = users.find((u) => u.id === agentId);
   const changeBranch = (id: string) => {
     setBranchId(id);
     setAgentId(defaultAgent(users, effectiveUser, id));
   };
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!canCreateCustomer(effectiveUser)) {
@@ -114,7 +139,11 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       setError("اكتب اسم العميل ورقم هاتف صحيح من 10 إلى 15 رقم.");
       return;
     }
-    if (duplicates.length) {
+    // The check on screen may still be waiting for the typing to pause: ask once more before saving.
+    const known = searchIndexReady ? await findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone).catch(() => []) : duplicates;
+    if (known.length) {
+      injectLeads(known);
+      setFound(known);
       setError("الرقم مسجل بالفعل. افتح ملف العميل الموجود لتكمل التعامل.");
       return;
     }

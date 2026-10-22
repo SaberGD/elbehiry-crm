@@ -237,6 +237,8 @@ export interface Lead {
   /** The customer who recommended this one (a prospect added from a review or a post-sale call). */
   referredByLeadId?: string;
   referredByName?: string;
+  /** What the customer can be found by in the database search (see lib/leadSearch.ts). Written with every save. */
+  searchKeys?: string[];
 }
 
 export type VisitorType = "client" | "broker" | "both";

@@ -1,3 +1,4 @@
+import { useAllLeads } from "../../lib/useAllLeads";
 import { hasPermission } from "../../lib/permissions";
 import { useDialog } from "./useDialog";
 import React from "react";
@@ -62,6 +63,7 @@ export const HierarchyControlModal: React.FC<HierarchyControlModalProps> = ({
     bookings,
     users,
   } = useCRM();
+  useAllLeads(isOpen);
   const { t } = useLanguage();
 
   const dialogRef = useDialog(isOpen, onClose);

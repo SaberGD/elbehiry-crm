@@ -36,6 +36,11 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await lead("L1", "b1", "agentA", "عميل أحمد الخاص");
   await lead("L2", "b1", "bm1", "عميل المدير");
   await lead("L3", "b2", "agentC", "عميل فرع تاني");
+  // A long list for the branch manager: the customer list reads it a page at a time.
+  for (let i = 1; i <= 24; i++) {
+    const n = String(i).padStart(2, "0");
+    await setDoc(doc(f, "leads", `M${n}`), { id: `M${n}`, name: `عميل كثير ${n}`, phone: `0120000${String(i).padStart(4, "0")}`, branchId: "b1", assignedAgentId: "usr-bm1", status: "interested", source: "walk_in", classification: "B", department: "decor", notes: "", createdAt: `2026-09-${n}T10:00:00.000Z` });
+  }
   await setDoc(doc(f, "brokers", "BR1"), { id: "BR1", name: "وسيط فرع 1", phone: "01111111111", type: "individual", active: true, totalReferrals: 0, totalVolume: 0, branchIds: ["b1"] });
   // Customer history and the audit log are read on demand (per open customer / when the page opens).
   const ev = (id, leadId, b, owner, title) => setDoc(doc(f, "timelineEvents", id), { id, leadId, branchId: b, leadOwnerId: `usr-${owner}`, authorId: `usr-${owner}`, authorName: "x", type: "note", title, details: "", timestamp: "2026-10-02T10:00:00.000Z" });
@@ -69,7 +74,7 @@ async function as(who, fn) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: "ar-EG", serviceWorkers: "block" });
   const page = await ctx.newPage();
   const denied = [];
-  page.on("console", (m) => m.type() === "error" && /permission|insufficient/i.test(m.text()) && denied.push(m.text().slice(0, 200)));
+  page.on("console", (m) => m.type() === "error" && /permission|insufficient/i.test(m.text()) && denied.push(m.text().slice(0, 700)));
   page.on("dialog", (d) => d.accept());
   await page.goto("http://127.0.0.1:8090/");
   await page.locator("input").first().fill(`${who}@staff.elbehiry.local`);
@@ -143,19 +148,6 @@ await as("agentA", async (page, go) => {
   check(await page.locator('input[type="password"]').isVisible(), "signing out returns to the login screen");
 });
 
-await as("bm1", async (page, go) => {
-  await go("العملاء");
-  const txt = await page.locator("main").innerText();
-  check(txt.includes("عميل أحمد الخاص") && txt.includes("عميل المدير") && txt.includes("زائر جديد"), "branch manager sees the whole branch");
-  check(!txt.includes("عميل فرع تاني"), "branch manager does not see the other branch");
-});
-
-await as("agentC", async (page, go) => {
-  await go("العملاء");
-  const txt = await page.locator("main").innerText();
-  check(txt.includes("عميل فرع تاني") && !txt.includes("عميل أحمد الخاص") && !txt.includes("زائر جديد"), "agent in branch 2 sees only their own");
-});
-
 await as("gm", async (page, go) => {
   await go("العملاء");
   const txt = await page.locator("main").innerText();
@@ -178,6 +170,72 @@ await as("gm", async (page, go) => {
   await go("سجل العمليات");
   await page.waitForTimeout(1500);
   check((await page.locator("main").innerText()).includes("عملية قديمة في السجل"), "the audit log loads when its page opens");
+  // Opening the app as top management indexes the customers saved before search existed.
+  await page.waitForTimeout(3000);
+  let indexed;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    indexed = { marker: (await getDoc(doc(f, "settings", "searchIndex"))).data()?.version, keys: (await getDoc(doc(f, "leads", "M07"))).data()?.searchKeys?.length };
+  });
+  check(indexed.marker === 1 && indexed.keys > 10, `earlier customers are indexed for search once (${JSON.stringify(indexed)})`);
+});
+
+
+
+await as("bm1", async (page, go) => {
+  await go("العملاء");
+  const txt = await page.locator("main").innerText();
+  check(txt.includes("عميل أحمد الخاص") && txt.includes("عميل المدير") && txt.includes("زائر جديد"), "branch manager sees the whole branch");
+  check(!txt.includes("عميل فرع تاني"), "branch manager does not see the other branch");
+});
+
+await as("bm1", async (page, go) => {
+  // Page by page: the list reads 20 customers, the rest on request.
+  await go("العملاء");
+  await page.waitForTimeout(1500);
+  const rowsNow = () => page.locator("button.customer-name").count();
+  check((await rowsNow()) === 20, `the list loads 20 customers first (${await rowsNow()})`);
+  check(await page.getByRole("button", { name: "عرض المزيد" }).isVisible(), "a button loads more");
+  check((await page.locator("main").innerText()).includes("من 29"), "the total comes from a count");
+  await page.getByRole("button", { name: "عرض المزيد" }).click();
+  await page.waitForTimeout(1500);
+  check((await rowsNow()) === 29, `the next page completes the branch (${await rowsNow()})`);
+  check(!(await page.getByRole("button", { name: "عرض المزيد" }).isVisible()), "the button goes when everything is shown");
+  // Search is the database's: beginnings of words, ends of phone numbers.
+  const search = page.locator("main input[type=search]").first();
+  await search.fill("كثير 07");
+  await page.waitForTimeout(1500);
+  check((await rowsNow()) === 1 && (await page.locator("main").innerText()).includes("عميل كثير 07"), "a name search finds that customer");
+  await search.fill("0007");
+  await page.waitForTimeout(1500);
+  check((await rowsNow()) === 1 && (await page.locator("main").innerText()).includes("عميل كثير 07"), "the end of a phone number finds that customer");
+  await search.fill("زائر");
+  await page.waitForTimeout(1500);
+  check((await rowsNow()) === 2, `a search finds customers added from visits (${await rowsNow()})`);
+  await search.fill("");
+  // The search box in the header.
+  const header = page.locator('input[aria-label="البحث عن عميل"]');
+  await header.fill("عميل كثير 21");
+  await page.waitForTimeout(1500);
+  check(await page.locator(".search-results").getByText("عميل كثير 21").isVisible(), "the header search finds a customer");
+  await page.locator(".search-results button").first().click();
+  await page.waitForTimeout(2000);
+  check((await page.locator("body").innerText()).includes("عميل كثير 21"), "a customer found by search opens");
+  await page.keyboard.press("Escape");
+  // The dashboard counts customers without reading them.
+  await go("الرئيسية");
+  await page.waitForTimeout(2000);
+  check((await page.locator(".studio-metrics").innerText()).includes("29"), "the dashboard shows the customer count");
+});
+
+await as("agentC", async (page, go) => {
+  await go("العملاء");
+  const txt = await page.locator("main").innerText();
+  check(txt.includes("عميل فرع تاني") && !txt.includes("عميل أحمد الخاص") && !txt.includes("زائر جديد"), "agent in branch 2 sees only their own");
+  const search = page.locator("main input[type=search]").first();
+  await search.fill("كثير");
+  await page.waitForTimeout(1500);
+  check((await page.locator("button.customer-name").count()) === 0, "a search never returns another branch's customers");
 });
 
 await browser.close();

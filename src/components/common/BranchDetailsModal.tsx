@@ -1,3 +1,4 @@
+import { useAllLeads } from "../../lib/useAllLeads";
 import { bookingSplit } from "../../lib/purchases";
 import { useState } from "react";
 import type { Branch } from "../../types/crm";
@@ -37,6 +38,7 @@ export function BranchDetailsModal({
     followUps,
     purchaseInvoices,
   } = useCRM();
+  useAllLeads(isOpen);
   const [tab, setTab] = useState("overview");
   const ref = useDialog(isOpen, onClose);
   if (!isOpen || !branch || !branches.some((b) => b.id === branch.id))

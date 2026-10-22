@@ -1,7 +1,7 @@
 import { PWAProvider } from "./pwa/PWAContext";
 import { PWAStatus } from "./pwa/PWAControls";
 import { canAccessPage } from "./lib/access";
-import React, { Suspense, lazy, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import { LanguageProvider } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -51,7 +51,7 @@ const DeveloperPage = lazy(() => import("./pages/DeveloperPage").then((m) => ({ 
 const FeedbackPage = lazy(() => import("./pages/FeedbackPage").then((m) => ({ default: m.FeedbackPage })));
 
 const AppContent: React.FC = () => {
-  const { leads, effectiveUser } = useCRM();
+  const { leads, effectiveUser, watchLead, injectLeads } = useCRM();
 
   const [requestedTab, setRequestedTab] = useState("dashboard");
   const activeTab = canAccessPage(effectiveUser, requestedTab)
@@ -68,15 +68,30 @@ const AppContent: React.FC = () => {
   const [leadModalAction, setLeadModalAction] =
     useState<LeadQuickAction | null>(null);
 
+  // A customer is read on demand when its file is asked for, and kept live while the file is open.
+  const [pendingLead, setPendingLead] = useState<{ id: string; action: LeadQuickAction | null } | null>(null);
   const handleOpenLead = (leadId: string, action?: LeadQuickAction) => {
-    if (!leads.some((l) => l.id === leadId)) return;
     setSelectedLeadId(leadId);
     setLeadModalAction(action ?? null);
-    setIsLeadModalOpen(true);
+    if (leads.some((l) => l.id === leadId)) setIsLeadModalOpen(true);
+    else setPendingLead({ id: leadId, action: action ?? null });
   };
+  const watching = !!selectedLeadId && (isLeadModalOpen || !!pendingLead);
+  useEffect(() => (watching ? watchLead(selectedLeadId!) : undefined), [watching, selectedLeadId, watchLead]);
+  useEffect(() => {
+    if (!pendingLead) return;
+    if (leads.some((l) => l.id === pendingLead.id)) {
+      setIsLeadModalOpen(true);
+      setPendingLead(null);
+      return;
+    }
+    // Not there (no longer exists, or not for this person): stop waiting.
+    const t = setTimeout(() => setPendingLead(null), 10000);
+    return () => clearTimeout(t);
+  }, [pendingLead, leads]);
 
   const handleOpenExistingLead = (lead: Lead, action?: LeadQuickAction) => {
-    if (!leads.some((l) => l.id === lead.id)) return;
+    injectLeads([lead]);
     setSelectedLeadId(lead.id);
     setLeadModalAction(action ?? null);
     setIsLeadModalOpen(true);

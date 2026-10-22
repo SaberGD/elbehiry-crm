@@ -1,25 +1,38 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
-  collection, doc, onSnapshot, writeBatch, setDoc, getDocs, query, where, orderBy, limit,
+  collection, deleteField, doc, onSnapshot, writeBatch, setDoc, getDocs, query, where, orderBy, limit,
   type Query, type QueryConstraint, type WhereFilterOp,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
+import { changedFields } from './rowDiff';
 
 const BATCH_SIZE = 400;
 const SORT_KEYS = ['createdAt', 'timestamp', 'date'] as const;
 
+/**
+ * A write is a whole row for something new, nothing for a row that did not change, and only the changed
+ * fields for an edit: a row on screen may be older than the stored one, and an edit must not undo what
+ * somebody else saved in the meantime.
+ */
 async function commitInBatches(
   name: string,
-  writes: { id: string; item?: unknown }[]
+  writes: { id: string; item?: unknown; prev?: unknown }[]
 ) {
   for (let i = 0; i < writes.length; i += BATCH_SIZE) {
     const batch = writeBatch(db);
+    let count = 0;
     for (const w of writes.slice(i, i + BATCH_SIZE)) {
       const ref = doc(db, name, w.id);
       if (w.item === undefined) batch.delete(ref);
-      else batch.set(ref, w.item as Record<string, unknown>);
+      else if (w.prev === undefined) batch.set(ref, w.item as Record<string, unknown>);
+      else {
+        const { set, remove } = changedFields(w.prev as Record<string, unknown>, w.item as Record<string, unknown>);
+        if (!remove.length && !Object.keys(set).length) continue;
+        batch.set(ref, { ...set, ...Object.fromEntries(remove.map((k) => [k, deleteField()])) }, { merge: true });
+      }
+      count++;
     }
-    await batch.commit();
+    if (count) await batch.commit();
   }
 }
 
@@ -96,7 +109,7 @@ export function deleteDocs(name: string, ids: string[]) {
 export function useFirestoreCollection<T extends { id: string }>(
   name: string,
   items: T[],
-  setItems: (items: T[]) => void,
+  setItems: (items: T[] | ((prev: T[]) => T[])) => void,
   options: {
     seedIfEmpty?: boolean;
     transform?: (item: T) => T;
@@ -104,6 +117,13 @@ export function useFirestoreCollection<T extends { id: string }>(
     window?: ReadWindow;
     /** Called once every query of the current scope has answered. */
     onLoaded?: () => void;
+    /**
+     * Rows arrive on demand (`inject`, `watchDoc`) and are kept when the scope is "none", instead of
+     * the collection being read in full. Edits to them are saved as usual.
+     */
+    lazy?: boolean;
+    /** Applied to a row just before it is saved (for fields derived from the row, such as search keys). */
+    beforeWrite?: (item: T) => T;
   } = {}
 ) {
   const itemsRef = useRef(items);
@@ -114,12 +134,75 @@ export function useFirestoreCollection<T extends { id: string }>(
   const scopeKey = JSON.stringify([scope, options.window ?? null]);
   // Set while the state is being emptied for a "none" scope, so stale rows are neither re-written nor deleted.
   const clearingRef = useRef(false);
+  // Rows handed in with `inject` that have not yet been recorded as "as stored".
+  const injectedRef = useRef<Map<string, T>>(new Map());
+  const watchersRef = useRef<Map<string, { count: number; stop: () => void }>>(new Map());
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
+  /** Adds rows that were read elsewhere (a page of results, one customer) to the working set; they are not treated as edits. */
+  const inject = useCallback((rows: T[]) => {
+    if (!rows.length) return;
+    for (const r of rows) injectedRef.current.set(r.id, r);
+    setItems((prev) => {
+      const byId = new Map(prev.map((i) => [i.id, i]));
+      let changed = false;
+      for (const r of rows) {
+        const local = byId.get(r.id);
+        const stored = prevRef.current.get(r.id);
+        if (local && stored && local !== stored) continue; // an edit that is not saved yet wins
+        if (local === r) continue;
+        byId.set(r.id, r);
+        changed = true;
+      }
+      return changed ? sortNewestFirst([...byId.values()]) : prev;
+    });
+  }, [setItems]);
+
+  /** Keeps one row live while something shows it (so an edit starts from the current version). Returns the stop function. */
+  const watchDoc = useCallback((id: string) => {
+    let w = watchersRef.current.get(id);
+    if (!w) {
+      w = {
+        count: 0,
+        stop: onSnapshot(
+          doc(db, name, id),
+          (snap) => {
+            if (!snap.exists()) return;
+            const item = { ...snap.data(), id: snap.id } as T;
+            inject([optionsRef.current.transform ? optionsRef.current.transform(item) : item]);
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, name)
+        ),
+      };
+      watchersRef.current.set(id, w);
+    }
+    w.count++;
+    return () => {
+      const cur = watchersRef.current.get(id);
+      if (!cur) return;
+      cur.count--;
+      if (cur.count <= 0) {
+        cur.stop();
+        watchersRef.current.delete(id);
+      }
+    };
+  }, [name, inject]);
+
+  useEffect(() => () => watchersRef.current.forEach((w) => w.stop()), []);
 
   useEffect(() => {
     readyRef.current = false;
     prevRef.current = new Map();
     clearingRef.current = false;
     if (scope === 'none') {
+      if (options.lazy) {
+        // Nothing is read in full; rows come in on demand and stay.
+        prevRef.current = new Map(itemsRef.current.map((i) => [i.id, i]));
+        readyRef.current = true;
+        options.onLoaded?.();
+        return;
+      }
       clearingRef.current = true;
       setItems([]);
       options.onLoaded?.();
@@ -192,8 +275,14 @@ export function useFirestoreCollection<T extends { id: string }>(
     if (!readyRef.current) return;
     const prev = prevRef.current;
     const next = new Map(items.map((i) => [i.id, i]));
-    const writes: { id: string; item?: T }[] = [];
-    for (const [id, item] of next) if (prev.get(id) !== item) writes.push({ id, item });
+    // Rows that were handed in are "as stored", not edits.
+    for (const [id, row] of injectedRef.current) {
+      if (next.get(id) === row) prev.set(id, row);
+      injectedRef.current.delete(id);
+    }
+    const before = options.beforeWrite;
+    const writes: { id: string; item?: T; prev?: T }[] = [];
+    for (const [id, item] of next) if (prev.get(id) !== item) writes.push({ id, item: before ? before(item) : item, prev: prev.get(id) });
     for (const id of prev.keys()) if (!next.has(id)) writes.push({ id });
     if (!writes.length) return;
     prevRef.current = next;
@@ -201,6 +290,8 @@ export function useFirestoreCollection<T extends { id: string }>(
       handleFirestoreError(e, OperationType.WRITE, name)
     );
   }, [items, name]);
+
+  return { inject, watchDoc };
 }
 
 /** Sync a single settings document (e.g. settings/distribution). */

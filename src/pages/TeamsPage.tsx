@@ -1,3 +1,4 @@
+import { useAllLeads } from "../lib/useAllLeads";
 import { canManageTeams } from "../lib/access";
 import React, { useState } from "react";
 import { useCRM } from "../context/CRMContext";
@@ -21,6 +22,7 @@ interface TeamsPageProps {
 export const TeamsPage: React.FC<TeamsPageProps> = ({ onOpenLead }) => {
   const { effectiveUser, teams, branches, users, bookings, leads, addTeam } =
     useCRM();
+  useAllLeads();
   const { t } = useLanguage();
 
   const [showAddTeam, setShowAddTeam] = useState(false);

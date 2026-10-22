@@ -1,3 +1,4 @@
+import { useAllLeads } from "../lib/useAllLeads";
 import { PageGuide } from "../components/common/PageGuide";
 import { departmentIds, splitTotals } from "../lib/purchases";
 import { notBoughtReasons } from "../lib/notBought";
@@ -21,6 +22,7 @@ export function ReportsPage() {
     notBoughtRecords,
     branches,
   } = useCRM();
+  useAllLeads();
   const has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
   const contracts = bookings.filter((b) => b.bookingStatus !== "cancelled");
   const totals = splitTotals(contracts);

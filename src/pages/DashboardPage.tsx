@@ -17,6 +17,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
+import { useLeadCounts } from "../lib/useLeadCounts";
 import {
   canAccessPage,
   canCreateCustomer,
@@ -48,7 +49,6 @@ const departmentColors: Record<string, string> = {
 export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const {
     effectiveUser: u,
-    leads: scopeLeads,
     followUps: scopeTasks,
     bookings: scopeBookings,
     branches: scopeBranches,
@@ -60,6 +60,8 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const sales = worksOwnCustomers(u),
     has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
+  // The customer totals come from the database as counts; the customers themselves are not read here.
+  const counts = useLeadCounts(u, branchFilter, scopeBranches.filter((b) => b.active).map((b) => b.id), has("customers.view"));
   const validSort =
     (sort === "amount" && has("bookings.view")) ||
     (sort === "late" && has("followups.view")) ||
@@ -76,7 +78,6 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const inScope = (branch?: string) =>
     branchFilter === "all" || branch === branchFilter;
   const branches = scopeBranches.filter((b) => inScope(b.id));
-  const leads = scopeLeads.filter((l) => inScope(l.branchId));
   const followUps = scopeTasks.filter((f) => inScope(f.branchId));
   const active = scopeBookings.filter(
     (b) => inScope(b.branchId) && b.bookingStatus !== "cancelled",
@@ -87,11 +88,11 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const tasks = followUps
     .filter((f) => !["completed", "cancelled"].includes(followUpStatus(f)))
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-  const taskLeadIds = new Set(tasks.map((f) => f.leadId));
   const total = active.reduce((sum, b) => sum + b.amount, 0);
-  const notBoughtYet = leads.filter(
-    (l) => !active.some((b) => b.leadId === l.id),
-  );
+  // Customers with a purchase are the ones that have an active booking; the rest have not bought yet.
+  const boughtIds = new Set(active.map((b) => b.leadId));
+  const customers = counts.ready ? counts.total : "…";
+  const notBoughtYet = counts.ready ? Math.max(counts.total - boughtIds.size, 0) : "…";
   const splitByDept = splitTotals(active);
   const departments = Object.entries(departmentNames).map(([id, name]) => ({
     id,
@@ -105,22 +106,18 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
     .filter((b) => b.active)
     .map((b) => {
       const contracts = active.filter((c) => c.branchId === b.id);
+      const c = counts.byBranch[b.id];
+      // Customers with an open file and no next step: those still open, less the ones with a pending follow-up
+      // (a customer who already bought is not "open", so their follow-ups do not count against it).
+      const withNextStep = new Set(tasks.filter((f) => f.branchId === b.id && !boughtIds.has(f.leadId)).map((f) => f.leadId));
       return {
         ...b,
-        count: leads.filter((l) => l.branchId === b.id).length,
+        count: c?.count ?? 0,
         late: overdue.filter((f) => f.branchId === b.id).length,
-        missing: leads.filter(
-          (l) =>
-            l.branchId === b.id &&
-            !["booked", "not_interested"].includes(l.status) &&
-            !taskLeadIds.has(l.id),
-        ).length,
+        missing: Math.max((c?.open ?? 0) - withNextStep.size, 0),
         amount: contracts.reduce((s, c) => s + c.amount, 0),
         contracts: contracts.length,
-        notBought: leads.filter(
-          (l) =>
-            l.branchId === b.id && !active.some((bk) => bk.leadId === l.id),
-        ).length,
+        notBought: Math.max((c?.count ?? 0) - new Set(contracts.map((k) => k.leadId)).size, 0),
       };
     })
     .sort((a, b) =>
@@ -152,7 +149,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const metric = (
     page: string,
     label: string,
-    value: number,
+    value: number | string,
     note: string,
     Icon: typeof Users,
     tone = "neutral",
@@ -273,7 +270,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                 {has("bookings.view")
                   ? formatMoney(total)
                   : has("customers.view")
-                    ? leads.length
+                    ? customers
                     : branches.filter((b) => b.active).length}
               </strong>
               <span>
@@ -364,7 +361,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
         {metric(
           "clients",
           sales ? "عملاؤك" : "العملاء المسجلون",
-          leads.length,
+          customers,
           "داخل نطاق العمل",
           Users,
         )}
@@ -386,7 +383,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
         {metric(
           "invoices",
           "لم يشتروا بعد",
-          notBoughtYet.length,
+          notBoughtYet,
           "عملاء بلا عملية شراء، فرص للمتابعة",
           FileText,
         )}
@@ -679,8 +676,7 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
                         ? "اليوم"
                         : "قادمة"}
                   </span>
-                  {has("customers.view") &&
-                    scopeLeads.some((l) => l.id === f.leadId) && (
+                  {has("customers.view") && (
                       <button
                         className="btn-secondary"
                         onClick={() => onOpenLead(f.leadId)}

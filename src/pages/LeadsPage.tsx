@@ -5,7 +5,7 @@ import {
   canContactCustomer,
   isSales,
 } from "../lib/access";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FilterBar } from "../components/common/FilterBar";
 import {
   Plus,
@@ -16,11 +16,11 @@ import {
   ArrowUpLeft,
   Phone,
   MessageCircle,
-  ArrowRight,
-  ArrowLeft,
   Users,
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
+import { useLeadsList, LEADS_PAGE_SIZE } from "../lib/useLeadsList";
+import type { ScopeFilter } from "../lib/useFirestoreSync";
 import {
   statusNames,
   sourceNames,
@@ -33,75 +33,114 @@ interface Props {
   onOpenLead: (id: string) => void;
   onNavigateAddLead: () => void;
 }
+/** What was typed, once the typing pauses (the database is asked then, not on every key). */
+function useDebounced<T>(value: T, ms: number) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
-  const { effectiveUser, leads, branches, users, followUps, reassignLead } =
-    useCRM();
-  const [query, setQuery] = useState("");
+  const { effectiveUser, leads, branches, users, followUps, reassignLead, requestAllLeads } = useCRM();
+  const [typed, setTyped] = useState("");
+  const query = useDebounced(typed, 300);
   const [status, setStatus] = useState("all");
   const [branch, setBranch] = useState("all");
   const [agent, setAgent] = useState("all");
   const [source, setSource] = useState("all");
-  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
   const [targetAgent, setTargetAgent] = useState("");
   const [notice, setNotice] = useState("");
-  const visible = leads;
-  const filtered = visible.filter(
-    (l) =>
-      (!query.trim() ||
-        [l.name, l.phone, l.whatsappPhone, l.courseOfInterest].some((v) =>
-          v?.toLowerCase().includes(query.trim().toLowerCase()),
-        )) &&
-      (status === "all" || l.status === status) &&
-      (branch === "all" || l.branchId === branch) &&
-      (agent === "all" || l.assignedAgentId === agent) &&
-      (source === "all" || l.source === source),
+  const [exporting, setExporting] = useState(false);
+  const [shown, setShown] = useState(LEADS_PAGE_SIZE);
+
+  const filters = useMemo<ScopeFilter[]>(
+    () => [
+      ...(status !== "all" ? [["status", "==", status] as ScopeFilter] : []),
+      ...(branch !== "all" ? [["branchId", "==", branch] as ScopeFilter] : []),
+      ...(agent !== "all" ? [["assignedAgentId", "==", agent] as ScopeFilter] : []),
+      ...(source !== "all" ? [["source", "==", source] as ScopeFilter] : []),
+    ],
+    [status, branch, agent, source],
   );
-  const pageCount = Math.max(1, Math.ceil(filtered.length / 20));
-  const rows = filtered.slice((page - 1) * 20, page * 20);
-  const hasFilters =
-    !!query ||
-    status !== "all" ||
-    branch !== "all" ||
-    agent !== "all" ||
-    source !== "all";
+
+  // The database answers: a page at a time, filtered and searched there. Only when it cannot (the search index is
+  // not built yet) does this page read every customer and filter them here, as it used to.
+  const list = useLeadsList(effectiveUser, filters, query);
+  const legacy = list.needsFullList;
+  useEffect(() => (legacy ? requestAllLeads() : undefined), [legacy, requestAllLeads]);
+
+  const live = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads]);
+  const legacyRows = useMemo(() => {
+    if (!legacy) return [];
+    const t = query.trim().toLowerCase();
+    return leads.filter(
+      (l) =>
+        (!t || [l.name, l.phone, l.whatsappPhone, l.courseOfInterest].some((v) => v?.toLowerCase().includes(t))) &&
+        (status === "all" || l.status === status) &&
+        (branch === "all" || l.branchId === branch) &&
+        (agent === "all" || l.assignedAgentId === agent) &&
+        (source === "all" || l.source === source),
+    );
+  }, [legacy, leads, query, status, branch, agent, source]);
+
+  // What is on screen is the latest version of each customer (edits made here show at once); a customer that was
+  // removed from the working set is no longer listed.
+  const rows = legacy
+    ? legacyRows.slice(0, shown)
+    : list.rows.map((r) => live.get(r.id)).filter((l): l is NonNullable<typeof l> => !!l);
+  const total = legacy ? legacyRows.length : list.total;
+  const hasMore = legacy ? legacyRows.length > shown : list.hasMore;
+  const loadMore = legacy ? () => setShown((n) => n + LEADS_PAGE_SIZE) : list.loadMore;
+  const hasFilters = !!query || filters.length > 0;
+
   useEffect(() => {
-    setPage(1);
     setSelected([]);
     setNotice("");
+    setShown(LEADS_PAGE_SIZE);
   }, [query, status, branch, agent, source, effectiveUser.id]);
   const toggle = (id: string) =>
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id],
     );
-  const exportCsv = () => {
-    const cell = (value: string) =>
-      '"' +
-      (/^[=+@-]/.test(value) ? "'" : "") +
-      value.replace(/"/g, '""') +
-      '"';
-    const text =
-      "\uFEFF" +
-      [
-        ["الاسم", "الهاتف", "الحالة", "الفرع", "الموظف المسؤول"],
-        ...filtered.map((l) => [
-          l.name,
-          l.phone,
-          statusNames[l.status],
-          l.branchName || "",
-          l.assignedAgentName || "",
-        ]),
-      ]
-        .map((r) => r.map(cell).join(","))
-        .join("\r\n");
-    const url = URL.createObjectURL(
-      new Blob([text], { type: "text/csv;charset=utf-8" }),
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "عملاء-البحيري.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      // Everything that matches, not only the pages on screen.
+      const all = !legacy && list.hasMore ? await list.readAll() : rows;
+      const cell = (value: string) =>
+        '"' +
+        (/^[=+@-]/.test(value) ? "'" : "") +
+        value.replace(/"/g, '""') +
+        '"';
+      const text =
+        "\uFEFF" +
+        [
+          ["الاسم", "الهاتف", "الحالة", "الفرع", "الموظف المسؤول"],
+          ...all.map((l) => [
+            l.name,
+            l.phone,
+            statusNames[l.status],
+            l.branchName || "",
+            l.assignedAgentName || "",
+          ]),
+        ]
+          .map((r) => r.map(cell).join(","))
+          .join("\r\n");
+      const url = URL.createObjectURL(
+        new Blob([text], { type: "text/csv;charset=utf-8" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "عملاء-البحيري.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   };
   const move = () => {
     if (!targetAgent) return;
@@ -122,7 +161,7 @@ export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
     </span>
   );
   const clear = () => {
-    setQuery("");
+    setTyped("");
     setStatus("all");
     setBranch("all");
     setAgent("all");
@@ -146,19 +185,19 @@ export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
       <PageGuide id="customers" />
       <section className="panel">
         <FilterBar
-          search={{ value: query, onChange: setQuery, placeholder: "اسم العميل أو رقم الهاتف…" }}
+          search={{ value: typed, onChange: setTyped, placeholder: "اسم العميل أو رقم الهاتف…" }}
           selects={[
             { id: "status", label: "حالة العميل", value: status, onChange: setStatus, allLabel: "كل الحالات", primary: true, options: Object.entries(statusNames).map(([id, label]) => ({ value: id, label })) },
-            { id: "branch", label: "الفرع", value: branch, onChange: setBranch, allLabel: "كل الفروع المتاحة", options: isManagement(effectiveUser) ? branches.filter((b) => visible.some((l) => l.branchId === b.id)).map((b) => ({ value: b.id, label: b.name })) : [] },
-            { id: "agent", label: "الموظف المسؤول", value: agent, onChange: setAgent, allLabel: "كل الموظفين المتاحين", options: users.filter((u) => visible.some((l) => l.assignedAgentId === u.id)).map((u) => ({ value: u.id, label: u.name })) },
+            { id: "branch", label: "الفرع", value: branch, onChange: setBranch, allLabel: "كل الفروع المتاحة", options: isManagement(effectiveUser) ? branches.map((b) => ({ value: b.id, label: b.name })) : [] },
+            { id: "agent", label: "الموظف المسؤول", value: agent, onChange: setAgent, allLabel: "كل الموظفين المتاحين", options: isManagement(effectiveUser) ? users.filter((u) => u.active && ["sales_agent", "team_leader", "branch_manager", "regional_manager"].includes(u.role)).map((u) => ({ value: u.id, label: u.name })) : [] },
             { id: "source", label: "مصدر العميل", value: source, onChange: setSource, allLabel: "كل المصادر", options: Object.entries(sourceNames).map(([id, label]) => ({ value: id, label })) },
           ]}
-          count={{ shown: filtered.length, noun: "عميل" }}
+          count={{ shown: total ?? rows.length, noun: "عميل" }}
           onReset={clear}
           actions={
-            <button className="btn-secondary" onClick={exportCsv} disabled={!filtered.length} aria-label="تصدير العملاء CSV">
+            <button className="btn-secondary" onClick={exportCsv} disabled={!rows.length || exporting} aria-label="تصدير العملاء CSV">
               <Download size={16} />
-              <span className="desktop-only">تصدير</span>
+              <span className="desktop-only">{exporting ? "جاري التصدير…" : "تصدير"}</span>
             </button>
           }
         />
@@ -181,7 +220,7 @@ export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
                   (u) =>
                     u.active &&
                     ["sales_agent", "team_leader"].includes(u.role) &&
-                    visible
+                    rows
                       .filter((l) => selected.includes(l.id))
                       .every((l) => l.branchId === u.branchId),
                 )
@@ -203,7 +242,17 @@ export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
             </button>
           </div>
         )}
-        {!rows.length ? (
+        {list.searchTooShort && !legacy && (
+          <div className="quiet-note" role="status">اكتب حرفين من الاسم أو 4 أرقام من الهاتف عشان يشتغل البحث.</div>
+        )}
+        {list.error && !legacy && (
+          <div className="notice" role="alert">
+            {list.error} <button className="btn-text" onClick={list.refresh}>إعادة المحاولة</button>
+          </div>
+        )}
+        {!legacy && list.loading && !rows.length ? (
+          <div className="quiet-note" role="status" style={{ padding: 30 }}>جاري تحميل العملاء…</div>
+        ) : !rows.length ? (
           <div className="empty-state">
             <Users size={30} strokeWidth={1.3} />
             <h3>
@@ -363,27 +412,15 @@ export function LeadsPage({ onOpenLead, onNavigateAddLead }: Props) {
             </div>
           </>
         )}
-        {pageCount > 1 && (
+        {hasMore && (
           <div className="filter-count">
             <span>
-              صفحة {page} من {pageCount}
+              معروض {rows.length}
+              {total !== null ? ` من ${total}` : ""} عميل
             </span>
-            <div style={{ display: "flex", gap: 18 }}>
-              <button
-                aria-label="الصفحة السابقة"
-                disabled={page === 1}
-                onClick={() => setPage(page - 1)}
-              >
-                <ArrowRight size={17} />
-              </button>
-              <button
-                aria-label="الصفحة التالية"
-                disabled={page >= pageCount}
-                onClick={() => setPage(page + 1)}
-              >
-                <ArrowLeft size={17} />
-              </button>
-            </div>
+            <button className="btn-secondary" onClick={loadMore} disabled={!legacy && list.loadingMore}>
+              {!legacy && list.loadingMore ? "جاري التحميل…" : "عرض المزيد"}
+            </button>
           </div>
         )}
       </section>

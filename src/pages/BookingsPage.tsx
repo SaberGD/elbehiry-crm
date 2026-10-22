@@ -1,3 +1,4 @@
+import { useAllLeads } from "../lib/useAllLeads";
 import { PageGuide } from "../components/common/PageGuide";
 import { canAccessPage } from "../lib/access";
 import { useState } from "react";
@@ -14,6 +15,7 @@ interface Props {
 /** Everything customers bought: what, how much, in which department, and where its post-sale follow-ups stand. Buying means receiving, so there is no delivery step. */
 export function BookingsPage({ onOpenLead }: Props) {
   const { effectiveUser, bookings, branches, followUps } = useCRM();
+  useAllLeads();
   const [query, setQuery] = useState("");
   const [dept, setDept] = useState("all");
   const [fBranch, setFBranch] = useState("all");
