@@ -1,3 +1,4 @@
+import { useAllData } from "../../lib/useAllData";
 import { useAllFollowUps } from "../../lib/useAllFollowUps";
 import { useMemo } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
@@ -36,6 +37,7 @@ const trendIcon = (t: EmployeeRating["trend"]) =>
 export function EmployeeRatings() {
   const { users, reviewRequests, followUps, effectiveUser, branches } = useCRM();
   useAllFollowUps();
+  useAllData(["reviews"]);
   const rows = useMemo(() => employeeRatings(users, reviewRequests, followUps), [users, reviewRequests, followUps]);
   const salesperson = ["sales_agent", "team_leader"].includes(effectiveUser.role);
   const mine = rows.find((r) => r.userId === effectiveUser.id);

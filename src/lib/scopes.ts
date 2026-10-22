@@ -1,3 +1,4 @@
+import { restrictStreams } from "./pagedMerge";
 import type { Scope, ScopeFilter } from "./useFirestoreSync";
 
 /** The server-trusted facts the security rules use (from authProfiles). */
@@ -83,4 +84,10 @@ export function scopeWhere(scope: Scope, field: string, values: string[]): Scope
   if (scope === "none" || !values.length) return "none";
   const base: ScopeFilter[][] = scope === "all" ? [[]] : scope;
   return values.flatMap((v) => base.map((filters): ScopeFilter[] => [...filters, [field, "==", v]]));
+}
+
+/** The part of a scope that also satisfies these filters (a scope pinned to one value stays so, or becomes empty). */
+export function scopeAnd(scope: Scope, filters: ScopeFilter[]): Scope {
+  const streams = restrictStreams(scope, filters);
+  return streams.length ? streams : "none";
 }

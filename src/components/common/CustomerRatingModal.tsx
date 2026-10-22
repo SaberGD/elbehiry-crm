@@ -16,7 +16,9 @@ interface Props {
 
 /** Ask a customer to rate one visit or booking: a unique link goes out on WhatsApp and the request is logged. */
 export function CustomerRatingModal({ lead, isOpen, onClose, subject }: Props) {
-  const { effectiveUser, visits, bookings, reviewRequests, requestReview } = useCRM();
+  const { effectiveUser, visits, bookings, reviewRequests, requestReview, watchCustomerHistory } = useCRM();
+  // This customer's visits, purchases and reviews are read while the dialog is open.
+  useEffect(() => (isOpen && lead ? watchCustomerHistory(lead.id) : undefined), [isOpen, lead?.id, watchCustomerHistory]);
   const ref = useDialog(isOpen, onClose);
   const [choice, setChoice] = useState("general");
   const [sent, setSent] = useState<ReviewRequest | null>(null);

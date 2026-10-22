@@ -1,3 +1,4 @@
+import { useAllData } from "../../lib/useAllData";
 import { useAllFollowUps } from "../../lib/useAllFollowUps";
 import { useAllLeads } from "../../lib/useAllLeads";
 import { bookingSplit } from "../../lib/purchases";
@@ -40,6 +41,7 @@ export function BranchDetailsModal({
     purchaseInvoices,
   } = useCRM();
   useAllFollowUps(isOpen);
+  useAllData(["bookings", "visits", "invoices"], isOpen);
   useAllLeads(isOpen);
   const [tab, setTab] = useState("overview");
   const ref = useDialog(isOpen, onClose);

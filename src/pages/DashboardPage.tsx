@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
 import { useLeadCounts } from "../lib/useLeadCounts";
+import { useAllData } from "../lib/useAllData";
 import {
   canAccessPage,
   canCreateCustomer,
@@ -52,7 +53,6 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
     followUps: scopeTasks,
     bookings: scopeBookings,
     branches: scopeBranches,
-    purchaseInvoices: scopeInvoices,
   } = useCRM();
   const [branchFilter, setBranchFilter] = useState("all");
   const [sort, setSort] = useState("amount");
@@ -61,6 +61,8 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const sales = worksOwnCustomers(u),
     has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
   // The customer totals come from the database as counts; the customers themselves are not read here.
+  // Revenue and the split by department add up every purchase, so purchases are read here (customers are not).
+  useAllData(["bookings"], has("bookings.view"));
   const counts = useLeadCounts(u, branchFilter, scopeBranches.filter((b) => b.active).map((b) => b.id), has("customers.view"));
   const validSort =
     (sort === "amount" && has("bookings.view")) ||
@@ -82,7 +84,6 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const active = scopeBookings.filter(
     (b) => inScope(b.branchId) && b.bookingStatus !== "cancelled",
   );
-  const invoices = scopeInvoices.filter((i) => inScope(i.branchId));
   const due = followUps.filter((f) => followUpStatus(f) === "due");
   const overdue = followUps.filter((f) => followUpStatus(f) === "overdue");
   const tasks = followUps

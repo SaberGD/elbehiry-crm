@@ -6,7 +6,8 @@ import {
 import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
 import { REFERRAL_FOLLOWUP_DAYS, isReferralPhone, phoneKey } from "../lib/referrals";
-import { scopesFor, scopeWhere, seesAll, unionScopes } from "../lib/scopes";
+import { scopeAnd, scopesFor, scopeWhere, seesAll, unionScopes } from "../lib/scopes";
+import { REMINDER_WINDOW_DAYS } from "../lib/reminders";
 import { keysAreCurrent, leadSearchKeys, SEARCH_INDEX_VERSION } from "../lib/leadSearch";
 import { defaultLicense, type License } from "../lib/license";
 import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
@@ -151,6 +152,11 @@ export interface CRMContextType {
    * from), a customer's whole history while their file is open, and everything while a screen asks for it.
    */
   requestAllFollowUps: () => () => void;
+  /**
+   * Visits, purchases, reviews, invoices and "not bought yet" records are not read in full either: a customer's own
+   * come with their file, recent visits and open reviews are always followed, and a screen that needs them all says so.
+   */
+  requestAll: (kind: DataKind) => () => void;
   /** Adds customers that were read elsewhere (a page of results) so they can be opened and edited. */
   injectLeads: (rows: Lead[]) => void;
   /** Keeps one customer live while it is on screen. Returns the stop function. */
@@ -295,6 +301,9 @@ function loadStorage<T>(_key: string, fallback: T): T {
 function saveStorage<T>(_key: string, _value: T) {
   /* intentionally not persisted */
 }
+
+/** The collections that are read a part at a time and in full only on request. */
+export type DataKind = "leads" | "followUps" | "visits" | "bookings" | "reviews" | "notBought" | "invoices";
 
 /** Follow-ups that are not finished: what the dashboard, the badge and the daily list work from. */
 const OPEN_FOLLOWUP_STATUSES = ["due", "upcoming", "overdue"];
@@ -444,31 +453,60 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Customers are read a page at a time. Screens that really need all of them say so; each is counted, so the
   // whole list is read while any of them is open and no longer followed when none is.
-  const [allLeadsAsked, setAllLeadsAsked] = useState(0);
-  const requestAllLeads = useCallback(() => {
-    setAllLeadsAsked((n) => n + 1);
-    return () => setAllLeadsAsked((n) => n - 1);
+  const [asked, setAsked] = useState<Record<DataKind, number>>({ leads: 0, followUps: 0, visits: 0, bookings: 0, reviews: 0, notBought: 0, invoices: 0 });
+  const requestAll = useCallback((kind: DataKind) => {
+    setAsked((a) => ({ ...a, [kind]: a[kind] + 1 }));
+    return () => setAsked((a) => ({ ...a, [kind]: a[kind] - 1 }));
   }, []);
+  const requestAllLeads = useCallback(() => requestAll("leads"), [requestAll]);
+  const wants = { leads: asked.leads > 0, followUps: asked.followUps > 0, visits: asked.visits > 0, bookings: asked.bookings > 0, reviews: asked.reviews > 0, notBought: asked.notBought > 0, invoices: asked.invoices > 0 };
   const leadsRef = useRef<Lead[]>([]);
   leadsRef.current = leads;
+  const watched = useMemo(() => (watchedIds ? watchedIds.split(",") : []), [watchedIds]);
 
   // Follow-ups pile up as they are completed, so only the open ones are followed all the time. The finished ones of a
   // customer come with their file (see watchCustomerHistory); everything is read only while a screen asks for it.
-  const [allFollowUpsAsked, setAllFollowUpsAsked] = useState(0);
-  const requestAllFollowUps = useCallback(() => {
-    setAllFollowUpsAsked((n) => n + 1);
-    return () => setAllFollowUpsAsked((n) => n - 1);
-  }, []);
+  const requestAllFollowUps = useCallback(() => requestAll("followUps"), [requestAll]);
   const followUpScope = useMemo(
     () =>
-      allFollowUpsAsked > 0
+      wants.followUps
         ? scope.followUps
-        : unionScopes(
-            scopeWhere(scope.followUps, "status", OPEN_FOLLOWUP_STATUSES),
-            scopeWhere(scope.followUps, "leadId", watchedIds ? watchedIds.split(",") : []),
-          ),
-    [scope.followUps, allFollowUpsAsked > 0, watchedIds],
+        : unionScopes(scopeWhere(scope.followUps, "status", OPEN_FOLLOWUP_STATUSES), scopeWhere(scope.followUps, "leadId", watched)),
+    [scope.followUps, wants.followUps, watched],
   );
+
+  // The reminders look back two weeks, so that is how much of the visits and review requests is always followed;
+  // reviews that are waiting for an answer or are complaints are followed whatever their age.
+  const sinceDay = new Date(Date.now() - REMINDER_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const myId = authForScope?.userId;
+  const visitScope = useMemo(
+    () =>
+      wants.visits
+        ? scope.visits
+        : unionScopes(
+            myId ? scopeAnd(scope.visits, [["receivedByAgentId", "==", myId], ["date", ">=", sinceDay]]) : "none",
+            scopeWhere(scope.visits, "linkedLeadId", watched),
+          ),
+    [scope.visits, wants.visits, watched, myId, sinceDay],
+  );
+  const reviewScope = useMemo(
+    () =>
+      wants.reviews
+        ? scope.reviews
+        : unionScopes(
+            scopeAnd(scope.reviews, [["status", "==", "sent"]]),
+            scopeAnd(scope.reviews, [["sentAt", ">=", sinceDay]]),
+            scopeAnd(scope.reviews, [["answeredAt", ">=", sinceDay]]),
+            scopeAnd(scope.reviews, [["isComplaint", "==", true]]),
+            scopeAnd(scope.reviews, [["ai.kind", "==", "complaint"]]),
+            scopeAnd(scope.reviews, [["response.rating", "<=", 2]]),
+            scopeWhere(scope.reviews, "leadId", watched),
+          ),
+    [scope.reviews, wants.reviews, watched, sinceDay],
+  );
+  const bookingScope = useMemo(() => (wants.bookings ? scope.bookings : scopeWhere(scope.bookings, "leadId", watched)), [scope.bookings, wants.bookings, watched]);
+  const notBoughtScope = useMemo(() => (wants.notBought ? scope.notBought : scopeWhere(scope.notBought, "leadId", watched)), [scope.notBought, wants.notBought, watched]);
+  const invoiceScope = useMemo(() => (wants.invoices ? scope.invoices : scopeWhere(scope.invoices, "leadId", watched)), [scope.invoices, wants.invoices, watched]);
 
   // Only top management may write the shared setup (structure, catalogue, settings), so only they seed it.
   const topWriter = !!authForScope && ["admin", "general_manager"].includes(authForScope.role);
@@ -488,13 +526,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   useFirestoreCollection("jobPositions", jobPositions, setJobPositions, { seedIfEmpty: topWriter });
   useFirestoreCollection("purchaseCategories", purchaseCategories, setPurchaseCategories, { seedIfEmpty: topWriter });
   useFirestoreCollection("brokers", brokers, setBrokers, { scope: scope.brokers });
-  useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices, { scope: scope.invoices });
+  useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices, { scope: invoiceScope, lazy: true });
   useFirestoreCollection("notifications", notifications, setNotifications, {
     scope: scope.notifications,
     window: { orderBy: "createdAt", limit: NOTIFICATIONS_WINDOW },
   });
   const { inject: syncInjectLeads, watchDoc: watchLead } = useFirestoreCollection("leads", leads, setLeads, {
-    scope: allLeadsAsked > 0 ? scope.leads : "none",
+    scope: wants.leads ? scope.leads : "none",
     lazy: true,
     beforeWrite: (l) => ({ ...l, searchKeys: leadSearchKeys(l) }),
   });
@@ -544,14 +582,14 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     indexing.current = true;
     reindexSearch().catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
   }, [topWriter, indexMarker, searchIndexVersion, reindexSearch]);
-  useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: scope.notBought });
+  useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: notBoughtScope, lazy: true });
   useFirestoreCollection("reminderDone", reminderDone, setReminderDone, { scope: scope.reminderDone });
   useFirestoreCollection("aiSuggestions", aiSuggestions, setAiSuggestions, { scope: scope.aiSuggestions });
-  useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests, { scope: scope.reviews });
+  useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests, { scope: reviewScope, lazy: true });
   useFirestoreCollection("reviewNotes", reviewNotes, setReviewNotes, { scope: scope.reviewNotes });
-  useFirestoreCollection("visits", visits, setVisits, { scope: scope.visits });
+  useFirestoreCollection("visits", visits, setVisits, { scope: visitScope, lazy: true });
   useFirestoreCollection("followUps", followUps, setFollowUps, { scope: followUpScope });
-  useFirestoreCollection("bookings", bookings, setBookings, { scope: scope.bookings });
+  useFirestoreCollection("bookings", bookings, setBookings, { scope: bookingScope, lazy: true });
   useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents, {
     scope: timelineScope,
     onLoaded: () => setHistoryLoadedIds(watchedIds),
@@ -763,8 +801,22 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   const latest = useRef({ bookings, followUps });
   latest.current = { bookings, followUps };
   const backfillStarted = useRef(false);
+  // Purchases and follow-ups are not read in full any more, so the developer's session asks for them only while this
+  // one-time job has not been marked done.
+  const [postSalePending, setPostSalePending] = useState(false);
   useEffect(() => {
-    if (authForScope?.role !== "admin" || backfillStarted.current || !bookings.length) return;
+    if (authForScope?.role !== "admin") return;
+    getDoc(doc(db, "settings", "postSaleBackfill"))
+      .then((s) => setPostSalePending(!s.exists()))
+      .catch(() => {});
+  }, [authForScope?.role]);
+  useEffect(() => {
+    if (!postSalePending) return;
+    const stops = [requestAll("bookings"), requestAll("followUps")];
+    return () => stops.forEach((stop) => stop());
+  }, [postSalePending, requestAll]);
+  useEffect(() => {
+    if (authForScope?.role !== "admin" || !postSalePending || backfillStarted.current || !bookings.length) return;
     backfillStarted.current = true;
     const timer = window.setTimeout(async () => {
       try {
@@ -780,6 +832,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         setBookings((prev) => prev.map((b) => (b.bookingStatus !== "cancelled" && !b.deliveredAt ? { ...b, bookingStatus: "completed", deliveredAt: b.bookingDate } : b)));
         if (created.length) setFollowUps((prev) => [...created, ...prev]);
         await setDoc(flag, { done: true, at: new Date().toISOString(), purchases: open.length, followUps: created.length });
+        setPostSalePending(false);
       } catch (e) {
         console.error("post-sale backfill failed", e);
         backfillStarted.current = false;
@@ -787,7 +840,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     }, 8000);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authForScope?.role, bookings.length > 0]);
+  }, [authForScope?.role, postSalePending, bookings.length > 0]);
 
   const saveSuggestions: CRMContextType["saveSuggestions"] = (items) => {
     const made = items.map((i) => ({ ...i, id: `sug-${crypto.randomUUID()}`, createdAt: new Date().toISOString(), dayKey: today() }));
@@ -2047,6 +2100,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
         requestAllLeads,
         requestAllFollowUps,
+        requestAll,
         injectLeads,
         watchLead,
         searchIndexReady: searchIndexVersion >= SEARCH_INDEX_VERSION,

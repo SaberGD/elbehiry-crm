@@ -5,12 +5,18 @@ import type { Scope, ScopeFilter } from "./useFirestoreSync";
  * narrowing a person's scope by what they filtered, and merging several ordered queries into one list.
  */
 
-/** The queries that answer "what this person may see, narrowed by these equality filters". Empty when nothing can match. */
+/**
+ * The queries that answer "what this person may see, narrowed by these filters". Empty when nothing can match.
+ * An equality on a field the scope already pins is checked against it; any other filter is simply added.
+ */
 export function restrictStreams(scope: Scope, filters: ScopeFilter[]): ScopeFilter[][] {
   if (scope === "none") return [];
   let streams: ScopeFilter[][] = scope === "all" ? [[]] : scope.map((s) => [...s]);
   for (const [field, op, value] of filters) {
-    if (op !== "==") throw new Error("only equality filters can narrow a scope");
+    if (op !== "==") {
+      streams = streams.map((s): ScopeFilter[] => [...s, [field, op, value]]);
+      continue;
+    }
     streams = streams.flatMap((s): ScopeFilter[][] => {
       const at = s.findIndex(([f, o]) => f === field && (o === "==" || o === "in"));
       if (at < 0) return [[...s, [field, "==", value]]];

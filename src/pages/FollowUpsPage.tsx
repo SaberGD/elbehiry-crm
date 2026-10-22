@@ -1,3 +1,4 @@
+import { useAllData } from "../lib/useAllData";
 import { useAllLeads } from "../lib/useAllLeads";
 import { CustomerBrief } from "../components/common/CustomerBrief";
 import { REFERRAL_MIN_STARS, isReferralPhone } from "../lib/referrals";
@@ -76,6 +77,8 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
   // Finished follow-ups are not loaded with the open ones: the average rating is asked of the database, and the
   // finished list (and the suggestions, which look at a customer's whole history) read them when opened.
   useAllFollowUps(showDone || view === "suggestions");
+  useAllData(["visits", "bookings", "notBought", "reviews"], view === "suggestions");
+  useAllData(["bookings", "notBought"]);
   const [rating_, setRating_] = useState({ average: 0, count: 0 });
   useEffect(() => {
     let current = true;

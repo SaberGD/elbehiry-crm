@@ -40,9 +40,23 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   for (let i = 25; i <= 300; i++) {
     const n = String(i).padStart(3, "0");
     await setDoc(doc(f, "leads", `B${n}`), { id: `B${n}`, name: `عميل عام ${n}`, phone: `0150000${String(i).padStart(4, "0")}`, branchId: "b1", assignedAgentId: "usr-bm1", status: "interested", source: "walk_in", classification: "B", department: "decor", notes: "", createdAt: `2026-08-01T${String(i % 24).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00.000Z` });
+    // So are most visits and reviews: old, handled and not needed to start work.
+    if (i % 2 === 0) {
+      await setDoc(doc(f, "visits", `V${n}`), { id: `V${n}`, visitorName: `عميل عام ${n}`, phone: `0150000${String(i).padStart(4, "0")}`, visitorType: "client", linkedLeadId: `B${n}`, branchId: "b1", branchName: "فرع b1", receivedByAgentId: "usr-bm1", receivedByAgentName: "مدير فرع 1", date: "2026-06-10", reason: "معاينة", source: "walk_in", createdAt: "2026-06-10T10:00:00.000Z" });
+      await setDoc(doc(f, "reviewRequests", `RV${n}-padpadpadpadpadpad`), { id: `RV${n}-padpadpadpadpadpad`, leadId: `B${n}`, leadName: `عميل عام ${n}`, branchId: "b1", agentId: "usr-bm1", subjectKind: "visit", subjectId: `V${n}`, subjectLabel: "زيارة", sentAt: "2026-06-10T12:00:00.000Z", status: "answered", answeredAt: "2026-06-11T12:00:00.000Z", isComplaint: false, response: { rating: 5 } });
+    }
     // Most of the follow-ups ever made are finished ones.
     await setDoc(doc(f, "followUps", `F${n}`), { id: `F${n}`, leadId: `B${n}`, leadName: `عميل عام ${n}`, leadPhone: "0150000000", assignedAgentId: "usr-bm1", branchId: "b1", scheduledAt: "2026-08-02T10:00:00.000Z", reason: "متابعة", type: "call", notes: "", status: "completed", completedAt: "2026-08-02T11:00:00.000Z", outcomeResult: "تمت" });
   }
+  // The few that still matter, however old: waiting for an answer, and complaints raised three different ways.
+  const rv = (id, extra) => setDoc(doc(f, "reviewRequests", `${id}-padpadpadpadpadpad`), { id: `${id}-padpadpadpadpadpad`, leadId: "L2", leadName: "عميل المدير", branchId: "b1", agentId: "usr-bm1", subjectKind: "visit", subjectId: id, subjectLabel: "زيارة", sentAt: "2026-05-01T12:00:00.000Z", ...extra });
+  await rv("OLD-WAITING", { status: "sent" });
+  await rv("OLD-FLAGGED", { status: "answered", answeredAt: "2026-05-02T12:00:00.000Z", isComplaint: true, response: { rating: 3 } });
+  await rv("OLD-LOWSTAR", { status: "answered", answeredAt: "2026-05-02T12:00:00.000Z", isComplaint: false, response: { rating: 1 } });
+  await rv("OLD-BYAI", { status: "answered", answeredAt: "2026-05-02T12:00:00.000Z", isComplaint: false, response: { rating: 4, comment: "x" }, ai: { kind: "complaint" } });
+  // A visit from this week is followed (reminders look at it); older ones are not.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  await setDoc(doc(f, "visits", "VNOW"), { id: "VNOW", visitorName: "زيارة النهارده", phone: "01099999999", visitorType: "client", linkedLeadId: "L2", branchId: "b1", receivedByAgentId: "usr-bm1", date: todayStr, reason: "x", source: "walk_in", createdAt: `${todayStr}T10:00:00.000Z` });
   for (let i = 1; i <= 24; i++) {
     const n = String(i).padStart(2, "0");
     await setDoc(doc(f, "leads", `M${n}`), { id: `M${n}`, name: `عميل كثير ${n}`, phone: `0120000${String(i).padStart(4, "0")}`, branchId: "b1", assignedAgentId: "usr-bm1", status: "interested", source: "walk_in", classification: "B", department: "decor", notes: "", createdAt: `2026-09-${n}T10:00:00.000Z` });
@@ -214,7 +228,11 @@ await as("bm1", async (page, go) => {
 
 await as("bm1", async (page, go, landing) => {
   // 300 customers and 300 follow-ups sit in this branch; signing in reads a small part of that.
-  check(landing.total < 80, `signing in reads ${landing.total} documents, not the ~600 in the branch`);
+  check(landing.total < 80, `signing in reads ${landing.total} documents, not the ~800 in the branch`);
+  const v = landing.by.visits || 0;
+  const r = landing.by.reviewRequests || 0;
+  check(v >= 1 && v < 10, `this week's visit is read, the 138 old ones are not (${v})`);
+  check(r >= 4 && r < 30, `reviews waiting for an answer and complaints are read, the 138 handled ones are not (${r})`);
   // Page by page: the list reads 20 customers, the rest on request.
   await go("العملاء");
   await page.waitForTimeout(1500);

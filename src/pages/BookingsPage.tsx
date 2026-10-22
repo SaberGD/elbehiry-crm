@@ -1,3 +1,4 @@
+import { useAllData } from "../lib/useAllData";
 import { useAllFollowUps } from "../lib/useAllFollowUps";
 import { useAllLeads } from "../lib/useAllLeads";
 import { PageGuide } from "../components/common/PageGuide";
@@ -17,6 +18,7 @@ interface Props {
 export function BookingsPage({ onOpenLead }: Props) {
   const { effectiveUser, bookings, branches, followUps } = useCRM();
   useAllFollowUps();
+  useAllData(["bookings"]);
   useAllLeads();
   const [query, setQuery] = useState("");
   const [dept, setDept] = useState("all");

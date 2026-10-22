@@ -7,6 +7,7 @@ import { countRead, db, handleFirestoreError, OperationType } from './firebase';
 import { changedFields } from './rowDiff';
 
 const BATCH_SIZE = 400;
+const RANGE_OPS: WhereFilterOp[] = ['<', '<=', '>', '>='];
 const SORT_KEYS = ['createdAt', 'timestamp', 'date'] as const;
 
 /**
@@ -276,6 +277,15 @@ export function useFirestoreCollection<T extends { id: string }>(
             console.warn(`Firestore index missing for ${name}; reading without a window. Deploy firestore.indexes.json.`, err.message);
             entry.stop();
             listen(key, scopeQueries(name, [filters], undefined)[0], filters);
+            return;
+          }
+          // A query that narrows by a date or a number needs an index of its own. Until it is deployed, read without the
+          // narrowing rather than show nothing: slower and costlier, but the same rows.
+          const wide = filters.filter(([, op]) => !RANGE_OPS.includes(op));
+          if ((err as { code?: string }).code === 'failed-precondition' && wide.length !== filters.length) {
+            console.warn(`Firestore index missing for ${name}; reading without the date/number filter. Deploy firestore.indexes.json.`, err.message);
+            entry.stop();
+            listen(key, scopeQueries(name, [wide], undefined)[0], wide);
             return;
           }
           // A query the rules refuse means "nothing here for you", not a broken app.

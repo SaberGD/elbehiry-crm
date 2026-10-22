@@ -1,3 +1,4 @@
+import { useAllData } from "../lib/useAllData";
 import { useAllLeads } from "../lib/useAllLeads";
 import { PageGuide } from "../components/common/PageGuide";
 import { BrokerSearch } from "../components/common/BrokerSearch";
@@ -35,6 +36,7 @@ const typeChoices: { id: VisitorType; title: string; hint: string; Icon: typeof 
 export function VisitsPage({ onOpenLead }: Props) {
   const { effectiveUser, visits, branches, users, leads, brokers, addVisit, addBroker, addBooking, addNotBoughtRecord, updateLead } = useCRM();
   useAllLeads();
+  useAllData(["visits"]);
   const [mode, setMode] = useState<"list" | "form">("list");
   const [notice, setNotice] = useState("");
   // Offered right after saving a visit of a customer: optional, one tap.

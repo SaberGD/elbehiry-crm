@@ -1,3 +1,4 @@
+import { useAllData } from "../lib/useAllData";
 import { useAllFollowUps } from "../lib/useAllFollowUps";
 import { useAllLeads } from "../lib/useAllLeads";
 import { useMemo, useState } from "react";
@@ -61,6 +62,7 @@ function SplitLegend({ split }: { split: Split }) {
 export function OverviewPage({ onOpenLead }: { onOpenLead: (id: string) => void }) {
   const { effectiveUser: u, leads, bookings, brokers } = useCRM();
   useAllFollowUps();
+  useAllData(["bookings", "visits", "notBought", "reviews"]);
   useAllLeads();
   const [sortBy, setSortBy] = useState<"total" | Department>("total");
   const [openCustomer, setOpenCustomer] = useState<string | null>(null);
