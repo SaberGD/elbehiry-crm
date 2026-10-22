@@ -1,5 +1,5 @@
 import { collection, getCountFromServer, query, where } from "firebase/firestore";
-import { db } from "./firebase";
+import { countRead, db } from "./firebase";
 import { matchesKey, matchesSearch, parseSearch, phoneDigits } from "./leadSearch";
 import { createPagedList } from "./pagedList";
 import { restrictStreams } from "./pagedMerge";
@@ -35,9 +35,12 @@ export async function findLeadsByPhone(scope: Scope, phone: string, excludeId?: 
 /** How many customers match the filters, without reading them. */
 export async function countLeads(scope: Scope, filters: ScopeFilter[] = [], extra: ScopeFilter[] = []): Promise<number> {
   const counts = await Promise.all(
-    restrictStreams(scope, filters).map(async (stream) =>
-      (await getCountFromServer(query(collection(db, "leads"), ...[...stream, ...extra].map(([f, op, v]) => where(f, op, v))))).data().count,
-    ),
+    restrictStreams(scope, filters).map(async (stream) => {
+      const q = query(collection(db, "leads"), ...[...stream, ...extra].map(([f, op, v]) => where(f, op, v)));
+      const n = (await getCountFromServer(q)).data().count;
+      countRead(Math.max(1, Math.ceil(n / 1000)), "leads/count");
+      return n;
+    }),
   );
   return counts.reduce((a, b) => a + b, 0);
 }

@@ -1,4 +1,5 @@
 import { useAllLeads } from "../../lib/useAllLeads";
+import { useAllFollowUps } from "../../lib/useAllFollowUps";
 import { useEffect, useRef, useState } from "react";
 import { Send, X } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
@@ -127,6 +128,7 @@ export function ZakiChat() {
   const [open, setOpen] = useState(false);
   // Zaki answers from every customer the person can see, so they are read while the chat is open.
   useAllLeads(open);
+  useAllFollowUps(open);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);

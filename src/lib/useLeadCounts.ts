@@ -9,6 +9,8 @@ export const OPEN_STATUSES = Object.keys(statusNames).filter((s) => !["booked", 
 
 export interface LeadCounts {
   ready: boolean;
+  /** The database could not answer; the figures are not known. */
+  failed?: boolean;
   /** Customers in the person's scope (narrowed to one branch when one is chosen). */
   total: number;
   byBranch: Record<string, { count: number; open: number }>;
@@ -43,7 +45,7 @@ export function useLeadCounts(user: User, branchFilter: string, branchIds: strin
       }),
     ])
       .then(([total, ...rows]) => current && setCounts({ ready: true, total, byBranch: Object.fromEntries(rows) }))
-      .catch(() => current && setCounts({ ready: true, total: 0, byBranch: {} }));
+      .catch(() => current && setCounts({ ready: true, failed: true, total: 0, byBranch: {} }));
     return () => {
       current = false;
     };

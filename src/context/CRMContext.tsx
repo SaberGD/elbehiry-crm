@@ -6,7 +6,7 @@ import {
 import { createWorkspace } from "../lib/workspace";
 import { newReviewToken } from "../lib/reviews";
 import { REFERRAL_FOLLOWUP_DAYS, isReferralPhone, phoneKey } from "../lib/referrals";
-import { scopesFor, seesAll } from "../lib/scopes";
+import { scopesFor, scopeWhere, seesAll, unionScopes } from "../lib/scopes";
 import { keysAreCurrent, leadSearchKeys, SEARCH_INDEX_VERSION } from "../lib/leadSearch";
 import { defaultLicense, type License } from "../lib/license";
 import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
@@ -146,12 +146,19 @@ export interface CRMContextType {
   leads: Lead[];
   /** Asks for every customer in the person's scope to be loaded until the returned function is called. */
   requestAllLeads: () => () => void;
+  /**
+   * Follow-ups: the open ones are always loaded (they are what the dashboard, the badge and the daily list work
+   * from), a customer's whole history while their file is open, and everything while a screen asks for it.
+   */
+  requestAllFollowUps: () => () => void;
   /** Adds customers that were read elsewhere (a page of results) so they can be opened and edited. */
   injectLeads: (rows: Lead[]) => void;
   /** Keeps one customer live while it is on screen. Returns the stop function. */
   watchLead: (id: string) => () => void;
   /** True once every customer carries the keys the database search uses. */
   searchIndexReady: boolean;
+  /** Developer / top management: brings every customer's search keys up to date (reads them all once). */
+  reindexSearch: () => Promise<{ customers: number; fixed: number }>;
   visits: Visit[];
   followUps: FollowUp[];
   bookings: Booking[];
@@ -289,6 +296,8 @@ function saveStorage<T>(_key: string, _value: T) {
   /* intentionally not persisted */
 }
 
+/** Follow-ups that are not finished: what the dashboard, the badge and the daily list work from. */
+const OPEN_FOLLOWUP_STATUSES = ["due", "upcoming", "overdue"];
 /** Newest notifications kept live (older ones are long handled). */
 const NOTIFICATIONS_WINDOW = 200;
 /** Audit log rows read per page. */
@@ -443,6 +452,24 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   const leadsRef = useRef<Lead[]>([]);
   leadsRef.current = leads;
 
+  // Follow-ups pile up as they are completed, so only the open ones are followed all the time. The finished ones of a
+  // customer come with their file (see watchCustomerHistory); everything is read only while a screen asks for it.
+  const [allFollowUpsAsked, setAllFollowUpsAsked] = useState(0);
+  const requestAllFollowUps = useCallback(() => {
+    setAllFollowUpsAsked((n) => n + 1);
+    return () => setAllFollowUpsAsked((n) => n - 1);
+  }, []);
+  const followUpScope = useMemo(
+    () =>
+      allFollowUpsAsked > 0
+        ? scope.followUps
+        : unionScopes(
+            scopeWhere(scope.followUps, "status", OPEN_FOLLOWUP_STATUSES),
+            scopeWhere(scope.followUps, "leadId", watchedIds ? watchedIds.split(",") : []),
+          ),
+    [scope.followUps, allFollowUpsAsked > 0, watchedIds],
+  );
+
   // Only top management may write the shared setup (structure, catalogue, settings), so only they seed it.
   const topWriter = !!authForScope && ["admin", "general_manager"].includes(authForScope.role);
 
@@ -496,27 +523,29 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     [],
   );
   const indexing = useRef(false);
+  const reindexSearch = useCallback(async () => {
+    const all = await fetchScoped<Lead>("leads", "all");
+    const stale = all.filter((l) => !keysAreCurrent(l as Lead & { searchKeys?: string[] }));
+    for (let i = 0; i < stale.length; i += 400) {
+      const batch = writeBatch(db);
+      for (const l of stale.slice(i, i + 400)) batch.set(doc(db, "leads", l.id), { searchKeys: leadSearchKeys(l) }, { merge: true });
+      await batch.commit();
+    }
+    await setDoc(doc(db, "settings", "searchIndex"), { version: SEARCH_INDEX_VERSION, customers: all.length, at: new Date().toISOString() });
+    return { customers: all.length, fixed: stale.length };
+  }, []);
   useEffect(() => {
     if (!topWriter || searchIndexVersion >= SEARCH_INDEX_VERSION || indexing.current) return;
     indexing.current = true;
-    (async () => {
-      const all = await fetchScoped<Lead>("leads", "all");
-      const stale = all.filter((l) => !keysAreCurrent(l as Lead & { searchKeys?: string[] }));
-      for (let i = 0; i < stale.length; i += 400) {
-        const batch = writeBatch(db);
-        for (const l of stale.slice(i, i + 400)) batch.set(doc(db, "leads", l.id), { searchKeys: leadSearchKeys(l) }, { merge: true });
-        await batch.commit();
-      }
-      await setDoc(doc(db, "settings", "searchIndex"), { version: SEARCH_INDEX_VERSION, customers: all.length, at: new Date().toISOString() });
-    })().catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
-  }, [topWriter, searchIndexVersion]);
+    reindexSearch().catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
+  }, [topWriter, searchIndexVersion, reindexSearch]);
   useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: scope.notBought });
   useFirestoreCollection("reminderDone", reminderDone, setReminderDone, { scope: scope.reminderDone });
   useFirestoreCollection("aiSuggestions", aiSuggestions, setAiSuggestions, { scope: scope.aiSuggestions });
   useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests, { scope: scope.reviews });
   useFirestoreCollection("reviewNotes", reviewNotes, setReviewNotes, { scope: scope.reviewNotes });
   useFirestoreCollection("visits", visits, setVisits, { scope: scope.visits });
-  useFirestoreCollection("followUps", followUps, setFollowUps, { scope: scope.followUps });
+  useFirestoreCollection("followUps", followUps, setFollowUps, { scope: followUpScope });
   useFirestoreCollection("bookings", bookings, setBookings, { scope: scope.bookings });
   useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents, {
     scope: timelineScope,
@@ -2012,9 +2041,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         updatePermissionMatrix,
 
         requestAllLeads,
+        requestAllFollowUps,
         injectLeads,
         watchLead,
         searchIndexReady: searchIndexVersion >= SEARCH_INDEX_VERSION,
+        reindexSearch,
         users,
         companies,
         governorates,

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join } from "node:path";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { chromium } from "playwright-core";
 
 const DIST = process.env.APP_DIST;
@@ -37,6 +37,12 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await lead("L2", "b1", "bm1", "عميل المدير");
   await lead("L3", "b2", "agentC", "عميل فرع تاني");
   // A long list for the branch manager: the customer list reads it a page at a time.
+  for (let i = 25; i <= 300; i++) {
+    const n = String(i).padStart(3, "0");
+    await setDoc(doc(f, "leads", `B${n}`), { id: `B${n}`, name: `عميل عام ${n}`, phone: `0150000${String(i).padStart(4, "0")}`, branchId: "b1", assignedAgentId: "usr-bm1", status: "interested", source: "walk_in", classification: "B", department: "decor", notes: "", createdAt: `2026-08-01T${String(i % 24).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00.000Z` });
+    // Most of the follow-ups ever made are finished ones.
+    await setDoc(doc(f, "followUps", `F${n}`), { id: `F${n}`, leadId: `B${n}`, leadName: `عميل عام ${n}`, leadPhone: "0150000000", assignedAgentId: "usr-bm1", branchId: "b1", scheduledAt: "2026-08-02T10:00:00.000Z", reason: "متابعة", type: "call", notes: "", status: "completed", completedAt: "2026-08-02T11:00:00.000Z", outcomeResult: "تمت" });
+  }
   for (let i = 1; i <= 24; i++) {
     const n = String(i).padStart(2, "0");
     await setDoc(doc(f, "leads", `M${n}`), { id: `M${n}`, name: `عميل كثير ${n}`, phone: `0120000${String(i).padStart(4, "0")}`, branchId: "b1", assignedAgentId: "usr-bm1", status: "interested", source: "walk_in", classification: "B", department: "decor", notes: "", createdAt: `2026-09-${n}T10:00:00.000Z` });
@@ -82,8 +88,10 @@ async function as(who, fn) {
   await page.locator('button[type="submit"]').click();
   await page.waitForSelector("aside", { timeout: 20000 });
   await page.waitForTimeout(2500);
+  const landing = await page.evaluate(() => window.__fsReads || { total: 0, by: {} });
+  console.log(`  reads after signing in as ${who}: ${landing.total} ${JSON.stringify(landing.by)}`);
   const go = async (t) => { await page.locator("aside").getByText(t, { exact: true }).first().click(); await page.waitForTimeout(1200); };
-  await fn(page, go);
+  await fn(page, go, landing);
   check(denied.length === 0, `${who}: no permission errors while working${denied.length ? " → " + denied.join(" | ") : ""}`);
   await ctx.close();
 }
@@ -127,6 +135,21 @@ await as("agentA", async (page, go) => {
   await go("متابعاتي");
   await page.waitForTimeout(600); // upcoming follow-ups are listed on the page itself now
   check((await page.locator("main").innerText()).includes("زائر بمتابعة"), "agent's follow-up was saved");
+  // Finishing a follow-up: it stops being "open", so it leaves the always-loaded set but is still saved and can be shown on request.
+  await page.locator("article.followup-card", { hasText: "زائر بمتابعة" }).getByRole("button", { name: "تسجيل النتيجة" }).click();
+  await page.locator("textarea").first().fill("كلمته وهيرد قريب");
+  await page.getByRole("button", { name: "حفظ النتيجة" }).click();
+  await page.waitForTimeout(2500);
+  let fu;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const qs = await getDocs(query(collection(ctx.firestore(), "followUps"), where("leadName", "==", "زائر بمتابعة")));
+    fu = qs.docs.map((d) => d.data().status);
+  });
+  check(fu.length === 1 && fu[0] === "completed", `a follow-up is completed from the list and saved (${JSON.stringify(fu)})`);
+  check(!(await page.locator("main").innerText()).includes("كلمته وهيرد قريب"), "a finished follow-up leaves the open list");
+  await page.getByRole("button", { name: /عرض المكتملة والملغاة/ }).click();
+  await page.waitForTimeout(1500);
+  check((await page.locator("main").innerText()).includes("كلمته وهيرد قريب"), "finished follow-ups load when asked for");
   // A new customer from the customer form.
   await go("العملاء");
   await page.getByRole("button", { name: /عميل جديد/ }).first().click();
@@ -189,18 +212,19 @@ await as("bm1", async (page, go) => {
   check(!txt.includes("عميل فرع تاني"), "branch manager does not see the other branch");
 });
 
-await as("bm1", async (page, go) => {
+await as("bm1", async (page, go, landing) => {
+  // 300 customers and 300 follow-ups sit in this branch; signing in reads a small part of that.
+  check(landing.total < 80, `signing in reads ${landing.total} documents, not the ~600 in the branch`);
   // Page by page: the list reads 20 customers, the rest on request.
   await go("العملاء");
   await page.waitForTimeout(1500);
   const rowsNow = () => page.locator("button.customer-name").count();
   check((await rowsNow()) === 20, `the list loads 20 customers first (${await rowsNow()})`);
   check(await page.getByRole("button", { name: "عرض المزيد" }).isVisible(), "a button loads more");
-  check((await page.locator("main").innerText()).includes("من 29"), "the total comes from a count");
+  check((await page.locator("main").innerText()).includes("من 305"), "the total comes from a count");
   await page.getByRole("button", { name: "عرض المزيد" }).click();
   await page.waitForTimeout(1500);
-  check((await rowsNow()) === 29, `the next page completes the branch (${await rowsNow()})`);
-  check(!(await page.getByRole("button", { name: "عرض المزيد" }).isVisible()), "the button goes when everything is shown");
+  check((await rowsNow()) === 40, `the next page adds 20 (${await rowsNow()})`);
   // Search is the database's: beginnings of words, ends of phone numbers.
   const search = page.locator("main input[type=search]").first();
   await search.fill("كثير 07");
@@ -225,7 +249,7 @@ await as("bm1", async (page, go) => {
   // The dashboard counts customers without reading them.
   await go("الرئيسية");
   await page.waitForTimeout(2000);
-  check((await page.locator(".studio-metrics").innerText()).includes("29"), "the dashboard shows the customer count");
+  check((await page.locator(".studio-metrics").innerText()).includes("305"), "the dashboard shows the customer count");
 });
 
 await as("agentC", async (page, go) => {

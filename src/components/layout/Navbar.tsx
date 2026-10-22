@@ -114,9 +114,11 @@ export function Navbar({
   // list is read for as long as someone is searching, and searched here.
   const typed = query.trim();
   const [found, setFound] = useState<Lead[]>([]);
-  useEffect(() => (typed && !searchIndexReady ? requestAllLeads() : undefined), [!!typed, searchIndexReady, requestAllLeads]);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const serverSearch = searchIndexReady && !searchFailed;
+  useEffect(() => (typed && !serverSearch ? requestAllLeads() : undefined), [!!typed, serverSearch, requestAllLeads]);
   useEffect(() => {
-    if (!typed || !searchIndexReady) return setFound([]);
+    if (!typed || !serverSearch) return setFound([]);
     let current = true;
     const timer = setTimeout(() => {
       searchLeads(scopesFor(profileOf(effectiveUser)).leads, typed, 6)
@@ -125,17 +127,22 @@ export function Navbar({
           injectLeads(rows);
           setFound(rows);
         })
-        .catch(() => current && setFound([]));
+        .catch((e) => {
+          if (!current) return;
+          setFound([]);
+          // The database could not answer (its index is not deployed yet): search the full list instead.
+          if ((e as { code?: string })?.code === "failed-precondition") setSearchFailed(true);
+        });
     }, 250);
     return () => {
       current = false;
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typed, searchIndexReady, effectiveUser.id, effectiveUser.role, effectiveUser.branchId]);
+  }, [typed, serverSearch, effectiveUser.id, effectiveUser.role, effectiveUser.branchId]);
   const matches = !typed
     ? []
-    : searchIndexReady
+    : serverSearch
       ? found
       : leads.filter((l) => l.name.includes(typed) || l.phone.includes(typed)).slice(0, 5);
   useEffect(() => {

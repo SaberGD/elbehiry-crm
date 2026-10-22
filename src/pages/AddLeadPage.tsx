@@ -102,9 +102,11 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   // indexed it is checked against the full list instead.
   const phoneReady = phone.replace(/\D/g, "").length >= 10;
   const [found, setFound] = useState<Lead[]>([]);
-  useEffect(() => (phoneReady && !searchIndexReady ? requestAllLeads() : undefined), [phoneReady, searchIndexReady, requestAllLeads]);
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const serverLookup = searchIndexReady && !lookupFailed;
+  useEffect(() => (phoneReady && !serverLookup ? requestAllLeads() : undefined), [phoneReady, serverLookup, requestAllLeads]);
   useEffect(() => {
-    if (!phoneReady || !searchIndexReady) return setFound([]);
+    if (!phoneReady || !serverLookup) return setFound([]);
     let current = true;
     const timer = setTimeout(() => {
       findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone)
@@ -113,15 +115,15 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
           injectLeads(rows);
           setFound(rows);
         })
-        .catch(() => current && setFound([]));
+        .catch(() => current && (setFound([]), setLookupFailed(true)));
     }, 350);
     return () => {
       current = false;
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone, phoneReady, searchIndexReady, effectiveUser.id]);
-  const duplicates = !phoneReady ? [] : searchIndexReady ? found : findDuplicateLeadsByPhone(phone);
+  }, [phone, phoneReady, serverLookup, effectiveUser.id]);
+  const duplicates = !phoneReady ? [] : serverLookup ? found : findDuplicateLeadsByPhone(phone);
   const total = outcome.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const selectedAgent = users.find((u) => u.id === agentId);
   const changeBranch = (id: string) => {
@@ -140,7 +142,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       return;
     }
     // The check on screen may still be waiting for the typing to pause: ask once more before saving.
-    const known = searchIndexReady ? await findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone).catch(() => []) : duplicates;
+    const known = serverLookup ? await findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone).catch(() => duplicates) : duplicates;
     if (known.length) {
       injectLeads(known);
       setFound(known);

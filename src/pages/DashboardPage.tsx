@@ -91,8 +91,8 @@ export function DashboardPage({ setActiveTab, onOpenLead }: Props) {
   const total = active.reduce((sum, b) => sum + b.amount, 0);
   // Customers with a purchase are the ones that have an active booking; the rest have not bought yet.
   const boughtIds = new Set(active.map((b) => b.leadId));
-  const customers = counts.ready ? counts.total : "…";
-  const notBoughtYet = counts.ready ? Math.max(counts.total - boughtIds.size, 0) : "…";
+  const customers = counts.failed ? "—" : counts.ready ? counts.total : "…";
+  const notBoughtYet = counts.failed ? "—" : counts.ready ? Math.max(counts.total - boughtIds.size, 0) : "…";
   const splitByDept = splitTotals(active);
   const departments = Object.entries(departmentNames).map(([id, name]) => ({
     id,

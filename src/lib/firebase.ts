@@ -47,6 +47,18 @@ if (firebaseConfig.measurementId && !useEmulators) {
   isSupported().then((ok) => ok && getAnalytics(app)).catch(() => {});
 }
 
+/**
+ * Local end-to-end runs count the documents the database sends, so a change in how much is read shows up in the
+ * tests (`window.__fsReads`). It does nothing in the built site.
+ */
+export function countRead(docs: number, source: string) {
+  if (!useEmulators || typeof window === 'undefined') return;
+  const w = window as unknown as { __fsReads?: { total: number; by: Record<string, number> } };
+  const r = (w.__fsReads ??= { total: 0, by: {} });
+  r.total += docs;
+  r.by[source] = (r.by[source] || 0) + docs;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

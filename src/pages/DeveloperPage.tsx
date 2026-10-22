@@ -65,7 +65,8 @@ function Num({ label, value, onChange, step = 1, hint }: { label: string; value:
 
 /** Developer-only tools: real AI token usage, a what-if cost calculator, and service health. */
 export function DeveloperPage() {
-  const { currentUser, users: staff, clearOrganizationData, license, setLicense, branches } = useCRM();
+  const { currentUser, users: staff, clearOrganizationData, license, setLicense, branches, reindexSearch, searchIndexReady } = useCRM();
+  const [indexNote, setIndexNote] = useState("");
   const [maxBranches, setMaxBranches] = useState<number>(license.maxBranches);
   useEffect(() => setMaxBranches(license.maxBranches), [license.maxBranches]);
   const quota = branchQuota(branches, license);
@@ -206,6 +207,34 @@ export function DeveloperPage() {
         <p style={{ margin: "0 6px 8px" }}>
           <Dot ok={adminOk} /> إعادة تعيين كلمات المرور (<code>api/admin.php</code>): {adminOk === null ? "جاري الفحص…" : adminOk ? "شغّال" : "مش مفعّل (ملف Firebase Admin ناقص)"}
         </p>
+      </section>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <div>
+            <h2>فهرسة البحث عن العملاء</h2>
+            <p>
+              البحث بيدور في قاعدة البيانات بمفاتيح محفوظة مع كل عميل. الحالة: <strong>{searchIndexReady ? "جاهزة" : "لسه ما اتعملتش"}</strong>.
+              اضغط الزرار بعد أي رفع لنسخة قديمة من الموقع كانت بتعدّل عملاء (النسخة القديمة بتمسح المفاتيح من اللي بتعدّله)، أو لو بحث ما لقاش عميل موجود.
+              بيقرا كل العملاء مرة واحدة.
+            </p>
+            {indexNote && <p role="status">{indexNote}</p>}
+          </div>
+          <button
+            className="btn-secondary"
+            onClick={async () => {
+              setIndexNote("جاري الفهرسة…");
+              try {
+                const r = await reindexSearch();
+                setIndexNote(`تمت الفهرسة: ${r.customers} عميل، اتصلّح ${r.fixed}.`);
+              } catch {
+                setIndexNote("تعذّرت الفهرسة. جرّب تاني.");
+              }
+            }}
+          >
+            <RefreshCw size={15} /> إعادة الفهرسة
+          </button>
+        </div>
       </section>
 
       <section className="panel" style={{ marginTop: 20 }}>

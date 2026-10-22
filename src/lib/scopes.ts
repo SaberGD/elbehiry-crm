@@ -70,3 +70,17 @@ export function scopesFor(p: ScopeProfile | null) {
 export function profileOf(u: { id: string; role: string; branchId?: string; supervisedBranchIds?: string[] }): ScopeProfile {
   return { role: u.role, userId: u.id, branchId: u.branchId, supervisedBranchIds: u.supervisedBranchIds };
 }
+
+/** Both scopes together: everything either of them covers. */
+export function unionScopes(...scopes: Scope[]): Scope {
+  if (scopes.includes("all")) return "all";
+  const lists = scopes.filter((s): s is ScopeFilter[][] => Array.isArray(s)).flat();
+  return lists.length ? lists : "none";
+}
+
+/** The part of a scope where `field` is any of `values` (one query per value, so no extra index is needed). */
+export function scopeWhere(scope: Scope, field: string, values: string[]): Scope {
+  if (scope === "none" || !values.length) return "none";
+  const base: ScopeFilter[][] = scope === "all" ? [[]] : scope;
+  return values.flatMap((v) => base.map((filters): ScopeFilter[] => [...filters, [field, "==", v]]));
+}

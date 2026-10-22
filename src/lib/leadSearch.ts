@@ -101,7 +101,8 @@ export function parseSearch(input: string): ParsedSearch | null {
     const d = phoneDigits(used);
     key = isPhonePrefix(d) ? "p:" + d.slice(0, 11) : "s:" + d.slice(-10);
   } else if (usableWords.length) {
-    used = usableWords.reduce((a, b) => (b.length > a.length ? b : a));
+    // The longest word is the most specific; of equal ones the later (a family name says more than a first name).
+    used = usableWords.reduce((a, b) => (b.length >= a.length ? b : a));
     key = "n:" + used.slice(0, MAX_KEY_CHARS);
   }
   if (!key) return null;

@@ -1,5 +1,5 @@
 import { collection, documentId, getCountFromServer, getDocs, limit, orderBy, query, startAfter, where, type Query } from "firebase/firestore";
-import { db } from "./firebase";
+import { countRead, db } from "./firebase";
 import { hasMoreRows, takeNext, type Key, type StreamState } from "./pagedMerge";
 import type { ScopeFilter } from "./useFirestoreSync";
 
@@ -27,6 +27,7 @@ interface Stream<T> extends StreamState<T> {
 }
 
 const MAX_ROUNDS = 12;
+const EARLY_ROUNDS = 1;
 
 function build(name: string, s: { filters: ScopeFilter[]; useKey: boolean }, o: { searchKey?: string; orderField: string }, cursor: Key | null, n: number): Query {
   return query(
@@ -53,6 +54,7 @@ export function createPagedList<T extends { id: string }>(o: PagedOptions<T>) {
   async function fill(s: Stream<T>) {
     const n = filtering ? o.pageSize * 2 : o.pageSize;
     const snap = await getDocs(build(o.collection, s, o, s.cursor, n));
+    countRead(snap.size, `${o.collection}/page`);
     const rows = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
     if (rows.length) s.cursor = keyOf(rows[rows.length - 1]);
     if (snap.docs.length < n) s.done = true;
@@ -68,6 +70,8 @@ export function createPagedList<T extends { id: string }>(o: PagedOptions<T>) {
         await Promise.all(lacking.map(fill));
         rows.push(...takeNext(streams, o.pageSize - rows.length, keyOf, (r) => r.id, seen));
         if (!hasMoreRows(streams)) break;
+        // Something was found: show it now rather than scanning on to fill the page ("show more" continues).
+        if (rows.length > 0 && round >= EARLY_ROUNDS) break;
       }
       return { rows, hasMore: hasMoreRows(streams) };
     },
@@ -77,7 +81,9 @@ export function createPagedList<T extends { id: string }>(o: PagedOptions<T>) {
       const counts = await Promise.all(
         streams.map(async (s) => {
           const q = query(collection(db, o.collection), ...s.filters.map(([f, op, v]) => where(f, op, v)), ...(o.searchKey ? [where("searchKeys", "array-contains", o.searchKey)] : []));
-          return (await getCountFromServer(q)).data().count;
+          const n = (await getCountFromServer(q)).data().count;
+          countRead(Math.max(1, Math.ceil(n / 1000)), `${o.collection}/count`);
+          return n;
         }),
       );
       return counts.reduce((a, b) => a + b, 0);

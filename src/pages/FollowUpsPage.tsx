@@ -3,7 +3,10 @@ import { CustomerBrief } from "../components/common/CustomerBrief";
 import { REFERRAL_MIN_STARS, isReferralPhone } from "../lib/referrals";
 import { canCompleteFollowUp, canAccessPage, isSales, worksOwnCustomers } from "../lib/access";
 import { hasPermission } from "../lib/permissions";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAllFollowUps } from "../lib/useAllFollowUps";
+import { postSaleRating } from "../lib/followUpQueries";
+import { profileOf, scopesFor } from "../lib/scopes";
 import {
   Phone,
   MessageCircle,
@@ -70,12 +73,22 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
       inDateRange(f.scheduledAt, fFrom, fTo),
   );
   const uniq = (l: string[]) => [...new Set(l.filter(Boolean))];
-  const rated = followUps.filter(
-    (f) => isPostSale(f) && f.status === "completed" && f.satisfactionRating,
-  );
-  const avgRating = rated.length
-    ? rated.reduce((s, f) => s + (f.satisfactionRating || 0), 0) / rated.length
-    : 0;
+  // Finished follow-ups are not loaded with the open ones: the average rating is asked of the database, and the
+  // finished list (and the suggestions, which look at a customer's whole history) read them when opened.
+  useAllFollowUps(showDone || view === "suggestions");
+  const [rating_, setRating_] = useState({ average: 0, count: 0 });
+  useEffect(() => {
+    let current = true;
+    postSaleRating(scopesFor(profileOf(effectiveUser)).followUps)
+      .then((r) => current && setRating_(r))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveUser.id, effectiveUser.role, effectiveUser.branchId]);
+  const rated = { length: rating_.count };
+  const avgRating = rating_.average;
   const ref = useDialog(!!selected, () => setSelected(null));
   const complete = (e: React.FormEvent) => {
     e.preventDefault();
@@ -415,10 +428,10 @@ export function FollowUpsPage({ onOpenLead, initialTab = "due" }: Props) {
           {section("متأخرة: ابدأ بيها", overdueList, "overdue", "عدّى موعدها. كلّم العميل أو أجّل بسبب مكتوب.")}
           {section("النهارده", todayList, "due")}
           {section("قادمة", upcomingList, "upcoming")}
-          {finished.length > 0 && (
+          {(finished.length > 0 || !showDone) && (
             <div className="followup-section">
               <button className="btn-text" onClick={() => setShowDone(!showDone)} aria-expanded={showDone}>
-                {showDone ? "إخفاء" : "عرض"} المكتملة والملغاة ({finished.length})
+                {showDone ? "إخفاء" : "عرض"} المكتملة والملغاة{showDone ? ` (${finished.length})` : ""}
               </button>
               {showDone && finished.map((f) => card(f, "done"))}
             </div>

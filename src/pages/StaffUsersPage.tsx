@@ -1,3 +1,4 @@
+import { useAllFollowUps } from "../lib/useAllFollowUps";
 import { PageGuide } from "../components/common/PageGuide";
 import { RatingBadge } from "../components/reviews/EmployeeRatings";
 import { employeeRatings } from "../lib/employeeRating";
@@ -63,6 +64,7 @@ export const StaffUsersPage: React.FC = () => {
     followUps,
     license,
   } = useCRM();
+  useAllFollowUps();
   const uQuota = { ...userQuota(users, license), full: userQuota(users, license).full && effectiveUser.role !== "admin" };
   const ratings = useMemo(() => employeeRatings(users, reviewRequests, followUps), [users, reviewRequests, followUps]);
 

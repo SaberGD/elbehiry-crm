@@ -3,7 +3,7 @@ import {
   collection, deleteField, doc, onSnapshot, writeBatch, setDoc, getDocs, query, where, orderBy, limit,
   type Query, type QueryConstraint, type WhereFilterOp,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { countRead, db, handleFirestoreError, OperationType } from './firebase';
 import { changedFields } from './rowDiff';
 
 const BATCH_SIZE = 400;
@@ -80,6 +80,7 @@ export function narrowScope(scope: Scope, field: string, values: string[]): Scop
 export async function fetchScoped<T extends { id: string }>(name: string, scope: Scope): Promise<T[]> {
   if (scope === 'none') return [];
   const snaps = await Promise.all(scopeQueries(name, scope).map((q) => getDocs(q)));
+  snaps.forEach((snap) => countRead(snap.size, `${name}/fetch`));
   const merged = new Map<string, T>();
   for (const snap of snaps) for (const d of snap.docs) merged.set(d.id, { ...d.data(), id: d.id } as T);
   return [...merged.values()];
@@ -168,6 +169,7 @@ export function useFirestoreCollection<T extends { id: string }>(
         stop: onSnapshot(
           doc(db, name, id),
           (snap) => {
+            countRead(1, `${name}/doc`);
             if (!snap.exists()) return;
             const item = { ...snap.data(), id: snap.id } as T;
             inject([optionsRef.current.transform ? optionsRef.current.transform(item) : item]);
@@ -191,39 +193,58 @@ export function useFirestoreCollection<T extends { id: string }>(
 
   useEffect(() => () => watchersRef.current.forEach((w) => w.stop()), []);
 
+  // One live listener per query of the scope. When the scope changes only the queries that are new start and the
+  // ones that are gone stop; the others keep running and the rows already shown (and edits not yet saved) stay valid.
+  const listenersRef = useRef<Map<string, { stop: () => void; rows: Map<string, T>; answered: boolean }>>(new Map());
+  const onLoadedRef = useRef<(() => void) | undefined>(undefined);
+
   useEffect(() => {
-    readyRef.current = false;
-    prevRef.current = new Map();
-    clearingRef.current = false;
+    const listeners = listenersRef.current;
+    onLoadedRef.current = options.onLoaded;
+    const specs: { key: string; filters: ScopeFilter[] }[] =
+      scope === 'none' ? [] : (scope === 'all' ? [[]] : scope).map((filters) => ({ key: JSON.stringify([filters, options.window ?? null]), filters }));
+    const wanted = new Set(specs.map((x) => x.key));
+    let removed = false;
+    for (const [key, l] of listeners) {
+      if (!wanted.has(key)) {
+        l.stop();
+        listeners.delete(key);
+        removed = true;
+      }
+    }
+
+    const allAnswered = () => [...listeners.values()].every((l) => l.answered);
+    const publish = () => {
+      const merged = new Map<string, T>();
+      for (const l of listeners.values()) for (const [id, item] of l.rows) merged.set(id, item);
+      const data = sortNewestFirst([...merged.values()]);
+      prevRef.current = new Map(data.map((i) => [i.id, i]));
+      // Saving starts once everything asked for first answered, and stays on: later queries only add rows.
+      if (allAnswered()) readyRef.current = true;
+      setItems(data);
+      if (allAnswered()) onLoadedRef.current?.();
+    };
+
     if (scope === 'none') {
       if (options.lazy) {
         // Nothing is read in full; rows come in on demand and stay.
         prevRef.current = new Map(itemsRef.current.map((i) => [i.id, i]));
         readyRef.current = true;
-        options.onLoaded?.();
-        return;
+        clearingRef.current = false;
+      } else {
+        readyRef.current = false;
+        prevRef.current = new Map();
+        clearingRef.current = true;
+        setItems([]);
       }
-      clearingRef.current = true;
-      setItems([]);
-      options.onLoaded?.();
+      onLoadedRef.current?.();
       return;
     }
-    const sources = scopeQueries(name, scope, options.window);
-    // Each listener's latest rows; the state is their union.
-    const parts: Map<string, T>[] = sources.map(() => new Map());
-    const answered = sources.map(() => false);
-    const publish = () => {
-      const merged = new Map<string, T>();
-      for (const part of parts) for (const [id, item] of part) merged.set(id, item);
-      const data = sortNewestFirst([...merged.values()]);
-      prevRef.current = new Map(data.map((i) => [i.id, i]));
-      readyRef.current = answered.every(Boolean);
-      setItems(data);
-      if (readyRef.current) options.onLoaded?.();
-    };
-    const stops: (() => void)[] = [];
-    const listen = (source: Query, index: number) =>
-      onSnapshot(
+    clearingRef.current = false;
+
+    const listen = (key: string, source: Query, filters: ScopeFilter[]) => {
+      const entry = listeners.get(key)!;
+      entry.stop = onSnapshot(
         source,
         (snap) => {
           if (scope === 'all' && snap.empty && !readyRef.current) {
@@ -238,32 +259,50 @@ export function useFirestoreCollection<T extends { id: string }>(
               return;
             }
           }
-          parts[index] = new Map(
+          countRead(snap.docChanges().length, name);
+          entry.rows = new Map(
             snap.docs.map((d) => {
               const item = { ...d.data(), id: d.id } as T;
-              return [d.id, options.transform ? options.transform(item) : item];
+              const tf = optionsRef.current.transform;
+              return [d.id, tf ? tf(item) : item];
             })
           );
-          answered[index] = true;
+          entry.answered = true;
           publish();
         },
         (err) => {
           // A windowed query whose index is not deployed yet: fall back to the plain query rather than show nothing.
           if (options.window && (err as { code?: string }).code === 'failed-precondition') {
             console.warn(`Firestore index missing for ${name}; reading without a window. Deploy firestore.indexes.json.`, err.message);
-            stops[index] = listen(scopeQueries(name, scope, undefined)[index], index);
+            entry.stop();
+            listen(key, scopeQueries(name, [filters], undefined)[0], filters);
             return;
           }
           // A query the rules refuse means "nothing here for you", not a broken app.
-          answered[index] = true;
+          entry.answered = true;
           publish();
           handleFirestoreError(err, OperationType.GET, name);
         }
       );
-    sources.forEach((source, index) => stops.push(listen(source, index)));
-    return () => stops.forEach((stop) => stop());
+    };
+    const sources = scopeQueries(name, scope, options.window);
+    specs.forEach((spec, index) => {
+      if (listeners.has(spec.key)) return;
+      listeners.set(spec.key, { stop: () => {}, rows: new Map(), answered: false });
+      listen(spec.key, sources[index], spec.filters);
+    });
+    // Only queries were dropped: show what the remaining ones hold.
+    if (removed && allAnswered()) publish();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, scopeKey]);
+
+  useEffect(() => {
+    const listeners = listenersRef.current;
+    return () => {
+      listeners.forEach((l) => l.stop());
+      listeners.clear();
+    };
+  }, [name]);
 
   useEffect(() => {
     if (clearingRef.current) {

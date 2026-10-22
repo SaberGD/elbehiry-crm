@@ -1,3 +1,4 @@
+import { useAllFollowUps } from "../lib/useAllFollowUps";
 import { useAllLeads } from "../lib/useAllLeads";
 import { PageGuide } from "../components/common/PageGuide";
 import { departmentIds, splitTotals } from "../lib/purchases";
@@ -22,6 +23,7 @@ export function ReportsPage() {
     notBoughtRecords,
     branches,
   } = useCRM();
+  useAllFollowUps();
   useAllLeads();
   const has = (p: Parameters<typeof hasPermission>[1]) => hasPermission(u, p);
   const contracts = bookings.filter((b) => b.bookingStatus !== "cancelled");
