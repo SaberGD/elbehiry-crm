@@ -1,11 +1,11 @@
 import { PWAProvider } from "./pwa/PWAContext";
 import { PWAStatus } from "./pwa/PWAControls";
 import { canAccessPage } from "./lib/access";
-import { PermissionsPage } from "./pages/PermissionsPage";
-import React, { useState } from "react";
-import { LanguageProvider } from "./context/LanguageContext";
+import React, { Suspense, lazy, useEffect, useState } from "react";
+import { LanguageProvider, useLanguage } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SessionTracker } from "./components/common/SessionTracker";
 import { CRMProvider, useCRM } from "./context/CRMContext";
 import {
   LoginPage,
@@ -14,6 +14,7 @@ import {
   MustChangePasswordScreen,
 } from "./pages/LoginPage";
 import { ViewAsBar } from "./components/layout/ViewAsBar";
+import { DemoBanner } from "./components/layout/DemoBanner";
 import { Navbar } from "./components/layout/Navbar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { MobileBottomNav } from "./components/layout/MobileBottomNav";
@@ -22,28 +23,36 @@ import {
   LeadQuickAction,
 } from "./components/common/LeadDetailsModal";
 
-import { DepartmentDashboardPage } from "./pages/DepartmentDashboardPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LeadsPage } from "./pages/LeadsPage";
 import { AddLeadPage } from "./pages/AddLeadPage";
 import { VisitsPage } from "./pages/VisitsPage";
 import { FollowUpsPage } from "./pages/FollowUpsPage";
 import { BookingsPage } from "./pages/BookingsPage";
-import { StaffUsersPage } from "./pages/StaffUsersPage";
-import { BranchesTeamsPage } from "./pages/BranchesTeamsPage";
-import { TeamsPage } from "./pages/TeamsPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { AuditLogPage } from "./pages/AuditLogPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { InvoicesPage } from "./pages/InvoicesPage";
-import { BrokersPage } from "./pages/BrokersPage";
-import { OverviewPage } from "./pages/OverviewPage";
-import { DeveloperPage } from "./pages/DeveloperPage";
+import { ReviewWatcher } from "./components/reviews/ReviewWatcher";
+import { LateComplaintsBanner } from "./components/reviews/LateComplaintsBanner";
 import { ZakiChat } from "./components/zaki/ZakiChat";
+import { SaveErrorToast } from "./components/common/SaveErrorToast";
+import { useStackTables } from "./components/common/useStackTables";
 import { Lead } from "./types/crm";
 
+// Pages most people open rarely are downloaded on first visit, keeping the first load small.
+const PermissionsPage = lazy(() => import("./pages/PermissionsPage").then((m) => ({ default: m.PermissionsPage })));
+const DepartmentDashboardPage = lazy(() => import("./pages/DepartmentDashboardPage").then((m) => ({ default: m.DepartmentDashboardPage })));
+const StaffUsersPage = lazy(() => import("./pages/StaffUsersPage").then((m) => ({ default: m.StaffUsersPage })));
+const BranchesTeamsPage = lazy(() => import("./pages/BranchesTeamsPage").then((m) => ({ default: m.BranchesTeamsPage })));
+const TeamsPage = lazy(() => import("./pages/TeamsPage").then((m) => ({ default: m.TeamsPage })));
+const ReportsPage = lazy(() => import("./pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
+const AuditLogPage = lazy(() => import("./pages/AuditLogPage").then((m) => ({ default: m.AuditLogPage })));
+const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const BrokersPage = lazy(() => import("./pages/BrokersPage").then((m) => ({ default: m.BrokersPage })));
+const OverviewPage = lazy(() => import("./pages/OverviewPage").then((m) => ({ default: m.OverviewPage })));
+const DeveloperPage = lazy(() => import("./pages/DeveloperPage").then((m) => ({ default: m.DeveloperPage })));
+const FeedbackPage = lazy(() => import("./pages/FeedbackPage").then((m) => ({ default: m.FeedbackPage })));
+
 const AppContent: React.FC = () => {
-  const { leads, effectiveUser } = useCRM();
+  const { leads, effectiveUser, watchLead, injectLeads } = useCRM();
+  const { tr } = useLanguage();
 
   const [requestedTab, setRequestedTab] = useState("dashboard");
   const activeTab = canAccessPage(effectiveUser, requestedTab)
@@ -52,6 +61,7 @@ const AppContent: React.FC = () => {
   const setActiveTab = (tab: string) =>
     setRequestedTab(canAccessPage(effectiveUser, tab) ? tab : "dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useStackTables();
 
   // Selected lead modal state
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -59,15 +69,30 @@ const AppContent: React.FC = () => {
   const [leadModalAction, setLeadModalAction] =
     useState<LeadQuickAction | null>(null);
 
+  // A customer is read on demand when its file is asked for, and kept live while the file is open.
+  const [pendingLead, setPendingLead] = useState<{ id: string; action: LeadQuickAction | null } | null>(null);
   const handleOpenLead = (leadId: string, action?: LeadQuickAction) => {
-    if (!leads.some((l) => l.id === leadId)) return;
     setSelectedLeadId(leadId);
     setLeadModalAction(action ?? null);
-    setIsLeadModalOpen(true);
+    if (leads.some((l) => l.id === leadId)) setIsLeadModalOpen(true);
+    else setPendingLead({ id: leadId, action: action ?? null });
   };
+  const watching = !!selectedLeadId && (isLeadModalOpen || !!pendingLead);
+  useEffect(() => (watching ? watchLead(selectedLeadId!) : undefined), [watching, selectedLeadId, watchLead]);
+  useEffect(() => {
+    if (!pendingLead) return;
+    if (leads.some((l) => l.id === pendingLead.id)) {
+      setIsLeadModalOpen(true);
+      setPendingLead(null);
+      return;
+    }
+    // Not there (no longer exists, or not for this person): stop waiting.
+    const t = setTimeout(() => setPendingLead(null), 10000);
+    return () => clearTimeout(t);
+  }, [pendingLead, leads]);
 
   const handleOpenExistingLead = (lead: Lead, action?: LeadQuickAction) => {
-    if (!leads.some((l) => l.id === lead.id)) return;
+    injectLeads([lead]);
     setSelectedLeadId(lead.id);
     setLeadModalAction(action ?? null);
     setIsLeadModalOpen(true);
@@ -78,7 +103,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="behery-app">
       <a className="skip-link" href="#main-content">
-        انتقل للمحتوى
+        {tr("انتقل للمحتوى", "Skip to content")}
       </a>
       {/* Executive Sidebar */}
       <Sidebar
@@ -103,7 +128,10 @@ const AppContent: React.FC = () => {
 
         {/* Viewport Content Area */}
         <main id="main-content" className="workspace-main">
+          {activeTab !== "settings" && <DemoBanner onOpenSettings={() => setActiveTab("settings")} />}
+          {activeTab !== "feedback" && <LateComplaintsBanner onOpen={() => setActiveTab("feedback")} />}
           <div key={activeTab} className="animate-page-enter min-w-0">
+            <Suspense fallback={<div className="quiet-note" style={{ padding: 30 }}>{tr("جاري التحميل…", "Loading…")}</div>}>
             {activeTab === "dept_dashboard" && (
               <DepartmentDashboardPage
                 setActiveTab={setActiveTab}
@@ -152,13 +180,13 @@ const AppContent: React.FC = () => {
               <BookingsPage onOpenLead={handleOpenLead} />
             )}
 
-            {activeTab === "invoices" && <InvoicesPage />}
-
             {activeTab === "brokers" && <BrokersPage />}
 
             {activeTab === "developer" && canAccessPage(effectiveUser, "developer") && (
               <DeveloperPage />
             )}
+
+            {activeTab === "feedback" && <FeedbackPage onOpenLead={handleOpenLead} />}
 
             {activeTab === "overview" && (
               <OverviewPage onOpenLead={handleOpenLead} />
@@ -181,6 +209,7 @@ const AppContent: React.FC = () => {
 
             {activeTab === "settings" && <SettingsPage />}
             {activeTab === "permissions" && <PermissionsPage />}
+            </Suspense>
           </div>
         </main>
       </div>
@@ -197,11 +226,15 @@ const AppContent: React.FC = () => {
         lead={selectedLead}
         isOpen={isLeadModalOpen}
         initialAction={leadModalAction}
+        onOpenLead={(id) => handleOpenLead(id)}
         onClose={() => {
           setIsLeadModalOpen(false);
           setLeadModalAction(null);
         }}
       />
+      <SaveErrorToast />
+      <ReviewWatcher />
+      <SessionTracker />
       <ZakiChat />
     </div>
   );

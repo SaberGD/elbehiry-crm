@@ -1,14 +1,19 @@
+import { BrokerSearch } from "./BrokerSearch";
+import { CustomerBrief } from "./CustomerBrief";
+import { buildTimeline, dayLabel, timeLabel, timelineGroupLabels, type TimelineGroup } from "../../lib/timeline";
 import { departmentIds, bookingSplit } from "../../lib/purchases";
 import {
   canEditCustomer,
   canContactCustomer,
+  canRequestReview,
+  branchAgents,
   canCreateCustomer,
   canScheduleFollowUp,
   canAssignCustomers,
   isSales,
 } from "../../lib/access";
 import { hasPermission } from "../../lib/permissions";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   X,
   Phone,
@@ -29,6 +34,8 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import type { Lead, Department, LeadStatus, Booking } from "../../types/crm";
+import { narrowScope, fetchScoped } from "../../lib/useFirestoreSync";
+import { profileOf, scopesFor } from "../../lib/scopes";
 import { useCRM } from "../../context/CRMContext";
 import {
   statusNames,
@@ -42,7 +49,11 @@ import {
   canSeeBranch,
 } from "../../lib/presentation";
 import { useDialog } from "./useDialog";
+import { requestsTo } from "../../lib/reviews";
 import { CustomerRatingModal } from "./CustomerRatingModal";
+import { InterestPicker, interestNames } from "./InterestPicker";
+import { NameWithTitle } from "./NameWithTitle";
+import { ReviewCard } from "../reviews/ReviewCard";
 import { VoiceNoteField } from "./VoiceNoteField";
 import { PurchaseOutcomeDialog } from "./PurchaseOutcomeDialog";
 
@@ -52,6 +63,8 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   initialAction?: LeadQuickAction | null;
+  /** Opens another customer, such as the one who recommended this one. */
+  onOpenLead?: (id: string) => void;
 }
 type Action =
   | Exclude<LeadQuickAction, "outcome">
@@ -64,6 +77,7 @@ export function LeadDetailsModal({
   isOpen,
   onClose,
   initialAction = null,
+  onOpenLead,
 }: Props) {
   const {
     effectiveUser,
@@ -81,8 +95,14 @@ export function LeadDetailsModal({
     addVisit,
     reassignLead,
     addTimelineEvent,
+    reviewRequests,
+    reviewNotes,
+    watchCustomerHistory,
   } = useCRM();
+  // The customer's history is read only while their file is open.
+  useEffect(() => (isOpen && lead ? watchCustomerHistory(lead.id) : undefined), [isOpen, lead?.id, watchCustomerHistory]);
   const [tab, setTab] = useState("timeline");
+  const [timelineFilter, setTimelineFilter] = useState<"all" | TimelineGroup>("all");
   const [action, setAction] = useState<Action>(null);
   const [more, setMore] = useState(false);
   const [rating, setRating] = useState(false);
@@ -90,7 +110,7 @@ export function LeadDetailsModal({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
-  const [department, setDepartment] = useState<Department>("decor");
+  const [interests, setInterests] = useState<Department[]>(["decor"]);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(today());
   const [reason, setReason] = useState("");
@@ -152,7 +172,7 @@ export function LeadDetailsModal({
       setPhone(lead.phone);
       setEmail(lead.email || "");
       setWhatsapp(lead.whatsappPhone || lead.phone);
-      setDepartment(lead.department);
+      setInterests(lead.interests?.length ? lead.interests : [lead.department]);
       setBrokerSel(lead.brokerId || "");
       setDate(today());
       setNote(initialAction === "edit" ? lead.notes : "");
@@ -165,10 +185,24 @@ export function LeadDetailsModal({
       setFeedback("");
     }
   }, [isOpen, lead?.id, initialAction]);
+  // The customers this one recommended are asked for by the database, not found in a loaded list.
+  const [broughtLeads, setBroughtLeads] = useState<Lead[]>([]);
+  useEffect(() => {
+    setBroughtLeads([]);
+    if (!isOpen || !lead) return;
+    let current = true;
+    fetchScoped<Lead>("leads", narrowScope(scopesFor(profileOf(effectiveUser)).leads, "referredByLeadId", [lead.id]))
+      .then((rows) => current && setBroughtLeads(rows))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, lead?.id]);
   if (!isOpen || !lead) return null;
-  const events = timelineEvents
-    .filter((e) => e.leadId === lead.id)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const events = buildTimeline(lead.id, timelineEvents, reviewRequests, reviewNotes);
+  const shownEvents = timelineFilter === "all" ? events : events.filter((e) => e.group === timelineFilter);
+  const timelineGroups = (Object.keys(timelineGroupLabels) as TimelineGroup[]).filter((g) => events.some((e) => e.group === g));
   const leadVisits = visits.filter((v) => v.linkedLeadId === lead.id);
   const leadFollowUps = followUps
     .filter((f) => f.leadId === lead.id)
@@ -205,8 +239,9 @@ export function LeadDetailsModal({
       updateLead(lead.id, {
         name: name.trim(),
         phone: phone.trim(),
-        department,
-        departmentName: departmentNames[department],
+        department: interests[0],
+        interests,
+        departmentName: interestNames(interests),
         email: email.trim() || undefined,
         whatsappPhone: whatsapp.trim() || phone.trim(),
         isSameWhatsApp: !whatsapp.trim() || whatsapp.trim() === phone.trim(),
@@ -328,15 +363,17 @@ export function LeadDetailsModal({
     note: "تسجيل ملاحظة",
     followup: "تحديد متابعة",
     visit: "تسجيل زيارة",
-    booking: "تسجيل تعاقد",
+    booking: "تسجيل شراء",
     reassign: "تغيير الموظف المسؤول",
   };
+  const leadReviews = reviewRequests.filter((r) => r.leadId === lead.id);
+  const sentBefore = requestsTo(reviewRequests, { leadId: lead.id })[0];
   const labels: Record<string, string> = {
     timeline: "سجل التعاملات",
     followups: `المتابعات (${leadFollowUps.length})`,
     visits: `الزيارات (${leadVisits.length})`,
-    bookings: `التعاقدات (${leadBookings.length})`,
-    invoices: `الفواتير (${invoices.length})`,
+    bookings: `المشتريات (${leadBookings.length})`,
+    reviews: `التقييمات (${leadReviews.length})`,
   };
   return (
     <div
@@ -385,12 +422,6 @@ export function LeadDetailsModal({
           </button>
         </div>
         <div className="client-action-bar">
-          {canEditCustomer(effectiveUser, lead) && (
-            <button className="btn-primary" onClick={() => setOutcomeOpen(true)}>
-              <ShoppingBag size={15} />
-              اشترى ولا لسه؟
-            </button>
-          )}
           {allowed("followup") && (
             <button className="btn-primary" onClick={() => show("followup")}>
               <Plus size={15} />
@@ -417,6 +448,12 @@ export function LeadDetailsModal({
               واتساب
             </a>
           )}
+          {canRequestReview(effectiveUser, lead) && (
+            <button className="btn-secondary" onClick={() => setRating(true)}>
+              <Star size={15} />
+              {sentBefore ? "طلب تقييم جديد؟" : "طلب تقييم"}
+            </button>
+          )}
           {(["edit", "note", "visit", "booking", "reassign"].some((v) =>
             allowed(v as Action),
           ) ||
@@ -437,7 +474,7 @@ export function LeadDetailsModal({
                 { id: "edit", label: "تعديل البيانات", Icon: Pencil },
                 { id: "visit", label: "تسجيل زيارة", Icon: MapPin },
                 { id: "note", label: "إضافة ملاحظة", Icon: FileText },
-                { id: "booking", label: "تسجيل تعاقد", Icon: ShoppingBag },
+                { id: "booking", label: "تسجيل شراء", Icon: ShoppingBag },
                 ...(canAssignCustomers(effectiveUser)
                   ? [{ id: "reassign", label: "تغيير المسؤول", Icon: Users }]
                   : []),
@@ -445,7 +482,7 @@ export function LeadDetailsModal({
                 .filter(({ id }) => allowed(id as Action))
                 .map(({ id, label, Icon }) => (
                   <button
-                    className="btn-secondary"
+                    className={`btn-secondary${id === "booking" ? " btn-buy" : ""}`}
                     key={id}
                     onClick={() => show(id as Action)}
                   >
@@ -453,21 +490,15 @@ export function LeadDetailsModal({
                     {label}
                   </button>
                 ))}
-              {canContactCustomer(effectiveUser, lead, followUps) && (
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setRating(true);
-                    setMore(false);
-                  }}
-                >
-                  <Star size={14} />
-                  طلب تقييم
-                </button>
-              )}
             </div>
           )}
         </div>
+        {sentBefore && (
+          <p className="review-sent-note" role="status">
+            <Star size={13} /> تم إرسال طلب تقييم ({sentBefore.subjectLabel}) يوم {sentBefore.sentAt.slice(0, 10)}:{" "}
+            {sentBefore.status === "answered" ? "العميل رد عليه" : "لسه ما ردش"}. اضغط «طلب تقييم جديد؟» لو محتاج تبعت طلب تاني.
+          </p>
+        )}
         <div className="client-scroll">
           <div className="profile-summary">
             <div>
@@ -526,10 +557,26 @@ export function LeadDetailsModal({
               <ShoppingBag size={16} />
               <span>
                 <small>القسم / المصدر</small>
-                {departmentNames[lead.department]} · {sourceNames[lead.source]}
+                {lead.interests?.length ? interestNames(lead.interests) : departmentNames[lead.department]} · {sourceNames[lead.source]}
               </span>
             </div>
+            {(lead.referredByLeadId || broughtLeads.length > 0) && (
+              <div>
+                <Users size={16} />
+                <span>
+                  <small>الترشيحات</small>
+                  {lead.referredByLeadId && (
+                    <button className="btn-text" style={{ padding: 0 }} onClick={() => onOpenLead?.(lead.referredByLeadId!)}>
+                      رشّحه {lead.referredByName || "عميل"}
+                    </button>
+                  )}
+                  {lead.referredByLeadId && broughtLeads.length > 0 && " · "}
+                  {broughtLeads.length > 0 && `رشّح ${broughtLeads.length} (${broughtLeads.filter((l) => l.status === "booked").length} اشتروا)`}
+                </span>
+              </div>
+            )}
           </div>
+          {canEditCustomer(effectiveUser, lead) && <CustomerBrief lead={lead} />}
           {lead.notes && (
             <div className="client-note-preview">
               <FileText size={16} />
@@ -564,16 +611,7 @@ export function LeadDetailsModal({
               <div className="field-grid">
                 {action === "edit" && (
                   <>
-                    <label className="field">
-                      <span>
-                        اسم العميل <em>مطلوب</em>
-                      </span>
-                      <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        autoComplete="name"
-                      />
-                    </label>
+                    <NameWithTitle value={name} onChange={setName} required fieldName="editCustomerName" />
                     <label className="field">
                       <span>
                         رقم الهاتف <em>مطلوب</em>
@@ -588,21 +626,7 @@ export function LeadDetailsModal({
                   </>
                 )}
                 {action === "edit" && (
-                  <label className="field">
-                    <span>القسم</span>
-                    <select
-                      value={department}
-                      onChange={(e) =>
-                        setDepartment(e.target.value as Department)
-                      }
-                    >
-                      {Object.entries(departmentNames).map(([id, label]) => (
-                        <option key={id} value={id}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <InterestPicker value={interests} onChange={setInterests} />
                 )}
                 {(action === "followup" || action === "visit") && (
                   <>
@@ -683,14 +707,8 @@ export function LeadDetailsModal({
                       onChange={(e) => setAgent(e.target.value)}
                     >
                       <option value="">اختَر موظفًا من نفس الفرع</option>
-                      {users
-                        .filter(
-                          (u) =>
-                            u.active &&
-                            u.branchId === lead.branchId &&
-                            ["sales_agent", "team_leader"].includes(u.role) &&
-                            canSeeBranch(effectiveUser, u.branchId, branches),
-                        )
+                      {branchAgents(users, lead.branchId)
+                        .filter((u) => canSeeBranch(effectiveUser, lead.branchId, branches))
                         .map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.name}
@@ -707,22 +725,12 @@ export function LeadDetailsModal({
                       </span>
                     </summary>
                     <div className="field-grid">
-                      <label className="field">
-                        <span>الوسيط اللي جاب العميل</span>
-                        <select
-                          value={brokerSel}
-                          onChange={(e) => setBrokerSel(e.target.value)}
-                        >
-                          <option value="">بدون وسيط</option>
-                          {brokers
-                            .filter((b) => b.active)
-                            .map((b) => (
-                              <option key={b.id} value={b.id}>
-                                {b.name}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
+                      <BrokerSearch
+                        label="الوسيط اللي جاب العميل"
+                        brokers={brokers}
+                        value={brokerSel}
+                        onChange={setBrokerSel}
+                      />
                       <label className="field">
                         <span>رقم الواتساب</span>
                         <input
@@ -821,6 +829,7 @@ export function LeadDetailsModal({
               .filter(
                 ([id]) =>
                   id === "timeline" ||
+                  id === "reviews" ||
                   hasPermission(
                     effectiveUser,
                     (
@@ -856,44 +865,53 @@ export function LeadDetailsModal({
           >
             {tab === "timeline" &&
               (events.length ? (
-                <ol className="timeline">
-                  {events.map((e) => (
-                    <li key={e.id}>
-                      <span
-                        className={`timeline-dot event-${e.type}`}
-                        aria-hidden="true"
-                      >
-                        {e.type === "booking_created" ? (
-                          <ShoppingBag size={15} />
-                        ) : e.type === "followup_result" ? (
-                          <CheckCircle2 size={15} />
-                        ) : e.type === "followup_created" ? (
-                          <CalendarDays size={15} />
-                        ) : e.type === "note" ? (
-                          <FileText size={15} />
-                        ) : e.type === "visit" ? (
-                          <MapPin size={15} />
-                        ) : (
-                          <UserRound size={15} />
-                        )}
-                      </span>
-                      <div>
-                        <small>
-                          {new Intl.DateTimeFormat("ar-EG", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            timeZone: "Africa/Cairo",
-                          }).format(new Date(e.timestamp))}
-                        </small>
-                        <h3>{e.title}</h3>
-                        <p>{e.details}</p>
-                        <small>{e.authorName}</small>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
+                <>
+                  {timelineGroups.length > 1 && (
+                    <div className="tab-filter timeline-filter" role="group" aria-label="تصفية سجل التعاملات">
+                      <button type="button" aria-pressed={timelineFilter === "all"} onClick={() => setTimelineFilter("all")}>
+                        الكل ({events.length})
+                      </button>
+                      {timelineGroups.map((g) => (
+                        <button type="button" key={g} aria-pressed={timelineFilter === g} onClick={() => setTimelineFilter(g)}>
+                          {timelineGroupLabels[g]} ({events.filter((e) => e.group === g).length})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <ol className="timeline">
+                    {shownEvents.map((e, i) => {
+                      const day = dayLabel(e.at);
+                      const newDay = i === 0 || day !== dayLabel(shownEvents[i - 1].at);
+                      const Icon =
+                        e.group === "purchase" ? ShoppingBag
+                        : e.group === "visit" ? MapPin
+                        : e.group === "review" ? Star
+                        : e.type === "followup_result" ? CheckCircle2
+                        : e.group === "followup" ? CalendarDays
+                        : e.type === "call" || e.type === "inquiry" ? Phone
+                        : e.type === "note" ? FileText
+                        : UserRound;
+                      return (
+                        <Fragment key={e.id}>
+                        {newDay && <li className="timeline-day" aria-hidden="true">{day}</li>}
+                        <li className={`timeline-item group-${e.group}${e.tone ? ` tone-${e.tone}` : ""}`}>
+                          <span className="timeline-dot" aria-hidden="true">
+                            <Icon size={14} />
+                          </span>
+                          <div className="timeline-body">
+                            <h3>{e.title}</h3>
+                            {e.details && <p>{e.details}</p>}
+                            <small>
+                              {timeLabel(e.at)}
+                              {e.by ? ` · ${e.by}` : ""}
+                            </small>
+                          </div>
+                        </li>
+                        </Fragment>
+                      );
+                    })}
+                  </ol>
+                </>
               ) : (
                 <div className="empty-state">
                   <Clock3 size={24} />
@@ -989,47 +1007,24 @@ export function LeadDetailsModal({
                 ))
               ) : (
                 <div className="empty-state">
-                  <h3>مفيش تعاقدات مسجلة</h3>
+                  <h3>مفيش مشتريات مسجلة</h3>
                   {allowed("booking") && (
                     <button
-                      className="btn-secondary"
+                      className="btn-secondary btn-buy"
                       onClick={() => show("booking")}
                     >
-                      تسجيل تعاقد
+                      تسجيل شراء
                     </button>
                   )}
                 </div>
               ))}
-            {tab === "invoices" &&
-              (invoices.length ? (
-                invoices.map((i) => (
-                  <article className="profile-record" key={i.id}>
-                    <span className="status-pill">
-                      {
-                        {
-                          recorded: "مسجلة",
-                          draft: "مسجلة",
-                          paid: "مسجلة",
-                          partial: "مسجلة",
-                          cancelled: "ملغاة",
-                        }[i.status]
-                      }
-                    </span>
-                    <h3>{i.invoiceNumber}</h3>
-                    <p>
-                      {formatMoney(i.totalAmount)} ج.م · {i.date}
-                    </p>
-                    {i.items.map((item, index) => (
-                      <p key={index}>
-                        {item.categoryName}: {formatMoney(item.amount)} ج.م
-                      </p>
-                    ))}
-                  </article>
-                ))
+            {tab === "reviews" &&
+              (leadReviews.length ? (
+                leadReviews.map((r) => <ReviewCard key={r.id} request={r} />)
               ) : (
                 <div className="empty-state">
-                  <h3>مفيش فواتير مرتبطة بالعميل</h3>
-                  <p>الفواتير المتاحة لك والمرتبطة بهذا العميل تظهر هنا.</p>
+                  <h3>لسه ما اتطلبش تقييم من العميل</h3>
+                  <p>اضغط «طلب تقييم» من الأزرار فوق، وهيوصله لينك على واتساب عن زيارته أو شرائه.</p>
                 </div>
               ))}
           </div>

@@ -13,7 +13,9 @@ import {
   canCompleteFollowUp,
   canContactCustomer,
   canEditCustomer,
+  canSeeBranch,
 } from "../src/lib/access";
+import { seesAll } from "../src/lib/scopes";
 import {
   defaultPermissionMatrix,
   normalizeUser,
@@ -71,6 +73,8 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
     ...Object.fromEntries(
       [
         "addBranch",
+        "updateBranch",
+        "setLicense",
         "addLead",
         "updateLead",
         "deleteLead",
@@ -84,6 +88,11 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
         "addUser",
         "updateUser",
         "toggleUserActive",
+        "deleteUser",
+        "decideSuggestion",
+        "saveSuggestions",
+        "markReminderDone",
+        "requestBrokerReview",
         "updateUserSalaryInfo",
         "updatePermissionMatrix",
         "resetAllData",
@@ -98,8 +107,8 @@ function fixture(actor: User, overrides: Partial<CRMContextType> = {}) {
   } as CRMContextType;
   return { raw, calls, view: createWorkspace(raw) };
 }
-test("five positions migrate legacy director and team leader without changing saved IDs", () => {
-  assert.equal(positionRoles.length, 6);
+test("the available roles are developer, owner, general sales manager and branch sales manager, and legacy ones keep their saved IDs", () => {
+  assert.deepEqual(positionRoles, ["admin", "general_manager", "regional_manager", "branch_manager", "sales_agent"]);
   assert.equal(normalizeUser(makeUser("general_manager")).role, "general_manager");
   assert.equal(
     normalizeUser(makeUser("team_leader", { jobPositionTitle: "قائد تنفيذ" }))
@@ -205,7 +214,8 @@ test("supervisors are limited to assigned branches and specialization", () => {
   const general = fixture(
     makeUser("regional_manager", { supervisedBranchIds: [employee.branchId!] }),
   ).view;
-  assert.ok(general.leads.every((l) => l.branchId === employee.branchId));
+  // the general sales manager is not limited by a branch list
+  assert.ok(general.leads.some((l) => l.branchId !== employee.branchId));
   assert.equal(general.permissionMatrix, undefined);
   const accounts = fixture(
     makeUser("supervisor", {
@@ -257,7 +267,9 @@ test("only director can modify matrix; saving a policy changes both navigation a
   );
 });
 test("reassignment rejects outside-branch employees and permitted assignment uses target team", () => {
-  const { view, calls } = fixture(manager);
+  // the general sales manager moves customers between salespeople; a branch sales manager only sells
+  const gsm = { ...manager, id: "test-gsm", role: "regional_manager" as const, branchId: undefined };
+  const { view, calls } = fixture(gsm);
   const lead = view.leads[0];
   assert.ok(lead);
   assert.throws(() => view.reassignLead(lead.id, other.id));
@@ -323,8 +335,52 @@ test("a customer and its optional invoice can be created in one UI submission", 
     } as never),
   );
 });
+test("a customer created a moment ago can get its purchase or its not-bought reason, but not in another branch", () => {
+  const customer = {
+    ...seed.initialLeads[0],
+    id: "new-customer-2",
+    branchId: employee.branchId!,
+    assignedAgentId: employee.id,
+  };
+  const { view, calls } = fixture(employee, { addLead: () => customer });
+  const created = view.addLead(customer);
+  view.addBooking({
+    leadId: created.id,
+    branchId: employee.branchId!,
+    agentId: employee.id,
+    amount: 1000,
+  } as never);
+  view.addNotBoughtRecord({
+    leadId: created.id,
+    branchId: employee.branchId!,
+    agentId: employee.id,
+    reasons: ["price"],
+  } as never);
+  assert.deepEqual(calls, ["addBooking", "addNotBoughtRecord"]);
+  assert.throws(() =>
+    view.addNotBoughtRecord({ leadId: created.id, branchId: other.branchId!, agentId: employee.id, reasons: ["price"] } as never),
+  );
+  assert.throws(() => view.addNotBoughtRecord({ leadId: created.id, branchId: employee.branchId!, agentId: employee.id, reasons: [] } as never));
+  assert.throws(() => view.addBooking({ leadId: "ghost", branchId: employee.branchId!, agentId: employee.id, amount: 1 } as never));
+});
+test("a branch cannot be added past the company plan, and a stopped branch cannot be switched back on past it", () => {
+  const company = seed.initialCompanies.find((c) => c.active)!,
+    gov = seed.initialGovernorates.find((g) => g.active)!;
+  const branch = (id: string, over = {}) => ({ id, name: id, code: id, active: true, companyId: company.id, governorateId: gov.id, ...over }) as never;
+  const full = fixture(director, { branches: [branch("a"), branch("b"), branch("old", { active: false }), branch("sample", { isDemo: true })], license: { maxBranches: 2 } });
+  const data = { name: "c", code: "C", companyId: company.id, governorateId: gov.id } as never;
+  assert.throws(() => full.view.addBranch(data), /الباقة الحالية/);
+  assert.throws(() => full.view.updateBranch("old", { active: true }), /الباقة الحالية/);
+  assert.deepEqual(full.calls, []);
+  const roomy = fixture(director, { branches: [branch("a")], license: { maxBranches: 2 } });
+  assert.doesNotThrow(() => roomy.view.addBranch(data));
+  // only the developer changes the plan
+  assert.throws(() => roomy.view.setLicense({ maxBranches: 10 }));
+  assert.doesNotThrow(() => fixture(developer, { currentUser: developer, license: { maxBranches: 2 } }).view.setLicense({ maxBranches: 10 }));
+});
+
 test("creating a branch requires a real company and governorate instead of an unscoped branch", () => {
-  const { view } = fixture(director);
+  const { view } = fixture(director, { branches: [] });
   assert.throws(() => view.addBranch({ name: "unscoped", code: "X" } as never));
   const company = seed.initialCompanies.find((c) => c.active)!,
     gov = seed.initialGovernorates.find((g) => g.active)!;
@@ -374,4 +430,76 @@ test("recording why a customer has not bought is limited to customers the user m
       reasons: [],
     }),
   );
+});
+
+test("the developer can add a customer to a branch that has no salesperson; an owner who cannot is told why in words", () => {
+  const lonely = seed.initialBranches[0];
+  const emptyUsers = users.filter((u) => !(u.branchId === lonely.id && ["sales_agent", "team_leader", "branch_manager"].includes(u.role)));
+  const draft = { name: "عميل", phone: "01000000000", branchId: lonely.id, status: "new" } as never;
+  const created = { id: "new-lead", branchId: lonely.id } as unknown as Lead;
+
+  const asDev = fixture(developer, { users: emptyUsers, addLead: () => created });
+  assert.equal(asDev.view.addLead({ ...(draft as object), assignedAgentId: developer.id } as never), created);
+
+  const asOwner = fixture(director, { users: [...emptyUsers.filter((u) => u.id !== director.id), director], addLead: () => created });
+  assert.throws(
+    () => asOwner.view.addLead({ ...(draft as object), assignedAgentId: director.id } as never),
+    (e: Error) => e.name === "ActionDenied" && e.message.length > 20 && !/^الإجراء غير متاح لدورك$/.test(e.message),
+  );
+});
+
+test("the plan limits do not hold the developer back; they still stop the owner", () => {
+  const company = seed.initialCompanies.find((c) => c.active)!,
+    gov = seed.initialGovernorates.find((g) => g.active)!;
+  const branch = (id: string) => ({ id, name: id, code: id, active: true, companyId: company.id, governorateId: gov.id }) as never;
+  const data = { name: "c", code: "C", companyId: company.id, governorateId: gov.id } as never;
+  const branches = [branch("a"), branch("b")];
+  assert.doesNotThrow(() => fixture(developer, { branches, license: { maxBranches: 2 } }).view.addBranch(data));
+  assert.throws(() => fixture(director, { branches, license: { maxBranches: 2 } }).view.addBranch(data), /الباقة الحالية/);
+  const crowded = users.filter((u) => u.role !== "admin");
+  const draft = { name: "x", phone: "01000000001", role: "branch_manager", branchId: employee.branchId, active: true } as never;
+  assert.throws(() => fixture(director, { users: crowded, license: { maxBranches: 2, maxUsers: 1 } }).view.addUser(draft), /الباقة الحالية/);
+  assert.doesNotThrow(() => fixture(developer, { users: crowded, license: { maxBranches: 2, maxUsers: 1 } }).view.addUser(draft));
+});
+
+test("only the developer can delete an employee, and only one who has nothing left to hand over", async () => {
+  const idle = { ...employee, id: "idle-agent" };
+  const withIdle = { users: [...users.filter((u) => u.id !== idle.id), idle], leads: seed.initialLeads.filter((l) => l.assignedAgentId !== idle.id), followUps: [] as never };
+  const asDev = fixture(developer, { ...withIdle, currentUser: developer });
+  await asDev.view.deleteUser(idle.id);
+  assert.deepEqual(asDev.calls, ["deleteUser"]);
+
+  await assert.rejects(() => fixture(director, { ...withIdle, currentUser: director }).view.deleteUser(idle.id), /للمطوّر فقط/);
+  await assert.rejects(() => fixture(developer, { ...withIdle, currentUser: developer }).view.deleteUser(developer.id), /حسابك/);
+  // still owns a customer: told to hand them over first
+  const busy = { ...employee, id: "busy-agent" };
+  const lead = { ...seed.initialLeads[0], assignedAgentId: busy.id };
+  await assert.rejects(
+    () => fixture(developer, { currentUser: developer, users: [...users, busy], leads: [lead], followUps: [] as never }).view.deleteUser(busy.id),
+    /مسؤول عن 1 عميل/,
+  );
+  // looking at the system as someone else does not allow it either
+  await assert.rejects(() => fixture(director, { currentUser: developer, ...withIdle }).view.deleteUser(idle.id), /للمطوّر فقط/);
+});
+
+test("the general sales manager sees every branch, even one added after their branch list was saved", () => {
+  const gsm = { ...makeUser("regional_manager"), supervisedBranchIds: ["br-cairo", "br-alex"] };
+  const tanta = seed.initialBranches.find((b) => b.id === "br-tanta")!;
+  assert.equal(canSeeBranch(gsm, tanta.id, seed.initialBranches), true);
+  assert.equal(seesAll({ role: "regional_manager", userId: gsm.id, supervisedBranchIds: ["br-cairo"] }), true);
+  const { view } = fixture(gsm);
+  assert.ok(view.branches.some((b) => b.id === "br-tanta"));
+});
+
+test("a salesperson decides only their own pending Zaki suggestions, and accepting needs a date and a reason", () => {
+  const mineLead = { ...seed.initialLeads[0], id: "my-lead", branchId: employee.branchId!, assignedAgentId: employee.id };
+  const withLead = { leads: [mineLead] };
+  const sug = (over = {}) => ({ id: "s1", status: "pending", partyKind: "client", leadId: mineLead.id, name: mineLead.name, branchId: mineLead.branchId, agentId: employee.id, ...over }) as never;
+  const ok = fixture(employee, { ...withLead, aiSuggestions: [sug()] });
+  ok.view.decideSuggestion("s1", { accept: true, date: "2030-01-01", reason: "قال هيرجع", type: "call", edited: false });
+  assert.deepEqual(ok.calls.filter((c) => c === "decideSuggestion"), ["decideSuggestion"]);
+  assert.throws(() => fixture(employee, { ...withLead, aiSuggestions: [sug()] }).view.decideSuggestion("s1", { accept: true, date: "", reason: "x", type: "call", edited: false }));
+  assert.throws(() => fixture(employee, { ...withLead, aiSuggestions: [sug({ agentId: "someone-else" })] }).view.decideSuggestion("s1", { accept: false }));
+  assert.throws(() => fixture(employee, { ...withLead, aiSuggestions: [sug({ status: "accepted" })] }).view.decideSuggestion("s1", { accept: false }));
+  assert.throws(() => fixture(employee, withLead).view.saveSuggestions([sug({ agentId: "someone-else" })] as never));
 });

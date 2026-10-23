@@ -1,3 +1,6 @@
+import { useAllLeads } from "../../lib/useAllLeads";
+import { useAllFollowUps } from "../../lib/useAllFollowUps";
+import { useAllData } from "../../lib/useAllData";
 import { useEffect, useRef, useState } from "react";
 import { Send, X } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
@@ -6,9 +9,10 @@ import { runTool, toolLabels, type ToolData } from "../../lib/zakiTools";
 import { zakiGuide, zakiTools } from "../../lib/zakiGuide";
 import { today } from "../../lib/presentation";
 import { VoiceNoteField } from "../common/VoiceNoteField";
+import { useLanguage } from "../../context/LanguageContext";
 import { ZakiAvatar, type ZakiMood } from "./ZakiAvatar";
 
-const examples = [
+const examplesAr = [
   "مين أقوى عملاء البستان؟",
   "مين العملاء اللي لازم أتابعهم النهارده؟",
   "أكتر سبب بيخلي العملاء ما يشتروش؟",
@@ -16,13 +20,22 @@ const examples = [
   "مين أنشط وسيط الشهر ده؟",
   "ملخص الأسبوع",
 ];
+const examplesEn = [
+  "Who are the strongest Garden customers?",
+  "Which customers must I follow up today?",
+  "What is the top reason customers don't buy?",
+  "Which branch is weakest and why?",
+  "Who is the most active broker this month?",
+  "Weekly summary",
+];
 
-const thinkingLines = ["بدوّر في الملفات…", "بحسبها لحظة…", "بجمّع الأرقام…", "قربت أخلّص…"];
+const thinkingAr = ["بدوّر في الملفات…", "بحسبها لحظة…", "بجمّع الأرقام…", "قربت أخلّص…"];
+const thinkingEn = ["Searching the files…", "Working it out…", "Collecting the numbers…", "Almost done…"];
 
 const reduced = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 /** Types an example, pauses, erases it, then moves on to the next one. */
-function useTypedExamples(active: boolean) {
+function useTypedExamples(active: boolean, examples: string[]) {
   const [text, setText] = useState("");
   useEffect(() => {
     if (!active) return setText("");
@@ -57,7 +70,7 @@ function useTypedExamples(active: boolean) {
     };
     timer = window.setTimeout(tick, 600);
     return () => window.clearTimeout(timer);
-  }, [active]);
+  }, [active, examples]);
   return text;
 }
 
@@ -117,13 +130,18 @@ function Rich({ text }: { text: string }) {
 
 /** Zaki: a floating assistant that answers questions about the data the user can see. */
 export function ZakiChat() {
-  const { currentUser, leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches } = useCRM();
+  const { tr, language } = useLanguage();
+  const { currentUser, leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches, reviewRequests, reviewNotes } = useCRM();
   // Always the latest data: the ref is refreshed on every render, and Firestore keeps the state live.
   const dataRef = useRef<ToolData | null>(null);
-  dataRef.current = { today: today(), leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches };
+  dataRef.current = { today: today(), leads, bookings, followUps, visits, notBoughtRecords, brokers, users, branches, reviewRequests, reviewNotes };
   const [steps, setSteps] = useState<string[]>([]);
   const [available, setAvailable] = useState(false);
   const [open, setOpen] = useState(false);
+  // Zaki answers from every customer the person can see, so they are read while the chat is open.
+  useAllLeads(open);
+  useAllFollowUps(open);
+  useAllData(["visits", "bookings", "notBought", "reviews", "invoices"], open);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -133,7 +151,9 @@ export function ZakiChat() {
   const [slow, setSlow] = useState(false);
   const [freshIdx, setFreshIdx] = useState(-1);
   const end = useRef<HTMLDivElement>(null);
-  const typed = useTypedExamples(open && turns.length === 0 && !busy);
+  const examples = language === "en" ? examplesEn : examplesAr;
+  const thinkingLines = language === "en" ? thinkingEn : thinkingAr;
+  const typed = useTypedExamples(open && turns.length === 0 && !busy, examples);
   const titles = new Set(["م", "م.", "eng", "eng.", "dr", "dr.", "د", "د.", "أ", "أ.", "المهندس", "الدكتور", "الحاج", "الأستاذ"]);
   const first = currentUser.name.split(" ").find((w) => !titles.has(w.toLowerCase())) ?? currentUser.name;
 
@@ -225,7 +245,7 @@ export function ZakiChat() {
       const code = e instanceof Error ? e.message.slice(0, 160) : "";
       setTurns((t) => [
         ...t,
-        { role: "assistant", text: `حصلت مشكلة وأنا بجهّز الرد. جرّب تسألني تاني بعد شوية.${code ? `\n(${code})` : ""}` },
+        { role: "assistant", text: `${tr("حصلت مشكلة وأنا بجهّز الرد. جرّب تسألني تاني بعد شوية.", "Something went wrong while preparing the answer. Try asking me again in a moment.")}${code ? `\n(${code})` : ""}` },
       ]);
     } finally {
       setBusy(false);
@@ -238,7 +258,7 @@ export function ZakiChat() {
         <div className="zaki-fab-wrap">
           {greet && (
             <div className="zaki-bubble" role="status">
-              أهلًا {first}! أنا زكي، اسألني عن أي حاجة في النظام 👋
+              {tr(`أهلًا ${first}! أنا زكي، اسألني عن أي حاجة في النظام 👋`, `Hi ${first}! I'm Zaki, ask me anything about the system 👋`)}
             </div>
           )}
           <button
@@ -249,30 +269,29 @@ export function ZakiChat() {
               setOpen(true);
               window.setTimeout(() => setMood("idle"), 1800);
             }}
-            aria-label="افتح زكي، المساعد الذكي"
+            aria-label={tr("افتح زكي، المساعد الذكي", "Open Zaki, the smart assistant")}
           >
             <ZakiAvatar mood={mood} size={96} />
-            <span className="zaki-fab-label">زكي</span>
+            <span className="zaki-fab-label">{tr("زكي", "Zaki")}</span>
           </button>
         </div>
       )}
       {open && (
-        <div className="zaki-panel" role="dialog" aria-label="زكي، المساعد الذكي">
+        <div className="zaki-panel" role="dialog" aria-label={tr("زكي، المساعد الذكي", "Zaki, the smart assistant")}>
           <div className="zaki-head">
-            <ZakiAvatar mood={busy ? (slow ? "watch" : "thinking") : mood} size={52} className="zaki-head-art" />
+            <ZakiAvatar mood={busy ? (slow ? "watch" : "thinking") : mood} size={168} className="zaki-head-art" />
             <div>
-              <strong>زكي</strong>
-              <small>مساعد البحيري · بيجاوب من بيانات نظامك</small>
+              <strong>{tr("زكي", "Zaki")}</strong>
+              <small><i className="zaki-online" />{tr("متاح · بيجاوب من بيانات نظامك", "Online · answers from your system data")}</small>
             </div>
-            <button className="icon-button" onClick={() => setOpen(false)} aria-label="إغلاق">
+            <button className="icon-button" onClick={() => setOpen(false)} aria-label={tr("إغلاق", "Close")}>
               <X size={18} />
             </button>
           </div>
           <div className="zaki-body">
             {turns.length === 0 && !busy && (
               <div className="zaki-demo" aria-hidden="true">
-                <ZakiAvatar mood="offer" size={150} className="zaki-demo-art" />
-                <small>جرّب تسألني، مثلًا:</small>
+                <small>{tr("جرّب تسألني، مثلًا:", "Try asking me, for example:")}</small>
                 <div className="zaki-demo-line">
                   <span>{typed}</span>
                   <i className="zaki-caret" />
@@ -282,7 +301,7 @@ export function ZakiChat() {
             {turns.map((t, i) => (
               <div key={i} className={`zaki-msg ${t.role === "user" ? "me" : "bot"}`}>
                 {t.role === "user" ? <p>{t.text}</p> : <BotAnswer text={t.text} fresh={i === freshIdx} />}
-                {t.used && t.used.length > 0 && <small className="zaki-used">بص على: {t.used.join("، ")}</small>}
+                {t.used && t.used.length > 0 && <small className="zaki-used">{tr("بص على:", "Look at:")} {t.used.join(language === "en" ? ", " : "، ")}</small>}
               </div>
             ))}
             {busy && (
@@ -305,10 +324,10 @@ export function ZakiChat() {
               onChange={setInput}
               rows={1}
               hideImprove
-              placeholder="اكتب سؤالك أو اضغط تكلّم…"
+              placeholder={tr("اكتب سؤالك أو اضغط تكلّم…", "Type your question or press Speak…")}
               onSubmit={() => send(input)}
             />
-            <button className="btn-primary zaki-send" onClick={() => send(input)} disabled={busy || !input.trim()} aria-label="إرسال">
+            <button className="btn-primary zaki-send" onClick={() => send(input)} disabled={busy || !input.trim()} aria-label={tr("إرسال", "Send")}>
               <Send size={16} />
             </button>
           </div>

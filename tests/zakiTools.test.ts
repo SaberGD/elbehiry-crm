@@ -75,3 +75,20 @@ test("unknown tools and bad arguments never throw", () => {
   assert.ok(call("drop_database").error);
   assert.doesNotThrow(() => call("find_customers", { limit: "abc", department: 5, query: {} }));
 });
+
+test("reviews tool lists late complaints with their stats", () => {
+  const H = 3_600_000;
+  const ago = (h: number) => new Date(Date.now() - h * H).toISOString();
+  const lead = demo.demoLeads[0];
+  const reviewRequests = [
+    { id: "a".repeat(24), leadId: lead.id, leadName: lead.name, branchId: lead.branchId, agentId: "x", subjectKind: "visit" as const, subjectLabel: "زيارة", sentAt: ago(50), answeredAt: ago(40), status: "answered" as const, response: { rating: 1, comment: "اتأخروا" } },
+    { id: "b".repeat(24), leadId: lead.id, leadName: lead.name, branchId: lead.branchId, agentId: "x", subjectKind: "visit" as const, subjectLabel: "زيارة", sentAt: ago(5), answeredAt: ago(2), status: "answered" as const, response: { rating: 5 } },
+  ];
+  const r = call("reviews", { only: "late" }, data({ reviewRequests, reviewNotes: [] }));
+  assert.equal(r.total, 1);
+  assert.equal(r.rows[0].lateOver24h, true);
+  assert.equal(r.rows[0].comment, "اتأخروا");
+  assert.equal(r.stats.answered, 2);
+  assert.equal(r.stats.complaints.late, 1);
+  assert.equal(call("reviews", {}, data({ reviewRequests, reviewNotes: [] })).total, 2);
+});

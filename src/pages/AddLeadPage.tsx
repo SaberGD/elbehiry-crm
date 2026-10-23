@@ -1,12 +1,24 @@
+import { PageGuide } from "../components/common/PageGuide";
+import { BrokerSearch } from "../components/common/BrokerSearch";
+import { CustomerRatingModal } from "../components/common/CustomerRatingModal";
 import {
   canCreateCustomer,
+  branchAgents,
+  defaultAgent,
   canAssignCustomers,
   canManageCatalog,
   canContactCustomer,
+  canRequestReview,
   canScheduleFollowUp,
 } from "../lib/access";
+import { purchaseFromItems } from "../lib/purchases";
+import { OutcomeSection, emptyOutcome, outcomeError, type OutcomeState } from "../components/common/OutcomeSection";
+import { InterestPicker, interestNames } from "../components/common/InterestPicker";
+import { NameWithTitle } from "../components/common/NameWithTitle";
 import { hasPermission } from "../lib/permissions";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { findLeadsByPhone } from "../lib/leadQueries";
+import { profileOf, scopesFor } from "../lib/scopes";
 import {
   ArrowRight,
   ChevronDown,
@@ -15,8 +27,10 @@ import {
   MessageCircle,
   UserRound,
   FileText,
+  ShoppingBag,
   SlidersHorizontal,
   ArrowUpLeft,
+  X,
 } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
 import {
@@ -50,8 +64,12 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
     purchaseCategories,
     addLead,
     addBroker,
-    addPurchaseInvoice,
+    addBooking,
+    addNotBoughtRecord,
     findDuplicateLeadsByPhone,
+    injectLeads,
+    requestAllLeads,
+    searchIndexReady,
   } = useCRM();
   const availableBranches = branches.filter(
     (b) => b.active && canSeeBranch(effectiveUser, b.id, branches),
@@ -59,20 +77,12 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   const initialBranch =
     effectiveUser.branchId || availableBranches[0]?.id || "";
   const [branchId, setBranchId] = useState(initialBranch);
-  const agents = users.filter(
-    (u) =>
-      u.active &&
-      u.branchId === branchId &&
-      ["sales_agent", "team_leader", "branch_manager"].includes(u.role),
-  );
-  const [agentId, setAgentId] = useState(
-    effectiveUser.role === "sales_agent"
-      ? effectiveUser.id
-      : agents.find((u) => u.role === "sales_agent")?.id || effectiveUser.id,
-  );
+  const agents = branchAgents(users, branchId);
+  const [agentId, setAgentId] = useState(defaultAgent(users, effectiveUser, initialBranch));
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [department, setDepartment] = useState<Department>("decor");
+  const [interests, setInterests] = useState<Department[]>(["decor"]);
+  const department = interests[0];
   const [source, setSource] = useState<LeadSource>("walk_in");
   const [sameWhatsapp, setSameWhatsapp] = useState(true);
   const [whatsapp, setWhatsapp] = useState("");
@@ -84,40 +94,58 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
   const [brokerId, setBrokerId] = useState("");
   const [brokerName, setBrokerName] = useState("");
   const [brokerPhone, setBrokerPhone] = useState("");
-  const [makeInvoice, setMakeInvoice] = useState(false);
-  const [items, setItems] = useState<InvoiceLineItem[]>([
-    {
-      categoryId: purchaseCategories.find((c) => c.active)?.id || "",
-      categoryName: purchaseCategories.find((c) => c.active)?.name || "",
-      amount: 0,
-    },
-  ]);
-  const [invoiceStatus, setInvoiceStatus] =
-    useState<PurchaseInvoice["status"]>("recorded");
+  const [outcome, setOutcome] = useState<OutcomeState>(emptyOutcome);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<Lead | null>(null);
-  const duplicates =
-    phone.replace(/\D/g, "").length >= 10
-      ? findDuplicateLeadsByPhone(phone)
-      : [];
-  const total = items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  // Is the number already ours? The database answers (customers the person can see). Until the customers are
+  // indexed it is checked against the full list instead.
+  const phoneReady = phone.replace(/\D/g, "").length >= 10;
+  const [found, setFound] = useState<Lead[]>([]);
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const serverLookup = searchIndexReady && !lookupFailed;
+  useEffect(() => (phoneReady && !serverLookup ? requestAllLeads() : undefined), [phoneReady, serverLookup, requestAllLeads]);
+  useEffect(() => {
+    if (!phoneReady || !serverLookup) return setFound([]);
+    let current = true;
+    const timer = setTimeout(() => {
+      findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone)
+        .then((rows) => {
+          if (!current) return;
+          injectLeads(rows);
+          setFound(rows);
+        })
+        .catch(() => current && (setFound([]), setLookupFailed(true)));
+    }, 350);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, phoneReady, serverLookup, effectiveUser.id]);
+  const duplicates = !phoneReady ? [] : serverLookup ? found : findDuplicateLeadsByPhone(phone);
+  const total = outcome.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const selectedAgent = users.find((u) => u.id === agentId);
   const changeBranch = (id: string) => {
     setBranchId(id);
-    const candidate = users.find(
-      (u) => u.active && u.branchId === id && u.role === "sales_agent",
-    );
-    setAgentId(candidate?.id || effectiveUser.id);
+    setAgentId(defaultAgent(users, effectiveUser, id));
   };
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canCreateCustomer(effectiveUser)) return;
     setError("");
+    if (!canCreateCustomer(effectiveUser)) {
+      setError("حسابك مش مسموحله يضيف عملاء. راجع مديرك لو محتاج الصلاحية.");
+      return;
+    }
     if (!name.trim() || !/^\+?[\d\s()-]{10,18}$/.test(phone.trim())) {
       setError("اكتب اسم العميل ورقم هاتف صحيح من 10 إلى 15 رقم.");
       return;
     }
-    if (duplicates.length) {
+    // The check on screen may still be waiting for the typing to pause: ask once more before saving.
+    const known = serverLookup ? await findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone).catch(() => duplicates) : duplicates;
+    if (known.length) {
+      injectLeads(known);
+      setFound(known);
       setError("الرقم مسجل بالفعل. افتح ملف العميل الموجود لتكمل التعامل.");
       return;
     }
@@ -144,21 +172,17 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       setError("بيانات الوسيط تحتاج اسم ورقم هاتف صحيح.");
       return;
     }
-    if (
-      makeInvoice &&
-      (!items.length ||
-        items.some(
-          (i) => !i.categoryId || i.amount <= 0 || !Number.isFinite(i.amount),
-        ))
-    ) {
-      setError("كل بند في الفاتورة يحتاج تصنيفًا ومبلغًا أكبر من صفر.");
+    const outErr = outcomeError(outcome, false);
+    if (outErr || (outcome.result === "bought" && !hasPermission(effectiveUser, "bookings.create"))) {
+      setError(outErr || "حسابك مش مسموحله يسجل مشتريات.");
       return;
     }
+    try {
     let linkedBroker =
       brokerMode === "existing"
         ? brokers.find((b) => b.id === brokerId)
         : undefined;
-    if (brokerMode === "new" && canManageCatalog(effectiveUser))
+    if (brokerMode === "new" && canCreateCustomer(effectiveUser))
       linkedBroker = addBroker({
         name: brokerName.trim(),
         phone: brokerPhone.trim(),
@@ -184,27 +208,40 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
       status: "new",
       classification: "B",
       department,
-      departmentName: departmentNames[department],
+      interests,
+      departmentName: interestNames(interests),
       notes: notes.trim(),
     });
-    if (makeInvoice && hasPermission(effectiveUser, "invoices.manage"))
-      addPurchaseInvoice({
-        date: today(),
+    if (outcome.result === "bought" && hasPermission(effectiveUser, "bookings.create")) {
+      const purchase = purchaseFromItems(outcome.items);
+      addBooking({
         leadId: lead.id,
         leadName: lead.name,
         leadPhone: lead.phone,
         branchId,
         branchName: lead.branchName,
         agentId,
-        agentName: selectedAgent?.name,
-        brokerId: linkedBroker?.id,
-        brokerName: linkedBroker?.name,
-        items,
-        totalAmount: total,
-        status: invoiceStatus,
-        notes: "فاتورة مرتبطة بتسجيل العميل",
+        ...purchase,
+        bookingDate: today(),
+        bookingStatus: "confirmed",
+        source: lead.source,
+        notes: "",
       });
+    } else if (outcome.result === "not_yet") {
+      addNotBoughtRecord({
+        leadId: lead.id,
+        leadName: lead.name,
+        branchId,
+        agentId,
+        reasons: outcome.reasons,
+        otherText: outcome.reasons.includes("other") ? outcome.otherText.trim() : undefined,
+        note: outcome.note.trim() || undefined,
+      });
+    }
     setCreated(lead);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر إضافة العميل.");
+    }
   };
   if (created)
     return (
@@ -214,6 +251,24 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
           <span className="eyebrow">بداية علاقة جديدة</span>
           <h1>اتضاف {created.name}.</h1>
           <p>الخطوة الجاية: تواصل مع العميل أو حدد أول متابعة.</p>
+          {canRequestReview(effectiveUser, created) && (
+            <div className="review-offer">
+              <span>
+                <strong>تبعت للعميل لينك تقييم؟</strong>
+                <small>اختياري: رسالة واتساب جاهزة، وانت اللي بتدوس إرسال.</small>
+              </span>
+              <button className="btn-secondary" onClick={() => setReviewOpen(true)}>
+                <MessageCircle size={16} />
+                ابعت لينك التقييم
+              </button>
+            </div>
+          )}
+          <CustomerRatingModal
+            lead={created}
+            isOpen={reviewOpen}
+            onClose={() => setReviewOpen(false)}
+            subject={{ kind: "general", label: "تجربتك مع البحيري" }}
+          />
           <div className="success-actions">
             {canScheduleFollowUp(effectiveUser, created) && (
               <button
@@ -268,6 +323,12 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
           رجوع
         </button>
       </div>
+      <PageGuide id="addCustomer" />
+      {availableBranches.length === 0 && (
+        <p className="notice warning" role="alert">
+          لسه مفيش أي فرع مسجّل. أضف الفرع الأول من «إدارة المؤسسة ← الهيكل الإداري»، وأضف موظفين من «الموظفون»، وبعدها سجّل عملاءك.
+        </p>
+      )}
       <form className="panel" onSubmit={submit} noValidate>
         <section className="form-section">
           <div className="section-title">
@@ -278,26 +339,14 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
             </div>
           </div>
           <div className="field-grid">
-            <label className="field">
-              <span>
-                اسم العميل <em>مطلوب</em>
-              </span>
-              <input
-                name="customerName"
-                autoComplete="name"
-                required
-                placeholder="الاسم اللي هنناديه بيه"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
+            <NameWithTitle value={name} onChange={setName} required />
             <label className="field">
               <span>
                 رقم الهاتف <em>مطلوب</em>
               </span>
               <input
                 name="customerPhone"
-                autoComplete="tel"
+                autoComplete="off"
                 dir="ltr"
                 type="tel"
                 required
@@ -319,19 +368,7 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
                 </button>
               </div>
             )}
-            <label className="field">
-              <span>مهتم بإيه؟</span>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value as Department)}
-              >
-                {Object.entries(departmentNames).map(([id, label]) => (
-                  <option value={id} key={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <InterestPicker value={interests} onChange={setInterests} />
             <label className="field">
               <span>عرفنا منين؟</span>
               <select
@@ -461,41 +498,32 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
             <ChevronDown size={16} />
           </summary>
           <div className="optional-content">
-            <label className="field">
-              <span>جهة الترشيح</span>
-              <select
-                value={brokerMode}
-                onChange={(e) =>
-                  setBrokerMode(e.target.value as typeof brokerMode)
+            {brokerMode !== "new" ? (
+              <BrokerSearch
+                label="الوسيط أو جهة الترشيح"
+                brokers={brokers}
+                value={brokerMode === "existing" ? brokerId : ""}
+                onChange={(id) => {
+                  setBrokerId(id);
+                  setBrokerMode(id ? "existing" : "none");
+                }}
+                onCreate={
+                  canCreateCustomer(effectiveUser)
+                    ? (name) => {
+                        setBrokerName(name);
+                        setBrokerId("");
+                        setBrokerMode("new");
+                      }
+                    : undefined
                 }
-              >
-                <option value="none">بدون وسيط</option>
-                <option value="existing">وسيط مسجل عندنا</option>
-                {canManageCatalog(effectiveUser) && (
-                  <option value="new">إضافة وسيط جديد</option>
-                )}
-              </select>
-            </label>
-            {brokerMode === "existing" && (
-              <label className="field" style={{ marginTop: 18 }}>
-                <span>اختَر الوسيط</span>
-                <select
-                  value={brokerId}
-                  onChange={(e) => setBrokerId(e.target.value)}
-                >
-                  <option value="">اختَر من القائمة</option>
-                  {brokers
-                    .filter((b) => b.active)
-                    .map((b) => (
-                      <option value={b.id} key={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              />
+            ) : (
+              <button type="button" className="btn-text" onClick={() => setBrokerMode("none")}>
+                ← دوّر في الوسطاء المسجلين بدل كده
+              </button>
             )}
             {brokerMode === "new" && (
-              <div className="field-grid" style={{ marginTop: 18 }}>
+              <div className="field-grid" style={{ marginTop: 12 }}>
                 <label className="field">
                   <span>
                     اسم الوسيط <em>مطلوب عند الإضافة</em>
@@ -520,117 +548,19 @@ export function AddLeadPage({ onSuccessNavigate, onOpenExistingLead }: Props) {
             )}
           </div>
         </details>
-        <details className="optional-section">
+        <details className="optional-section" open={!!outcome.result || undefined}>
           <summary>
-            <FileText size={18} />
+            <ShoppingBag size={18} />
             <span>
-              إضافة فاتورة <em className="optional-tag">اختياري</em>
+              نتيجة التعامل <em className="optional-tag">اختياري</em>
             </span>
             <ChevronDown size={16} />
           </summary>
           <div className="optional-content">
-            <label className="checkbox-line">
-              <input
-                type="checkbox"
-                disabled={!hasPermission(effectiveUser, "invoices.manage")}
-                checked={makeInvoice}
-                onChange={(e) => setMakeInvoice(e.target.checked)}
-              />
-              العميل عنده مشتريات وعايز أسجلها دلوقتي
-            </label>
-            {makeInvoice && (
-              <div style={{ marginTop: 20 }}>
-                {items.map((item, index) => (
-                  <div
-                    className="field-grid"
-                    style={{ marginBottom: 15 }}
-                    key={index}
-                  >
-                    <label className="field">
-                      <span>التصنيف</span>
-                      <select
-                        value={item.categoryId}
-                        onChange={(e) =>
-                          setItems(
-                            items.map((v, i) =>
-                              i === index
-                                ? {
-                                    ...v,
-                                    categoryId: e.target.value,
-                                    categoryName:
-                                      purchaseCategories.find(
-                                        (c) => c.id === e.target.value,
-                                      )?.name || "",
-                                  }
-                                : v,
-                            ),
-                          )
-                        }
-                      >
-                        {purchaseCategories
-                          .filter((c) => c.active)
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                    <label className="field">
-                      <span>المبلغ بالجنيه</span>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={item.amount || ""}
-                        onChange={(e) =>
-                          setItems(
-                            items.map((v, i) =>
-                              i === index
-                                ? { ...v, amount: Number(e.target.value) }
-                                : v,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    {items.length > 1 && (
-                      <button
-                        className="btn-text"
-                        type="button"
-                        onClick={() =>
-                          setItems(items.filter((_, i) => i !== index))
-                        }
-                      >
-                        حذف البند
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="btn-text"
-                  onClick={() =>
-                    setItems([
-                      ...items,
-                      {
-                        categoryId:
-                          purchaseCategories.find((c) => c.active)?.id || "",
-                        categoryName:
-                          purchaseCategories.find((c) => c.active)?.name || "",
-                        amount: 0,
-                      },
-                    ])
-                  }
-                >
-                  <Plus size={15} />
-                  بند آخر
-                </button>
-                <p className="table-secondary">
-                  إجمالي المشتريات: <strong>{formatMoney(total)} ج.م</strong>
-                </p>
-              </div>
-            )}
+            <p className="quiet-note" style={{ padding: "0 0 14px" }}>
+              لو العميل اشترى أو قال ليه لسه، سجّلها دلوقتي. وسيبها فاضية لو لسه مفيش نتيجة.
+            </p>
+            <OutcomeSection value={outcome} onChange={setOutcome} />
           </div>
         </details>
         {error && (

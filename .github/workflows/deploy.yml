@@ -2,13 +2,16 @@ name: CI & Deploy
 
 # main -> https://elbehiry.engsaber.space      (production)
 # dev  -> https://dev-elbehiry.engsaber.space  (development / staging)
+# test -> https://test-elbehiry.engsaber.space    (testing, separate Firebase project albehairy-test)
+# Promotion order: test -> dev -> main. dev deploys only when its code is identical to test; main only when identical to dev.
+# main also waits for approval on the 'production' environment (set required reviewers in GitHub).
 # Pull requests only run the checks (lint, tests, build); nothing is deployed.
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, test]
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, test]
   workflow_dispatch:
 
 concurrency:
@@ -28,6 +31,8 @@ jobs:
       - run: bun run lint
       - run: bun run test
       - run: bun run build
+        env:
+          VITE_APP_ENV: ${{ github.ref_name == 'test' && 'test' || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -37,14 +42,30 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/test')
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ github.ref_name == 'main' && 'production' || github.ref_name == 'test' && 'test' || 'development' }}
     env:
       # Folder of each subdomain on Hostinger, relative to the FTP account root.
-      SERVER_DIR_MAIN: domains/engsaber.space/public_html/elbehiry/
-      SERVER_DIR_DEV: domains/engsaber.space/public_html/dev-elbehiry/
+      SERVER_DIR_MAIN: domains/elbehiry.engsaber.space/public_html/
+      SERVER_DIR_DEV: domains/dev-elbehiry.engsaber.space/public_html/
+      SERVER_DIR_TEST: domains/test-elbehiry.engsaber.space/public_html/
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Promotion gate (test -> dev -> main)
+        run: |
+          case "$GITHUB_REF_NAME" in
+            dev)  prev=test ;;
+            main) prev=dev ;;
+            *)    exit 0 ;;
+          esac
+          git fetch origin "$prev"
+          if ! git diff --quiet "origin/$prev" HEAD -- . ':!.github' ':!docs'; then
+            echo "::error::$GITHUB_REF_NAME can only be deployed after the same code is deployed to $prev. Merge $prev first."
+            exit 1
+          fi
       - uses: actions/download-artifact@v4
         with:
           name: dist
@@ -57,4 +78,4 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./dist/
-          server-dir: ${{ github.ref_name == 'main' && env.SERVER_DIR_MAIN || env.SERVER_DIR_DEV }}
+          server-dir: ${{ github.ref_name == 'main' && env.SERVER_DIR_MAIN || github.ref_name == 'test' && env.SERVER_DIR_TEST || env.SERVER_DIR_DEV }}

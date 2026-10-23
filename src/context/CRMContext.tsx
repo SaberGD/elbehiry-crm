@@ -4,21 +4,17 @@ import {
   type PermissionMatrix,
 } from "../lib/permissions";
 import { createWorkspace } from "../lib/workspace";
+import { newReviewToken } from "../lib/reviews";
+import { REFERRAL_FOLLOWUP_DAYS, isReferralPhone, phoneKey } from "../lib/referrals";
+import { scopeAnd, scopesFor, scopeWhere, seesAll, unionScopes } from "../lib/scopes";
+import { REMINDER_WINDOW_DAYS } from "../lib/reminders";
+import { keysAreCurrent, leadSearchKeys, SEARCH_INDEX_VERSION, visitParty, visitSearchKeys } from "../lib/leadSearch";
+import { defaultLicense, type License } from "../lib/license";
+import { asDemo, planDemoRemoval, type DemoWorld, type KnownDemoIds } from "../lib/demoScope";
+import { egyptGovernorates, findEgyptGovernorate } from "../data/egypt";
+import { today, followUpStatus, statusNames, sourceNames, followUpTypeNames } from "../lib/presentation";
 import {
-  demoUsers,
-  demoLeads,
-  demoVisits,
-  demoFollowUps,
-  demoBookings,
-  demoTimeline,
-  demoInvoices,
-  demoBrokers,
-  demoNotBought,
-} from "../data/demoData";
-import { today, followUpStatus } from "../lib/presentation";
-import {
-  buildPostSaleSchedule,
-  milestoneLabel,
+  upcomingPostSale,
   addToDate,
 } from "../lib/postSale";
 import {
@@ -32,13 +28,20 @@ import React, {
   useState,
   useEffect,
   useMemo,
+  useRef,
+  useCallback,
 } from "react";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { collection, deleteDoc, doc, getCountFromServer, getDoc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { deleteLoginOnServer } from "../lib/adminClient";
+import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
 import {
   useFirestoreCollection,
   useFirestoreDocument,
+  narrowScope,
+  fetchScoped,
+  patchDocs,
+  deleteDocs,
 } from "../lib/useFirestoreSync";
 import {
   User,
@@ -59,32 +62,17 @@ import {
   Warehouse,
   DepartmentEntity,
   JobPosition,
+  ReviewRequest,
+  ReviewNote,
+  ReviewAnalysis,
   PurchaseCategory,
   BrokerEntity,
+  ReminderDone,
+  AiSuggestion,
   PurchaseInvoice,
   NotificationItem,
 } from "../types/crm";
-import {
-  initialUsers,
-  initialBranches,
-  initialTeams,
-  initialCourses,
-  initialLeads,
-  initialVisits,
-  initialFollowUps,
-  initialBookings,
-  initialTimelineEvents,
-  initialAuditLogs,
-  initialCompanies,
-  initialGovernorates,
-  initialWarehouses,
-  initialDepartments,
-  initialJobPositions,
-  initialPurchaseCategories,
-  initialBrokers,
-  initialPurchaseInvoices,
-  initialNotifications,
-} from "../data/initialData";
+import { purchaseCategoryList } from "../lib/purchases";
 
 export interface FollowUpExtra {
   satisfactionRating?: number;
@@ -94,10 +82,44 @@ export interface FollowUpExtra {
 
 export interface CRMContextType {
   notBoughtRecords: NotBoughtRecord[];
+  reminderDone: ReminderDone[];
+  aiSuggestions: AiSuggestion[];
+  saveSuggestions: (items: Omit<AiSuggestion, "id" | "createdAt" | "dayKey">[]) => AiSuggestion[];
+  decideSuggestion: (
+    id: string,
+    decision:
+      | { accept: true; date: string; reason: string; type: FollowUp["type"]; edited: boolean }
+      | { accept: false; reason?: string },
+  ) => void;
+  markReminderDone: (taskId: string, branchId: string) => void;
+  reviewRequests: ReviewRequest[];
+  reviewNotes: ReviewNote[];
+  requestReview: (input: {
+    lead: Lead;
+    subjectKind: ReviewRequest["subjectKind"];
+    subjectId?: string;
+    subjectLabel: string;
+  }) => ReviewRequest;
+  requestBrokerReview: (input: {
+    broker: BrokerEntity;
+    branchId: string;
+    subjectId?: string;
+    subjectLabel: string;
+  }) => ReviewRequest;
+  markReviewReminderSent: (id: string) => void;
+  cancelReviewRequest: (id: string, reason: string) => void;
+  addReviewNote: (requestId: string, text: string, kind: ReviewNote["kind"]) => void;
+  saveReviewAnalysis: (id: string, ai: ReviewAnalysis) => void;
   currentUser: User;
   logout: () => Promise<void>;
-  loadDemoData: () => void;
-  removeDemoData: () => void;
+  loadDemoData: () => Promise<void>;
+  clearOrganizationData: () => Promise<void>;
+  removeDemoData: () => Promise<void>;
+  /** Registers someone a customer recommended; returns the existing customer when the number is already known. */
+  addReferralLead: (input: { fromLeadId: string; name: string; phone: string; reviewId?: string; followUpId?: string }) => { lead: Lead; created: boolean };
+  previewDemoRemoval: () => Promise<{ total: number; realLinked: number }>;
+  /** How much flagged sample data is loaded right now. */
+  demoSummary: { customers: number; branches: number; staff: number; brokers: number; any: boolean };
   createLoginForUser: (
     userId: string,
     loginId: string,
@@ -117,13 +139,45 @@ export interface CRMContextType {
   branches: Branch[];
   teams: Team[];
   courses: Course[];
+  /**
+   * The customers loaded so far. They are not read in full: lists read a page at a time (`injectLeads`),
+   * a customer on screen is kept live (`watchLead`), and only screens that need every customer ask for them
+   * all (`requestAllLeads`).
+   */
   leads: Lead[];
+  /** Asks for every customer in the person's scope to be loaded until the returned function is called. */
+  requestAllLeads: () => () => void;
+  /**
+   * Follow-ups: the open ones are always loaded (they are what the dashboard, the badge and the daily list work
+   * from), a customer's whole history while their file is open, and everything while a screen asks for it.
+   */
+  requestAllFollowUps: () => () => void;
+  /**
+   * Visits, purchases, reviews, invoices and "not bought yet" records are not read in full either: a customer's own
+   * come with their file, recent visits and open reviews are always followed, and a screen that needs them all says so.
+   */
+  requestAll: (kind: DataKind) => () => void;
+  /** Adds customers that were read elsewhere (a page of results) so they can be opened and edited. */
+  injectLeads: (rows: Lead[]) => void;
+  /** Keeps one customer live while it is on screen. Returns the stop function. */
+  watchLead: (id: string) => () => void;
+  /** True once every customer carries the keys the database search uses. */
+  searchIndexReady: boolean;
+  /** Developer / top management: brings every customer's search keys up to date (reads them all once). */
+  reindexSearch: (only?: { customers?: boolean; visits?: boolean }) => Promise<{ customers: number; fixed: number; visits: number; visitsFixed: number }>;
+  /** Adds visits that were read elsewhere (a page of results) so they behave like any other. */
+  injectVisits: (rows: Visit[]) => void;
+  /** True once every visit carries the keys the database search uses. */
+  visitSearchReady: boolean;
   visits: Visit[];
   followUps: FollowUp[];
   bookings: Booking[];
   timelineEvents: TimelineEvent[];
   auditLogs: AuditLog[];
   distributionRule: DistributionRule;
+  /** The plan the company is on (how many branches it may have). Only the developer changes it. */
+  license: License;
+  setLicense: (l: License) => void;
   departmentEntities: DepartmentEntity[];
   jobPositions: JobPosition[];
   purchaseCategories: PurchaseCategory[];
@@ -197,7 +251,6 @@ export interface CRMContextType {
 
   // Booking Operations
   addBooking: (booking: Omit<Booking, "id" | "createdAt">) => Booking;
-  completeBooking: (bookingId: string, deliveredAt?: string) => void;
   addNotBoughtRecord: (
     data: Omit<NotBoughtRecord, "id" | "createdAt" | "agentName">,
   ) => NotBoughtRecord;
@@ -206,6 +259,8 @@ export interface CRMContextType {
   addUser: (user: Omit<User, "id" | "createdAt">) => User;
   updateUser: (id: string, updates: Partial<User>) => void;
   toggleUserActive: (id: string) => void;
+  /** Developer only: removes the staff record, its access record and its sign-in account. */
+  deleteUser: (id: string) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: string[]) => void;
   addBranch: (branch: Omit<Branch, "id">) => Branch;
   updateBranch: (id: string, updates: Partial<Branch>) => void;
@@ -213,6 +268,17 @@ export interface CRMContextType {
   updateTeam: (id: string, updates: Partial<Team>) => void;
 
   // Timeline & Audit
+  /**
+   * Customer history is read only for customers on screen. Call while a customer is shown; the returned
+   * function stops it. `timelineEvents` holds the history of the customers currently watched.
+   */
+  watchCustomerHistory: (leadId: string) => () => void;
+  /** Whether the history of a watched customer has arrived (so summaries don't run on a half-loaded file). */
+  isCustomerHistoryLoaded: (leadId: string) => boolean;
+  /** The audit log is read only once a screen asks for it, newest first, a page at a time. */
+  requestAuditLogs: () => void;
+  loadMoreAuditLogs: () => void;
+  auditLogsHasMore: boolean;
   addTimelineEvent: (event: Omit<TimelineEvent, "id" | "timestamp">) => void;
   logAudit: (
     action: string,
@@ -230,53 +296,56 @@ const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = "almasar_crm_v1_";
 
-function loadStorage<T>(key: string, fallback: T): T {
-  try {
-    const data = localStorage.getItem(STORAGE_PREFIX + key);
-    return data ? JSON.parse(data) : fallback;
-  } catch {
-    return fallback;
-  }
+// Customer data is never copied to the browser's disk: Firestore is the only source of truth and it
+// enforces who may read what. These helpers stay so every collection keeps one place to start from.
+function loadStorage<T>(_key: string, fallback: T): T {
+  return fallback;
 }
 
-function saveStorage<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
-  } catch (e) {
-    console.error("Failed to save to localStorage", e);
-  }
+function saveStorage<T>(_key: string, _value: T) {
+  /* intentionally not persisted */
 }
+
+/** The collections that are read a part at a time and in full only on request. */
+export type DataKind = "leads" | "followUps" | "visits" | "bookings" | "reviews" | "notBought" | "invoices";
+
+/** Follow-ups that are not finished: what the dashboard, the badge and the daily list work from. */
+const OPEN_FOLLOWUP_STATUSES = ["due", "upcoming", "overdue"];
+/** Newest notifications kept live (older ones are long handled). */
+const NOTIFICATIONS_WINDOW = 200;
+/** Audit log rows read per page. */
+const AUDIT_PAGE = 300;
 
 export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [users, setUsers] = useState<User[]>(() =>
-    loadStorage<User[]>("users", initialUsers).map(normalizeUser),
+    loadStorage<User[]>("users", []).map(normalizeUser),
   );
   const [companies, setCompanies] = useState<Company[]>(() =>
-    loadStorage("companies", initialCompanies),
+    loadStorage<Company[]>("companies", []),
   );
   const [governorates, setGovernorates] = useState<Governorate[]>(() =>
-    loadStorage("governorates", initialGovernorates),
+    loadStorage<Governorate[]>("governorates", []),
   );
   const [warehouses, setWarehouses] = useState<Warehouse[]>(() =>
-    loadStorage("warehouses", initialWarehouses),
+    loadStorage<Warehouse[]>("warehouses", []),
   );
   const [branches, setBranches] = useState<Branch[]>(() =>
-    loadStorage("branches", initialBranches),
+    loadStorage<Branch[]>("branches", []),
   );
   const [teams, setTeams] = useState<Team[]>(() =>
-    loadStorage("teams", initialTeams),
+    loadStorage<Team[]>("teams", []),
   );
   const [departmentEntities, setDepartmentEntities] = useState<
     DepartmentEntity[]
-  >(() => loadStorage("departments", initialDepartments));
+  >(() => loadStorage<DepartmentEntity[]>("departments", []));
   const [jobPositions, setJobPositions] = useState<JobPosition[]>(() =>
-    loadStorage("job_positions", initialJobPositions),
+    loadStorage<JobPosition[]>("job_positions", []),
   );
   const [purchaseCategories, setPurchaseCategories] = useState<
     PurchaseCategory[]
-  >(() => loadStorage("purchase_categories", initialPurchaseCategories));
+  >(() => loadStorage("purchase_categories", purchaseCategoryList.map((c) => ({ ...c, code: c.id.replace("cat-", "").toUpperCase(), active: true }))));
   const [brokers, setBrokers] = useState<BrokerEntity[]>(() =>
     loadStorage("brokers", []),
   );
@@ -287,12 +356,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     loadStorage("notifications", []),
   );
   const [courses, setCourses] = useState<Course[]>(() =>
-    loadStorage("courses", initialCourses),
+    loadStorage<Course[]>("courses", []),
   );
   const [notBoughtRecords, setNotBoughtRecords] = useState<NotBoughtRecord[]>(
     () => loadStorage("not_bought", []),
   );
   useEffect(() => saveStorage("not_bought", notBoughtRecords), [notBoughtRecords]);
+  const [reminderDone, setReminderDone] = useState<ReminderDone[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[]>([]);
+  const [reviewRequests, setReviewRequests] = useState<ReviewRequest[]>([]);
+  const [reviewNotes, setReviewNotes] = useState<ReviewNote[]>([]);
   const [leads, setLeads] = useState<Lead[]>(() =>
     loadStorage("leads", []),
   );
@@ -311,6 +384,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() =>
     loadStorage("audit", []),
   );
+  const [license, setLicense] = useState<License>(defaultLicense);
   const [distributionRule, setDistributionRule] = useState<DistributionRule>(
     () =>
       loadStorage("dist_rule", {
@@ -333,38 +407,219 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       "تحديث مصفوفة الصلاحيات",
       "permissions",
       "roles",
-      "تم تحديث صلاحيات الوظائف بواسطة مدير عام المؤسسة",
+      "تم تحديث صلاحيات الوظائف بواسطة صاحب البيزنس",
     );
   };
 
-  // Firestore is the single source of truth (localStorage is only a warm cache)
+  // What this person may read. The security rules enforce the same scope on the server.
+  const authForScope = useAuth().profile;
+  const scope = useMemo(
+    () =>
+      scopesFor(
+        authForScope
+          ? { role: authForScope.role, userId: authForScope.userId, branchId: authForScope.branchId, supervisedBranchIds: authForScope.supervisedBranchIds }
+          : null,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [authForScope?.role, authForScope?.userId, authForScope?.branchId, JSON.stringify(authForScope?.supervisedBranchIds ?? [])],
+  );
+
+  // Customer history (the largest collection) is read per customer on screen, not all at once.
+  const [watchedLeads, setWatchedLeads] = useState<Record<string, number>>({});
+  const watchCustomerHistory = useCallback((leadId: string) => {
+    const step = (d: number) =>
+      setWatchedLeads((prev) => {
+        const n = (prev[leadId] || 0) + d;
+        const next = { ...prev };
+        if (n > 0) next[leadId] = n;
+        else delete next[leadId];
+        return next;
+      });
+    step(1);
+    return () => step(-1);
+  }, []);
+  const watchedIds = Object.keys(watchedLeads).sort().join(",");
+  const timelineScope = useMemo(
+    () => narrowScope(scope.timeline, "leadId", watchedIds ? watchedIds.split(",") : []),
+    [scope.timeline, watchedIds],
+  );
+  const [historyLoadedIds, setHistoryLoadedIds] = useState("");
+  const isCustomerHistoryLoaded = useCallback(
+    (leadId: string) => historyLoadedIds.split(",").includes(leadId),
+    [historyLoadedIds],
+  );
+
+  // The audit log is only read when its page asks for it, newest first, a page at a time.
+  const [auditWanted, setAuditWanted] = useState(false);
+  const [auditLimit, setAuditLimit] = useState(AUDIT_PAGE);
+  const requestAuditLogs = useCallback(() => setAuditWanted(true), []);
+  const loadMoreAuditLogs = useCallback(() => setAuditLimit((n) => n + AUDIT_PAGE), []);
+
+  // Customers are read a page at a time. Screens that really need all of them say so; each is counted, so the
+  // whole list is read while any of them is open and no longer followed when none is.
+  const [asked, setAsked] = useState<Record<DataKind, number>>({ leads: 0, followUps: 0, visits: 0, bookings: 0, reviews: 0, notBought: 0, invoices: 0 });
+  const requestAll = useCallback((kind: DataKind) => {
+    setAsked((a) => ({ ...a, [kind]: a[kind] + 1 }));
+    return () => setAsked((a) => ({ ...a, [kind]: a[kind] - 1 }));
+  }, []);
+  const requestAllLeads = useCallback(() => requestAll("leads"), [requestAll]);
+  const wants = { leads: asked.leads > 0, followUps: asked.followUps > 0, visits: asked.visits > 0, bookings: asked.bookings > 0, reviews: asked.reviews > 0, notBought: asked.notBought > 0, invoices: asked.invoices > 0 };
+  const leadsRef = useRef<Lead[]>([]);
+  leadsRef.current = leads;
+  const watched = useMemo(() => (watchedIds ? watchedIds.split(",") : []), [watchedIds]);
+
+  // Follow-ups pile up as they are completed, so only the open ones are followed all the time. The finished ones of a
+  // customer come with their file (see watchCustomerHistory); everything is read only while a screen asks for it.
+  const requestAllFollowUps = useCallback(() => requestAll("followUps"), [requestAll]);
+  const followUpScope = useMemo(
+    () =>
+      wants.followUps
+        ? scope.followUps
+        : unionScopes(scopeWhere(scope.followUps, "status", OPEN_FOLLOWUP_STATUSES), scopeWhere(scope.followUps, "leadId", watched)),
+    [scope.followUps, wants.followUps, watched],
+  );
+
+  // The reminders look back two weeks, so that is how much of the visits and review requests is always followed;
+  // reviews that are waiting for an answer or are complaints are followed whatever their age.
+  const sinceDay = new Date(Date.now() - REMINDER_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const myId = authForScope?.userId;
+  const visitScope = useMemo(
+    () =>
+      wants.visits
+        ? scope.visits
+        : unionScopes(
+            myId ? scopeAnd(scope.visits, [["receivedByAgentId", "==", myId], ["date", ">=", sinceDay]]) : "none",
+            scopeWhere(scope.visits, "linkedLeadId", watched),
+          ),
+    [scope.visits, wants.visits, watched, myId, sinceDay],
+  );
+  const reviewScope = useMemo(
+    () =>
+      wants.reviews
+        ? scope.reviews
+        : unionScopes(
+            scopeAnd(scope.reviews, [["status", "==", "sent"]]),
+            scopeAnd(scope.reviews, [["sentAt", ">=", sinceDay]]),
+            scopeAnd(scope.reviews, [["answeredAt", ">=", sinceDay]]),
+            scopeAnd(scope.reviews, [["isComplaint", "==", true]]),
+            scopeAnd(scope.reviews, [["ai.kind", "==", "complaint"]]),
+            scopeAnd(scope.reviews, [["response.rating", "<=", 2]]),
+            scopeWhere(scope.reviews, "leadId", watched),
+          ),
+    [scope.reviews, wants.reviews, watched, sinceDay],
+  );
+  const bookingScope = useMemo(() => (wants.bookings ? scope.bookings : scopeWhere(scope.bookings, "leadId", watched)), [scope.bookings, wants.bookings, watched]);
+  const notBoughtScope = useMemo(() => (wants.notBought ? scope.notBought : scopeWhere(scope.notBought, "leadId", watched)), [scope.notBought, wants.notBought, watched]);
+  const invoiceScope = useMemo(() => (wants.invoices ? scope.invoices : scopeWhere(scope.invoices, "leadId", watched)), [scope.invoices, wants.invoices, watched]);
+
+  // Only top management may write the shared setup (structure, catalogue, settings), so only they seed it.
+  const topWriter = !!authForScope && ["admin", "general_manager"].includes(authForScope.role);
+
+  // Firestore is the single source of truth
   useFirestoreCollection("users", users, setUsers, {
-    seedIfEmpty: true,
+    scope: scope.users,
+    seedIfEmpty: topWriter,
     transform: normalizeUser,
   });
-  useFirestoreCollection("companies", companies, setCompanies, { seedIfEmpty: true });
-  useFirestoreCollection("governorates", governorates, setGovernorates, { seedIfEmpty: true });
-  useFirestoreCollection("warehouses", warehouses, setWarehouses, { seedIfEmpty: true });
-  useFirestoreCollection("branches", branches, setBranches, { seedIfEmpty: true });
-  useFirestoreCollection("teams", teams, setTeams, { seedIfEmpty: true });
-  useFirestoreCollection("departments", departmentEntities, setDepartmentEntities, { seedIfEmpty: true });
-  useFirestoreCollection("jobPositions", jobPositions, setJobPositions, { seedIfEmpty: true });
-  useFirestoreCollection("purchaseCategories", purchaseCategories, setPurchaseCategories, { seedIfEmpty: true });
-  useFirestoreCollection("courses", courses, setCourses, { seedIfEmpty: true });
-  useFirestoreCollection("brokers", brokers, setBrokers);
-  useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices);
-  useFirestoreCollection("notifications", notifications, setNotifications);
-  useFirestoreCollection("leads", leads, setLeads);
-  useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords);
-  useFirestoreCollection("visits", visits, setVisits);
-  useFirestoreCollection("followUps", followUps, setFollowUps);
-  useFirestoreCollection("bookings", bookings, setBookings);
-  useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents);
-  useFirestoreCollection("activityLogs", auditLogs, setAuditLogs);
-  useFirestoreDocument(["settings", "distribution"], distributionRule, setDistributionRule);
+  useFirestoreCollection("companies", companies, setCompanies, { seedIfEmpty: topWriter });
+  useFirestoreCollection("governorates", governorates, setGovernorates, { seedIfEmpty: topWriter });
+  useFirestoreCollection("warehouses", warehouses, setWarehouses, { seedIfEmpty: topWriter });
+  useFirestoreCollection("branches", branches, setBranches, { seedIfEmpty: topWriter });
+  useFirestoreCollection("teams", teams, setTeams, { seedIfEmpty: topWriter });
+  useFirestoreCollection("departments", departmentEntities, setDepartmentEntities, { seedIfEmpty: topWriter });
+  useFirestoreCollection("jobPositions", jobPositions, setJobPositions, { seedIfEmpty: topWriter });
+  useFirestoreCollection("purchaseCategories", purchaseCategories, setPurchaseCategories, { seedIfEmpty: topWriter });
+  useFirestoreCollection("brokers", brokers, setBrokers, { scope: scope.brokers });
+  useFirestoreCollection("purchaseInvoices", purchaseInvoices, setPurchaseInvoices, { scope: invoiceScope, lazy: true });
+  useFirestoreCollection("notifications", notifications, setNotifications, {
+    scope: scope.notifications,
+    window: { orderBy: "createdAt", limit: NOTIFICATIONS_WINDOW },
+  });
+  const { inject: syncInjectLeads, watchDoc: watchLead } = useFirestoreCollection("leads", leads, setLeads, {
+    scope: wants.leads ? scope.leads : "none",
+    lazy: true,
+    beforeWrite: (l) => ({ ...l, searchKeys: leadSearchKeys(l) }),
+  });
+  const injectLeads = useCallback(
+    (rows: Lead[]) => {
+      // Lookups made in the same breath as the injection (before the next render) must already see these customers.
+      const have = new Set(leadsRef.current.map((l) => l.id));
+      const fresh = rows.filter((r) => !have.has(r.id));
+      if (fresh.length) leadsRef.current = [...fresh, ...leadsRef.current];
+      syncInjectLeads(rows);
+    },
+    [syncInjectLeads],
+  );
+
+  // The database search needs every customer to carry its search keys. Customers saved from now on get them with
+  // every save; the ones saved earlier are indexed once, by top management, and the screens use the plain list
+  // until that is done.
+  // null until the marker has been read: indexing must not start on a guess.
+  const [indexMarker, setIndexMarker] = useState<{ customers: number; visits: number } | null>(null);
+  useEffect(
+    () =>
+      onSnapshot(
+        doc(db, "settings", "searchIndex"),
+        (snap) => {
+          if (snap.metadata.fromCache && !snap.exists()) return; // wait for the server before concluding it is missing
+          const d = snap.exists() ? snap.data() : {};
+          setIndexMarker({ customers: Number(d.version) || 0, visits: Number(d.visits) || 0 });
+        },
+        () => setIndexMarker({ customers: 0, visits: 0 }),
+      ),
+    [],
+  );
+  const searchIndexVersion = indexMarker?.customers ?? 0;
+  const visitIndexVersion = indexMarker?.visits ?? 0;
+  const indexing = useRef(false);
+  const reindexSearch = useCallback(async (only: { customers?: boolean; visits?: boolean } = { customers: true, visits: true }) => {
+    const fix = async (name: string, rows: { id: string }[], keysOf: (r: never) => string[], isCurrent: (r: never) => boolean) => {
+      const stale = rows.filter((r) => !isCurrent(r as never));
+      for (let i = 0; i < stale.length; i += 400) {
+        const batch = writeBatch(db);
+        for (const r of stale.slice(i, i + 400)) batch.set(doc(db, name, r.id), { searchKeys: keysOf(r as never) }, { merge: true });
+        await batch.commit();
+      }
+      return stale.length;
+    };
+    // Only what is not indexed yet is read: a part already done is left alone.
+    const all = only.customers ? await fetchScoped<Lead>("leads", "all") : [];
+    const fixed = await fix("leads", all, leadSearchKeys, (l) => keysAreCurrent(l as Lead & { searchKeys?: string[] }));
+    const allVisits = only.visits ? await fetchScoped<Visit>("visits", "all") : [];
+    const visitsFixed = await fix("visits", allVisits, visitSearchKeys, (v: Visit) => keysAreCurrent({ ...visitParty(v), searchKeys: v.searchKeys }));
+    await setDoc(doc(db, "settings", "searchIndex"), { version: SEARCH_INDEX_VERSION, visits: SEARCH_INDEX_VERSION, customers: all.length, visitRows: allVisits.length, at: new Date().toISOString() });
+    return { customers: all.length, fixed, visits: allVisits.length, visitsFixed };
+  }, []);
+  useEffect(() => {
+    if (!topWriter || indexMarker === null || (searchIndexVersion >= SEARCH_INDEX_VERSION && visitIndexVersion >= SEARCH_INDEX_VERSION) || indexing.current) return;
+    indexing.current = true;
+    reindexSearch({ customers: searchIndexVersion < SEARCH_INDEX_VERSION, visits: visitIndexVersion < SEARCH_INDEX_VERSION }).catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
+  }, [topWriter, indexMarker, searchIndexVersion, visitIndexVersion, reindexSearch]);
+  useFirestoreCollection("notBoughtRecords", notBoughtRecords, setNotBoughtRecords, { scope: notBoughtScope, lazy: true });
+  useFirestoreCollection("reminderDone", reminderDone, setReminderDone, { scope: scope.reminderDone });
+  useFirestoreCollection("aiSuggestions", aiSuggestions, setAiSuggestions, { scope: scope.aiSuggestions });
+  useFirestoreCollection("reviewRequests", reviewRequests, setReviewRequests, { scope: reviewScope, lazy: true });
+  useFirestoreCollection("reviewNotes", reviewNotes, setReviewNotes, { scope: scope.reviewNotes });
+  const { inject: injectVisits } = useFirestoreCollection("visits", visits, setVisits, {
+    scope: visitScope,
+    lazy: true,
+    beforeWrite: (v) => ({ ...v, searchKeys: visitSearchKeys(v) }),
+  });
+  useFirestoreCollection("followUps", followUps, setFollowUps, { scope: followUpScope });
+  useFirestoreCollection("bookings", bookings, setBookings, { scope: bookingScope, lazy: true });
+  useFirestoreCollection("timelineEvents", timelineEvents, setTimelineEvents, {
+    scope: timelineScope,
+    onLoaded: () => setHistoryLoadedIds(watchedIds),
+  });
+  useFirestoreCollection("activityLogs", auditLogs, setAuditLogs, {
+    scope: auditWanted ? scope.audit : "none",
+    window: { orderBy: "timestamp", limit: auditLimit },
+  });
+  useFirestoreDocument(["settings", "license"], license, setLicense, { canWrite: authForScope?.role === "admin" });
+  useFirestoreDocument(["settings", "distribution"], distributionRule, setDistributionRule, { canWrite: topWriter });
   useFirestoreDocument(["settings", "permissions"], permissionMatrix, (m) =>
     setPermissionMatrix(sanitizeMatrix(m)),
-  );
+  { canWrite: topWriter });
 
   // The signed-in user comes from Firebase Auth; role/branch/active are the
   // server-trusted values from authProfiles, not whatever the users doc says.
@@ -384,6 +639,71 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       active: p.active,
     });
   }, [profile, users]);
+
+  // Top management gets the full list of Egyptian governorates (idempotent: ids are fixed, existing ones are kept).
+  useEffect(() => {
+    if (currentUser.role !== "admin" && currentUser.role !== "general_manager") return;
+    const missing = egyptGovernorates.filter(
+      (e) => !governorates.some((g) => g.id === e.id || findEgyptGovernorate(g.name)?.key === e.key),
+    );
+    if (!missing.length) return;
+    setGovernorates((prev) => [
+      ...prev,
+      ...missing.map((e) => ({ id: e.id, name: `محافظة ${e.name}`, code: e.key.toUpperCase(), region: e.region, phone: "", active: true })),
+    ]);
+  }, [currentUser.role, governorates]);
+
+  const profilesBackfilled = useRef(false);
+  // One-time backfill, run by top management: older rows get the fields the security rules scope on.
+  // Safe to run repeatedly; it only fills what is missing. It works from the customers loaded at that moment.
+  useEffect(() => {
+    if (!authForScope || !seesAll({ role: authForScope.role, userId: authForScope.userId, supervisedBranchIds: authForScope.supervisedBranchIds })) return;
+    if (!leads.length) return;
+    const byLead = new Map(leads.map((l) => [l.id, l]));
+    if (timelineEvents.some((e) => !e.branchId && byLead.has(e.leadId)))
+      setTimelineEvents((prev) =>
+        prev.map((e) => {
+          const l = byLead.get(e.leadId);
+          return !e.branchId && l ? { ...e, branchId: l.branchId, leadOwnerId: l.assignedAgentId } : e;
+        }),
+      );
+    const byReq = new Map(reviewRequests.map((r) => [r.id, r]));
+    if (reviewNotes.some((n) => !n.branchId && byReq.has(n.requestId)))
+      setReviewNotes((prev) =>
+        prev.map((n) => {
+          const r = byReq.get(n.requestId);
+          return !n.branchId && r ? { ...n, branchId: r.branchId, agentId: r.agentId } : n;
+        }),
+      );
+    const brokerBranches = new Map<string, Set<string>>();
+    const note = (id: string | undefined, branch: string | undefined) => {
+      if (!id || !branch) return;
+      if (!brokerBranches.has(id)) brokerBranches.set(id, new Set());
+      brokerBranches.get(id)!.add(branch);
+    };
+    leads.forEach((l) => note(l.brokerId, l.branchId));
+    visits.forEach((v) => note(v.brokerId, v.branchId));
+    purchaseInvoices.forEach((i) => note(i.brokerId, i.branchId));
+    if (brokers.some((b) => [...(brokerBranches.get(b.id) || [])].some((x) => !(b.branchIds || []).includes(x))))
+      setBrokers((prev) =>
+        prev.map((b) => {
+          const want = [...new Set([...(b.branchIds || []), ...(brokerBranches.get(b.id) || [])])];
+          return want.length !== (b.branchIds || []).length ? { ...b, branchIds: want } : b;
+        }),
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authForScope?.role, leads.length > 0, timelineEvents.length, reviewNotes.length, brokers.length]);
+  // Supervisors' branch lists must be on their server-trusted profile for the rules to see them.
+  useEffect(() => {
+    if (!authForScope || !seesAll({ role: authForScope.role, userId: authForScope.userId, supervisedBranchIds: authForScope.supervisedBranchIds })) return;
+    if (profilesBackfilled.current || !users.length) return;
+    profilesBackfilled.current = true;
+    users.forEach((u) => {
+      if (u.authUid && u.supervisedBranchIds?.length)
+        updateDoc(doc(db, "authProfiles", u.authUid), { supervisedBranchIds: u.supervisedBranchIds }).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authForScope?.role, users.length > 0]);
 
   const [viewAsUser, setViewAsUser] = useState<User | null>(null);
 
@@ -447,13 +767,262 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
+  // Customers created in this render are not in `leads` yet; remember where they belong.
+  const justCreated = useRef(new Map<string, { branchId: string; assignedAgentId?: string }>());
   const addTimelineEvent = (event: Omit<TimelineEvent, "id" | "timestamp">) => {
+    const lead = leadsRef.current.find((l) => l.id === event.leadId) || justCreated.current.get(event.leadId);
     const newEv: TimelineEvent = {
+      branchId: lead?.branchId,
+      leadOwnerId: lead?.assignedAgentId,
       ...event,
       id: `tle-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       timestamp: new Date().toISOString(),
     };
     setTimelineEvents((prev) => [newEv, ...prev]);
+  };
+
+  // ---- Customer reviews ----
+  const requestReview: CRMContextType["requestReview"] = ({ lead, subjectKind, subjectId, subjectLabel }) => {
+    // The rating belongs to who served the customer: the employee who received that visit, else the customer's own employee.
+    const visit = subjectKind === "visit" ? visits.find((v) => v.id === subjectId) : undefined;
+    // A salesperson always asks for their own customers, which the security rules require.
+    const salesperson = ["sales_agent", "team_leader"].includes(effectiveUser.role);
+    const servedBy = salesperson ? effectiveUser : users.find((u) => u.id === visit?.receivedByAgentId) || users.find((u) => u.id === lead.assignedAgentId) || effectiveUser;
+    const req: ReviewRequest = {
+      id: newReviewToken(),
+      leadId: lead.id,
+      leadName: lead.name,
+      branchId: lead.branchId,
+      branchName: lead.branchName,
+      agentId: servedBy.id,
+      agentName: servedBy.name,
+      subjectKind,
+      subjectId,
+      subjectLabel,
+      sentAt: new Date().toISOString(),
+      status: "sent",
+    };
+    setReviewRequests((prev) => [req, ...prev]);
+    addTimelineEvent({
+      leadId: lead.id,
+      authorId: req.agentId,
+      authorName: req.agentName || "",
+      type: "review_requested",
+      title: "تم إرسال طلب تقييم للعميل",
+      details: subjectLabel,
+    });
+    return req;
+  };
+  // One time: every purchase made before this change counts as delivered on its purchase date, and gets its post-sale
+  // follow-ups that are still ahead. Done by the developer's session only, with fixed ids, and marked done in settings.
+  const latest = useRef({ bookings, followUps });
+  latest.current = { bookings, followUps };
+  const backfillStarted = useRef(false);
+  // Purchases and follow-ups are not read in full any more, so the developer's session asks for them only while this
+  // one-time job has not been marked done.
+  const [postSalePending, setPostSalePending] = useState(false);
+  useEffect(() => {
+    if (authForScope?.role !== "admin") return;
+    getDoc(doc(db, "settings", "postSaleBackfill"))
+      .then((s) => setPostSalePending(!s.exists()))
+      .catch(() => {});
+  }, [authForScope?.role]);
+  useEffect(() => {
+    if (!postSalePending) return;
+    const stops = [requestAll("bookings"), requestAll("followUps")];
+    return () => stops.forEach((stop) => stop());
+  }, [postSalePending, requestAll]);
+  useEffect(() => {
+    if (authForScope?.role !== "admin" || !postSalePending || backfillStarted.current || !bookings.length) return;
+    backfillStarted.current = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const flag = doc(db, "settings", "postSaleBackfill");
+        if ((await getDoc(flag)).exists()) return;
+        const { bookings: bs, followUps: fs } = latest.current;
+        const open = bs.filter((b) => b.bookingStatus !== "cancelled");
+        const created = open.flatMap((b) => {
+          const have = new Set(fs.filter((f) => f.bookingId === b.id && f.category === "post_sale").map((f) => f.milestone));
+          // A purchase that already has its post-sale follow-ups was delivered and scheduled before: leave it alone.
+          return have.size ? [] : postSaleFollowUps(b, have);
+        });
+        setBookings((prev) => prev.map((b) => (b.bookingStatus !== "cancelled" && !b.deliveredAt ? { ...b, bookingStatus: "completed", deliveredAt: b.bookingDate } : b)));
+        if (created.length) setFollowUps((prev) => [...created, ...prev]);
+        await setDoc(flag, { done: true, at: new Date().toISOString(), purchases: open.length, followUps: created.length });
+        setPostSalePending(false);
+      } catch (e) {
+        console.error("post-sale backfill failed", e);
+        backfillStarted.current = false;
+      }
+    }, 8000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authForScope?.role, postSalePending, bookings.length > 0]);
+
+  const saveSuggestions: CRMContextType["saveSuggestions"] = (items) => {
+    const made = items.map((i) => ({ ...i, id: `sug-${crypto.randomUUID()}`, createdAt: new Date().toISOString(), dayKey: today() }));
+    setAiSuggestions((prev) => [...made, ...prev]);
+    return made;
+  };
+  /** The salesperson's decision on a suggestion: accepting schedules the follow-up and writes it into the customer's history. */
+  const decideSuggestion: CRMContextType["decideSuggestion"] = (id, decision) => {
+    const s = aiSuggestions.find((x) => x.id === id);
+    if (!s || s.status !== "pending") return;
+    const at = new Date().toISOString();
+    const who = { decidedAt: at, decidedById: effectiveUser.id, decidedByName: effectiveUser.name };
+    if (!decision.accept) {
+      setAiSuggestions((prev) => prev.map((x) => (x.id === id ? { ...x, ...who, status: "rejected", rejectReason: decision.reason } : x)));
+      logAudit("رفض اقتراح زكي", "اقتراح", id, `${s.name}: ${decision.reason || "من غير سبب"}`);
+      return;
+    }
+    const lead = s.leadId ? leadsRef.current.find((l) => l.id === s.leadId) : undefined;
+    const broker = s.brokerId ? brokers.find((b) => b.id === s.brokerId) : undefined;
+    const fu = addFollowUp({
+      leadId: s.leadId ?? "",
+      brokerId: s.brokerId,
+      leadName: s.name,
+      leadPhone: lead?.phone ?? broker?.phone ?? "",
+      assignedAgentId: s.agentId,
+      branchId: s.branchId,
+      scheduledAt: decision.date,
+      reason: decision.reason,
+      type: decision.type,
+      notes: s.evidence ? `اقتراح زكي: ${s.evidence}` : "",
+      origin: "zaki",
+      suggestionId: s.id,
+    });
+    setAiSuggestions((prev) => prev.map((x) => (x.id === id ? { ...x, ...who, status: "accepted", finalDate: decision.date, finalReason: decision.reason, edited: decision.edited, followUpId: fu.id } : x)));
+    if (s.leadId)
+      addTimelineEvent({
+        leadId: s.leadId,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "followup_created",
+        title: `زكي اقترح متابعة، و${effectiveUser.name} وافق وجدولها يوم ${decision.date}`,
+        details: `السبب: ${decision.reason}.${s.evidence ? ` اللي اتقال: «${s.evidence}»${s.source ? ` (${s.source})` : ""}.` : ""}${decision.edited ? " السيلز عدّل تفاصيل الاقتراح قبل الجدولة." : ""}`,
+      });
+    logAudit("قبول اقتراح زكي", "اقتراح", id, `${s.name}: متابعة يوم ${decision.date}`);
+  };
+  /** A reminder the salesperson says is done: it stays done, and the system will not bring it back. */
+  const markReminderDone = (taskId: string, branchId: string) => {
+    if (reminderDone.some((r) => r.id === taskId)) return;
+    setReminderDone((prev) => [{ id: taskId, branchId, agentId: effectiveUser.id, agentName: effectiveUser.name, doneAt: new Date().toISOString() }, ...prev]);
+  };
+  /** The same ask for a broker who came on a visit: it is kept with the broker, never on a customer's file. */
+  const requestBrokerReview: CRMContextType["requestBrokerReview"] = ({ broker, branchId, subjectId, subjectLabel }) => {
+    const visit = visits.find((v) => v.id === subjectId);
+    const salesperson = ["sales_agent", "team_leader"].includes(effectiveUser.role);
+    const servedBy = salesperson ? effectiveUser : users.find((u) => u.id === visit?.receivedByAgentId) || effectiveUser;
+    const req: ReviewRequest = {
+      id: newReviewToken(),
+      leadId: "",
+      leadName: broker.name,
+      partyKind: "broker",
+      brokerId: broker.id,
+      branchId,
+      branchName: branches.find((b) => b.id === branchId)?.name,
+      agentId: servedBy.id,
+      agentName: servedBy.name,
+      subjectKind: "visit",
+      subjectId,
+      subjectLabel,
+      sentAt: new Date().toISOString(),
+      status: "sent",
+    };
+    setReviewRequests((prev) => [req, ...prev]);
+    logAudit("طلب تقييم من وسيط", "وسيط", broker.id, `${subjectLabel}`);
+    return req;
+  };
+  /**
+   * A customer recommended someone: register them as a prospect under the same branch and employee, linked to the
+   * customer who recommended them, and schedule the first call. A number we already have is not added twice.
+   */
+  const addReferralLead: CRMContextType["addReferralLead"] = ({ fromLeadId, name, phone, reviewId, followUpId }) => {
+    const from = leadsRef.current.find((l) => l.id === fromLeadId);
+    if (!from) throw new Error("العميل اللي رشّحه مش موجود.");
+    const person = name.trim();
+    if (!person || !isReferralPhone(phone)) throw new Error("اكتب اسم المرشَّح ورقم هاتف صحيح.");
+    const mark = (leadId: string) => {
+      if (reviewId) setReviewRequests((prev) => prev.map((r) => (r.id === reviewId ? { ...r, referralLeadId: leadId } : r)));
+      if (followUpId) setFollowUps((prev) => prev.map((f) => (f.id === followUpId ? { ...f, referralLeadId: leadId } : f)));
+    };
+    const existing = leadsRef.current.find((l) => [l.phone, l.whatsappPhone || ""].some((p) => p && phoneKey(p) === phoneKey(phone)));
+    if (existing) {
+      addTimelineEvent({
+        leadId: from.id,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "note",
+        title: `رشّح ${person} (مسجّل عندنا بالفعل)`,
+        details: `الرقم ده تبع العميل ${existing.name}.`,
+      });
+      mark(existing.id);
+      return { lead: existing, created: false };
+    }
+    const agentId = from.assignedAgentId || effectiveUser.id;
+    const lead = addLead({
+      name: person,
+      phone: phone.trim(),
+      whatsappPhone: phone.trim(),
+      isSameWhatsApp: true,
+      source: "referral",
+      customerCategory: "individual",
+      branchId: from.branchId,
+      assignedAgentId: agentId,
+      status: "uncontacted",
+      classification: "B",
+      department: from.department,
+      interests: from.interests?.length ? from.interests : [from.department],
+      departmentName: from.departmentName,
+      notes: `رشّحه العميل ${from.name}`,
+      referredByLeadId: from.id,
+      referredByName: from.name,
+    });
+    addFollowUp({
+      leadId: lead.id,
+      leadName: lead.name,
+      leadPhone: lead.phone,
+      assignedAgentId: agentId,
+      branchId: lead.branchId,
+      origin: "auto",
+      scheduledAt: addToDate(today(), { days: REFERRAL_FOLLOWUP_DAYS }),
+      reason: `كلّم ${lead.name}: رشّحه ${from.name}. افتح الكلام بـ«${from.name} قالنا إنك ممكن تحتاج شغل» وانسق معاه زيارة للفرع.`,
+      type: "call",
+      notes: "",
+    });
+    addTimelineEvent({
+      leadId: from.id,
+      authorId: effectiveUser.id,
+      authorName: effectiveUser.name,
+      type: "note",
+      title: `رشّح عميل جديد: ${person}`,
+      details: "اتسجل كعميل محتمل وهيتم التواصل معاه.",
+    });
+    mark(lead.id);
+    return { lead, created: true };
+  };
+  const patchReview = (id: string, patch: Partial<ReviewRequest>) =>
+    setReviewRequests((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const markReviewReminderSent = (id: string) => patchReview(id, { reminderSentAt: new Date().toISOString() });
+  const cancelReviewRequest = (id: string, reason: string) =>
+    patchReview(id, { status: "cancelled", cancelReason: reason, cancelledAt: new Date().toISOString() });
+  const saveReviewAnalysis = (id: string, ai: ReviewAnalysis) => patchReview(id, { ai });
+  const addReviewNote = (requestId: string, text: string, kind: ReviewNote["kind"]) => {
+    // The signed-in person writes the note (the rules check this), even while previewing another role.
+    setReviewNotes((prev) => [
+      {
+        id: `rvn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        requestId,
+        branchId: reviewRequests.find((r) => r.id === requestId)?.branchId,
+        agentId: reviewRequests.find((r) => r.id === requestId)?.agentId,
+        text,
+        kind,
+        byId: currentUser.id,
+        byName: currentUser.name,
+        at: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
   };
 
   // Duplicate Check
@@ -465,7 +1034,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const cleanPhone = phone.replace(/\D/g, "");
     if (!cleanPhone || cleanPhone.length < 6) return [];
 
-    return leads.filter((l) => {
+    return leadsRef.current.filter((l) => {
       if (excludeId && l.id === excludeId) return false;
       const mainClean = l.phone ? l.phone.replace(/\D/g, "") : "";
       const waClean = l.whatsappPhone ? l.whatsappPhone.replace(/\D/g, "") : "";
@@ -482,21 +1051,25 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const branch = branches.find((b) => b.id === leadData.branchId);
     const agent = users.find((u) => u.id === leadData.assignedAgentId);
 
-    const randomCode = Math.floor(100000 + Math.random() * 900000);
-    const generatedEvalUrl =
-      leadData.uniqueEvaluationUrl ||
-      `https://eval.beherypaints.com/rate?leadId=${id}&client=${encodeURIComponent(leadData.name)}&code=${randomCode}`;
-
     const newLead: Lead = {
       ...leadData,
       id,
       branchName: branch ? branch.name : leadData.branchName,
       assignedAgentName: agent ? agent.name : leadData.assignedAgentName,
       createdAt: new Date().toISOString(),
-      uniqueEvaluationUrl: generatedEvalUrl,
     };
 
     setLeads((prev) => [newLead, ...prev]);
+    justCreated.current.set(id, { branchId: newLead.branchId, assignedAgentId: newLead.assignedAgentId });
+    // A broker linked from another branch now works with this branch too.
+    if (newLead.brokerId)
+      setBrokers((prev) =>
+        prev.map((b) =>
+          b.id === newLead.brokerId && !(b.branchIds || []).includes(newLead.branchId)
+            ? { ...b, branchIds: [...(b.branchIds || []), newLead.branchId] }
+            : b,
+        ),
+      );
 
     addTimelineEvent({
       leadId: id,
@@ -504,7 +1077,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       authorName: effectiveUser.name,
       type: "created",
       title: "إضافة العميل للنظام",
-      details: `تم إضافة العميل بواسطة ${effectiveUser.name} (${effectiveUser.role})، المصدر: ${newLead.source}`,
+      details: `المصدر: ${sourceNames[newLead.source] ?? newLead.source}`,
     });
 
     logAudit(
@@ -517,6 +1090,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const updateLead = (id: string, updates: Partial<Lead>) => {
+    if (!leadsRef.current.some((l) => l.id === id) && !justCreated.current.has(id)) {
+      // Not loaded here (the screen reads customers a page at a time): change only the fields given, on the server.
+      const fields = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
+      updateDoc(doc(db, "leads", id), fields).catch((e) => handleFirestoreError(e, OperationType.WRITE, "leads"));
+      logAudit("تعديل عميل", "عميل", id, `تم تعديل بيانات العميل رقم ${id}`);
+      return;
+    }
     setLeads((prev) =>
       prev.map((l) => {
         if (l.id !== id) return l;
@@ -528,8 +1108,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
             authorId: effectiveUser.id,
             authorName: effectiveUser.name,
             type: "status_change",
-            title: `تحديث حالة العميل إلى (${updates.status})`,
-            details: `تغيرت الحالة من ${l.status} إلى ${updates.status}`,
+            title: `تحديث حالة العميل إلى (${statusNames[updates.status]})`,
+            details: `تغيرت الحالة من ${statusNames[l.status]} إلى ${statusNames[updates.status]}`,
           });
         }
 
@@ -565,6 +1145,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       }),
     );
 
+    // The customer's history stays readable by the new owner. Not all of it is loaded, so it is updated on the server.
+    fetchScoped<TimelineEvent>("timelineEvents", narrowScope(scope.timeline, "leadId", [leadId]))
+      .then((events) =>
+        patchDocs(
+          "timelineEvents",
+          events.map((e) => e.id),
+          newBranchId ? { leadOwnerId: newAgentId, branchId: newBranchId } : { leadOwnerId: newAgentId },
+        ),
+      )
+      .catch((e) => handleFirestoreError(e, OperationType.WRITE, "timelineEvents"));
     // Outstanding work follows the new owner; completed history keeps its original author.
     setFollowUps((prev) =>
       prev.map((task) => {
@@ -588,6 +1178,9 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
       type: "agent_reassigned",
+      // Belongs to the new owner already (the customer list in this render still has the old one).
+      leadOwnerId: newAgentId,
+      ...(newBranchId ? { branchId: newBranchId } : {}),
       title: "إعادة تعيين مسؤول المبيعات",
       details: `تم نقل العميل إلى المسؤول: ${targetAgent?.name || newAgentId}`,
     });
@@ -612,7 +1205,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const agent = users.find((u) => u.id === visitData.receivedByAgentId);
 
     // Auto check duplicate / existing lead
-    const existing = visitData.phone
+    const brokerOnly = visitData.visitorType === "broker";
+    const existing = !brokerOnly && visitData.phone
       ? findDuplicateLeadsByPhone(visitData.phone).filter(
           (l) =>
             l.branchId === visitData.branchId &&
@@ -620,12 +1214,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
               l.assignedAgentId === effectiveUser.id),
         )
       : [];
-    let linkedLeadId =
-      visitData.linkedLeadId ||
-      (existing.length > 0 ? existing[0].id : undefined);
+    let linkedLeadId = brokerOnly
+      ? undefined
+      : visitData.linkedLeadId ||
+        (existing.length > 0 ? existing[0].id : undefined);
 
     // If no lead exists and phone exists, create lead automatically
-    if (!linkedLeadId && visitData.phone && visitData.visitorName) {
+    if (!brokerOnly && !linkedLeadId && visitData.phone && visitData.visitorName) {
       const createdLead = addLead({
         name: visitData.visitorName,
         phone: visitData.phone,
@@ -637,7 +1232,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         assignedAgentName: agent?.name,
         status: visitData.requiresFollowUp ? "needs_followup" : "interested",
         classification: "B",
-        department: visitData.department || "decor",
+        department: visitData.interests?.[0] || visitData.department || "decor",
+        interests: visitData.interests,
+        brokerId: visitData.brokerId,
+        brokerName: visitData.brokerName,
         courseOfInterest: visitData.courseOfInterest,
         locationRating: visitData.locationRating,
         treatmentRating: visitData.treatmentRating,
@@ -666,7 +1264,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         authorName: effectiveUser.name,
         type: "visit",
         title: `تسجيل زيارة فرع (${branch?.name || "مقر الفرع"})`,
-        details: `استقبله الموظف: ${agent?.name}. النتيجة: ${visitData.outcome}. الملاحظات: ${visitData.notes}`,
+        details: [`استقبله الموظف: ${agent?.name}`, `النتيجة: ${visitData.outcome}`, visitData.notes ? `الملاحظات: ${visitData.notes}` : ""].filter(Boolean).join(". "),
       });
 
       if (visitData.requiresFollowUp && visitData.followUpDate) {
@@ -679,9 +1277,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
           assignedAgentName: agent?.name,
           branchId: visitData.branchId,
           scheduledAt: visitData.followUpDate,
-          reason: `متابعة نتيجة زيارة المقر بتاريخ ${visitData.date}`,
+          reason: visitData.followUpReason || `متابعة نتيجة زيارة المقر بتاريخ ${visitData.date}`,
           type: "call",
           notes: visitData.notes,
+          origin: visitData.followUpOrigin,
         });
       }
     }
@@ -720,8 +1319,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
 
     setFollowUps((prev) => [newFollowUp, ...prev]);
 
-    // Update Lead's nextFollowUpDate & status
-    updateLead(followUpData.leadId, {
+    // A follow-up given to someone other than the owner lets them open that customer.
+    const owner = leadsRef.current.find((l) => l.id === followUpData.leadId);
+    const delegatedTo =
+      owner && followUpData.assignedAgentId && followUpData.assignedAgentId !== owner.assignedAgentId && !(owner.delegatedTo || []).includes(followUpData.assignedAgentId)
+        ? [...(owner.delegatedTo || []), followUpData.assignedAgentId]
+        : undefined;
+
+    // A follow-up about a broker has no customer file to update.
+    if (followUpData.leadId) updateLead(followUpData.leadId, {
+      ...(delegatedTo ? { delegatedTo } : {}),
       nextFollowUpDate: [
         ...followUps
           .filter(
@@ -733,19 +1340,21 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         followUpData.scheduledAt,
       ].sort()[0],
       status:
-        leads.find((l) => l.id === followUpData.leadId)?.status === "booked"
+        leadsRef.current.find((l) => l.id === followUpData.leadId)?.status === "booked"
           ? "booked"
           : "needs_followup",
     });
 
-    addTimelineEvent({
-      leadId: followUpData.leadId,
-      authorId: effectiveUser.id,
-      authorName: effectiveUser.name,
-      type: "followup_created",
-      title: `جدولة متابعة جديدة (${followUpData.type})`,
-      details: `موعد المتابعة: ${followUpData.scheduledAt}. السبب: ${followUpData.reason}`,
-    });
+    // A Zaki suggestion writes its own, fuller timeline entry when it is accepted.
+    if (followUpData.leadId && followUpData.origin !== "zaki")
+      addTimelineEvent({
+        leadId: followUpData.leadId,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "followup_created",
+        title: `جدولة متابعة جديدة (${followUpTypeNames[followUpData.type] ?? followUpData.type})`,
+        details: `موعد المتابعة: ${followUpData.scheduledAt}. السبب: ${followUpData.reason}`,
+      });
 
     logAudit(
       "إضافة متابعة",
@@ -779,22 +1388,24 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
           : f,
       ),
     );
-    if (status === "completed" && extra?.satisfactionRating) {
+    if (status === "completed" && extra?.satisfactionRating && original.leadId) {
       updateLead(original.leadId, {
         customerRatingStars: extra.satisfactionRating,
         customerRatingComment: extra.satisfactionComment,
         hasSubmittedRating: true,
       });
     }
-    const lead = leads.find((l) => l.id === original.leadId);
-    addTimelineEvent({
-      leadId: original.leadId,
-      authorId: effectiveUser.id,
-      authorName: effectiveUser.name,
-      type: "followup_result",
-      title: status === "completed" ? "تسجيل نتيجة المتابعة" : "إلغاء متابعة",
-      details: result,
-    });
+    const lead = leadsRef.current.find((l) => l.id === original.leadId);
+    // A follow-up about a broker has no customer history to write into.
+    if (original.leadId)
+      addTimelineEvent({
+        leadId: original.leadId,
+        authorId: effectiveUser.id,
+        authorName: effectiveUser.name,
+        type: "followup_result",
+        title: status === "completed" ? "تسجيل نتيجة المتابعة" : "إلغاء متابعة",
+        details: result,
+      });
     if (lead && status === "completed") {
       const remainingDates = followUps
         .filter(
@@ -833,6 +1444,30 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // Booking Operations
+  /** The post-sale follow-ups still ahead for a purchase, with fixed ids so doing it twice can never double them. */
+  const postSaleFollowUps = (booking: Booking, have: Set<string | undefined>): FollowUp[] => {
+    const lead = leadsRef.current.find((l) => l.id === booking.leadId);
+    const agentId = users.some((u) => u.id === booking.agentId) ? booking.agentId : lead?.assignedAgentId || booking.agentId;
+    return upcomingPostSale(booking.bookingDate, today(), have).map((m) => ({
+      id: `flw-ps-${booking.id}-${m.milestone}`,
+      leadId: booking.leadId,
+      leadName: booking.leadName,
+      leadPhone: booking.leadPhone,
+      assignedAgentId: agentId,
+      assignedAgentName: users.find((u) => u.id === agentId)?.name,
+      branchId: booking.branchId,
+      scheduledAt: m.date,
+      reason: m.reason,
+      type: "call" as const,
+      notes: "",
+      status: (m.date === today() ? "due" : "upcoming") as FollowUp["status"],
+      category: "post_sale" as const,
+      origin: "auto" as const,
+      bookingId: booking.id,
+      milestone: m.milestone,
+    }));
+  };
+
   const addBooking = (
     bookingData: Omit<Booking, "id" | "createdAt">,
   ): Booking => {
@@ -840,28 +1475,42 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const branch = branches.find((b) => b.id === bookingData.branchId);
     const agent = users.find((u) => u.id === bookingData.agentId);
 
+    // Buying means receiving: a purchase is delivered the day it is made.
+    const cancelled = bookingData.bookingStatus === "cancelled";
     const newBooking: Booking = {
       ...bookingData,
       id,
       branchName: branch?.name || bookingData.branchName,
       agentName: agent?.name || bookingData.agentName,
+      bookingStatus: cancelled ? "cancelled" : "completed",
+      ...(cancelled ? {} : { deliveredAt: bookingData.bookingDate }),
       createdAt: new Date().toISOString(),
     };
 
     setBookings((prev) => [newBooking, ...prev]);
+    const post = cancelled ? [] : postSaleFollowUps(newBooking, new Set());
 
     // Automatically update Lead status to 'booked'!
     updateLead(bookingData.leadId, {
       status: "booked",
+      ...(post.length
+        ? {
+            nextFollowUpDate: [
+              ...followUps.filter((f) => f.leadId === bookingData.leadId && !["completed", "cancelled"].includes(followUpStatus(f))).map((f) => f.scheduledAt),
+              post[0].scheduledAt,
+            ].sort()[0],
+          }
+        : {}),
     });
+    if (post.length) setFollowUps((prev) => [...post, ...prev]);
 
     addTimelineEvent({
       leadId: bookingData.leadId,
       authorId: effectiveUser.id,
       authorName: effectiveUser.name,
       type: "booking_created",
-      title: `تأكيد حجز جديد: ${bookingData.courseName}`,
-      details: `إجمالي المشتريات: ${bookingData.amount} ج.م - الملاحظات: ${bookingData.notes}`,
+      title: `تسجيل مشتريات: ${bookingData.courseName}`,
+      details: [`إجمالي المشتريات: ${bookingData.amount.toLocaleString("en-US")} ج.م`, bookingData.visitId ? "من زيارة الفرع" : "", post.length ? `جُدولت ${post.length} متابعات بعد البيع` : "", bookingData.notes ? `الملاحظات: ${bookingData.notes}` : ""].filter(Boolean).join(" · "),
     });
 
     logAudit(
@@ -897,9 +1546,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       addFollowUp({
         leadId: data.leadId,
         leadName: data.leadName,
-        leadPhone: leads.find((l) => l.id === data.leadId)?.phone || "",
+        leadPhone: leadsRef.current.find((l) => l.id === data.leadId)?.phone || "",
         assignedAgentId: data.agentId,
         branchId: data.branchId,
+        origin: "auto",
         scheduledAt: addToDate(today(), { days: unknownReasonFollowUpDays }),
         reason: unknownReasonQuestion,
         type: "call",
@@ -910,78 +1560,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     return record;
   };
 
-  /** Marks a booking as delivered and schedules the post-sale follow-ups. */
-  const completeBooking = (bookingId: string, deliveredAt?: string) => {
-    const booking = bookings.find((b) => b.id === bookingId);
-    if (!booking || booking.bookingStatus === "cancelled") return;
-    const delivered = deliveredAt || today();
-    const lead = leads.find((l) => l.id === booking.leadId);
-    const agentId = users.some((u) => u.id === booking.agentId)
-      ? booking.agentId
-      : lead?.assignedAgentId || booking.agentId;
-    const existing = new Set(
-      followUps
-        .filter((f) => f.bookingId === bookingId && f.category === "post_sale")
-        .map((f) => f.milestone),
-    );
-    const nowStr = today();
-    const created: FollowUp[] = buildPostSaleSchedule(delivered)
-      .filter((m) => !existing.has(m.milestone))
-      .map((m) => ({
-        id: `flw-${crypto.randomUUID()}`,
-        leadId: booking.leadId,
-        leadName: booking.leadName,
-        leadPhone: booking.leadPhone,
-        assignedAgentId: agentId,
-        assignedAgentName: users.find((u) => u.id === agentId)?.name,
-        branchId: booking.branchId,
-        scheduledAt: m.date,
-        reason: m.reason,
-        type: "call" as const,
-        notes: "",
-        status:
-          m.date < nowStr ? "overdue" : m.date === nowStr ? "due" : "upcoming",
-        category: "post_sale" as const,
-        bookingId,
-        milestone: m.milestone,
-      }));
-
-    setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId
-          ? { ...b, bookingStatus: "completed", deliveredAt: delivered }
-          : b,
-      ),
-    );
-    if (created.length) {
-      setFollowUps((prev) => [...created, ...prev]);
-      const open = followUps
-        .filter(
-          (f) =>
-            f.leadId === booking.leadId &&
-            !["completed", "cancelled"].includes(followUpStatus(f)),
-        )
-        .map((f) => f.scheduledAt);
-      const earliest = [...open, ...created.map((f) => f.scheduledAt)].sort()[0];
-      updateLead(booking.leadId, { nextFollowUpDate: earliest });
-    }
-    addTimelineEvent({
-      leadId: booking.leadId,
-      authorId: effectiveUser.id,
-      authorName: effectiveUser.name,
-      type: "booking_created",
-      title: `تسليم الشغل: ${booking.courseName}`,
-      details: `تم التسليم بتاريخ ${delivered}. جُدولت ${created.length} متابعات بعد البيع (${created
-        .map((f) => milestoneLabel(f.milestone))
-        .join("، ")}).`,
-    });
-    logAudit(
-      "تسليم شغل",
-      "حجز",
-      bookingId,
-      `تسليم ${booking.courseName} للعميل ${booking.leadName} وجدولة متابعات بعد البيع`,
-    );
-  };
 
   // User & Organization CRUD
   const addUser = (userData: Omit<User, "id" | "createdAt">): User => {
@@ -1004,7 +1582,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   // Keep the server-trusted access record in step with the user document.
   const syncAuthProfile = (
     userId: string,
-    patch: { role?: User["role"]; branchId?: string; active?: boolean; name?: string },
+    patch: { role?: User["role"]; branchId?: string; active?: boolean; name?: string; supervisedBranchIds?: string[] },
   ) => {
     const authUid = users.find((u) => u.id === userId)?.authUid;
     if (!authUid) return;
@@ -1024,8 +1602,14 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       role: updates.role,
       branchId: updates.branchId,
       name: updates.name,
+      supervisedBranchIds: updates.supervisedBranchIds,
     });
-    logAudit("تعديل موظف", "مستخدم", id, `تعديل بيانات الحساب رقم ${id}`);
+    const target = users.find((u) => u.id === id);
+    const labels: Record<string, string> = { name: "الاسم", phone: "الهاتف", email: "الإيميل", role: "الدور", branchId: "الفرع", teamId: "الفريق", departmentId: "القسم", jobPositionId: "المسمى الوظيفي", directManagerId: "المدير المباشر", supervisedBranchIds: "نطاق الإشراف", specialty: "الاختصاص" };
+    const changed = Object.keys(updates)
+      .filter((k) => labels[k] && JSON.stringify((target as unknown as Record<string, unknown> | undefined)?.[k]) !== JSON.stringify((updates as Record<string, unknown>)[k]))
+      .map((k) => labels[k]);
+    logAudit("تعديل موظف", "مستخدم", id, `${effectiveUser.name} عدّل بيانات ${target?.name ?? id}${changed.length ? `: ${changed.join("، ")}` : ""}`);
   };
 
   const toggleUserActive = (id: string) => {
@@ -1040,6 +1624,19 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
       id,
       `تغيير تفعيل الحساب إلى ${active ? "مفعل" : "معطل"}`,
     );
+  };
+
+  const deleteUser = async (id: string) => {
+    const target = users.find((u) => u.id === id);
+    if (!target) return;
+    // The server finds the sign-in account through the staff record, so it goes first.
+    if (target.authUid) {
+      await deleteLoginOnServer(id);
+      // Without the access record nobody can get in, even if the sign-in account could not be removed.
+      await deleteDoc(doc(db, "authProfiles", target.authUid)).catch((e) => console.error("authProfile delete failed", e));
+    }
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+    logAudit("مسح موظف", "مستخدم", id, `مسح ${target.name} نهائيًا`);
   };
 
   /** Creates a Firebase login for a staff record and links the two. */
@@ -1111,29 +1708,126 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
     const ids = new Set(demo.map((i) => i.id));
     return prev.filter((i) => !ids.has(i.id));
   };
-  const loadDemoData = () => {
-    setUsers((p) => addMissing(p, demoUsers.map(normalizeUser)));
-    setLeads((p) => addMissing(p, demoLeads));
-    setVisits((p) => addMissing(p, demoVisits));
-    setFollowUps((p) => addMissing(p, demoFollowUps));
-    setBookings((p) => addMissing(p, demoBookings));
-    setTimelineEvents((p) => addMissing(p, demoTimeline));
-    setPurchaseInvoices((p) => addMissing(p, demoInvoices));
-    setBrokers((p) => addMissing(p, demoBrokers));
-    setNotBoughtRecords((p) => addMissing(p, demoNotBought));
-    logAudit("تحميل بيانات تجريبية", "إعدادات", "demo", "تحميل موظفين وبيانات تجريبية لكل الأدوار");
+  // The sample data lives in its own chunk, downloaded only when someone asks for it.
+  const sampleData = async () => {
+    const [demo, seed] = await Promise.all([import("../data/demoData"), import("../data/initialData")]);
+    return { ...demo, ...seed };
   };
-  const removeDemoData = () => {
-    setUsers((p) => dropDemo(p, demoUsers));
-    setLeads((p) => dropDemo(p, demoLeads));
-    setVisits((p) => dropDemo(p, demoVisits));
-    setFollowUps((p) => dropDemo(p, demoFollowUps));
-    setBookings((p) => dropDemo(p, demoBookings));
-    setTimelineEvents((p) => dropDemo(p, demoTimeline));
-    setPurchaseInvoices((p) => dropDemo(p, demoInvoices));
-    setBrokers((p) => dropDemo(p, demoBrokers));
-    setNotBoughtRecords((p) => dropDemo(p, demoNotBought));
-    logAudit("حذف البيانات التجريبية", "إعدادات", "demo", "حذف الموظفين والبيانات التجريبية");
+  const loadDemoData = async () => {
+    const {
+      initialCompanies, initialWarehouses, initialBranches, initialTeams, initialDepartments, initialJobPositions,
+      demoUsers, demoLeads, demoVisits, demoFollowUps, demoBookings, demoTimeline, demoInvoices, demoBrokers, demoNotBought, demoReviews,
+    } = await sampleData();
+    // Everything is flagged as sample data, so it can be removed later without touching real records.
+    // The sample org structure comes along, so the sample staff and customers have branches to belong to.
+    setCompanies((p) => addMissing(p, asDemo(initialCompanies)));
+    setWarehouses((p) => addMissing(p, asDemo(initialWarehouses)));
+    setBranches((p) => addMissing(p, asDemo(initialBranches)));
+    setTeams((p) => addMissing(p, asDemo(initialTeams)));
+    setDepartmentEntities((p) => addMissing(p, asDemo(initialDepartments)));
+    setJobPositions((p) => addMissing(p, asDemo(initialJobPositions)));
+    setUsers((p) => addMissing(p, asDemo(demoUsers.map(normalizeUser))));
+    setLeads((p) => addMissing(p, asDemo(demoLeads)));
+    setVisits((p) => addMissing(p, asDemo(demoVisits)));
+    setFollowUps((p) => addMissing(p, asDemo(demoFollowUps)));
+    setBookings((p) => addMissing(p, asDemo(demoBookings)));
+    setTimelineEvents((p) => addMissing(p, asDemo(demoTimeline)));
+    setPurchaseInvoices((p) => addMissing(p, asDemo(demoInvoices)));
+    setBrokers((p) => addMissing(p, asDemo(demoBrokers)));
+    setNotBoughtRecords((p) => addMissing(p, asDemo(demoNotBought)));
+    setReviewRequests((p) => addMissing(p, asDemo(demoReviews)));
+    setTimeout(countDemoCustomers, 3000);
+  };
+
+  /** Ids that older versions of the sample data loaded without a flag. */
+  const knownDemoIds = async (): Promise<KnownDemoIds> => {
+    const d = await sampleData();
+    const ids = (xs: { id: string }[]) => new Set(xs.map((x) => x.id));
+    return {
+      companies: ids(d.initialCompanies), warehouses: ids(d.initialWarehouses), branches: ids(d.initialBranches), teams: ids(d.initialTeams),
+      departmentEntities: ids(d.initialDepartments), jobPositions: ids(d.initialJobPositions), users: ids(d.allSampleUsers), leads: ids(d.demoLeads),
+      visits: ids(d.demoVisits), followUps: ids(d.demoFollowUps), bookings: ids(d.demoBookings), timelineEvents: ids(d.demoTimeline),
+      purchaseInvoices: ids(d.demoInvoices), brokers: ids(d.demoBrokers), notBoughtRecords: ids(d.demoNotBought), reviewRequests: ids(d.demoReviews),
+    };
+  };
+  // Sample customers are counted by the database: the customer list is not kept loaded.
+  const [demoCustomers, setDemoCustomers] = useState(0);
+  const countDemoCustomers = useCallback(async () => {
+    if (scope.leads === "none") return setDemoCustomers(0);
+    try {
+      const streams = scope.leads === "all" ? [[]] : scope.leads;
+      const counts = await Promise.all(
+        streams.map(async (filters) =>
+          (await getCountFromServer(query(collection(db, "leads"), ...filters.map(([f, op, v]) => where(f, op, v)), where("isDemo", "==", true)))).data().count,
+        ),
+      );
+      setDemoCustomers(counts.reduce((a, b) => a + b, 0));
+    } catch {
+      /* the count is only a reminder; leave it as it was */
+    }
+  }, [scope.leads]);
+  const isDeveloper = authForScope?.role === "admin";
+  useEffect(() => {
+    if (isDeveloper) countDemoCustomers();
+  }, [isDeveloper, countDemoCustomers]);
+  const demoSummary = useMemo(() => {
+    const n = (xs: { isDemo?: boolean }[]) => xs.filter((x) => x.isDemo).length;
+    const d = { customers: demoCustomers, branches: n(branches), staff: n(users), brokers: n(brokers) };
+    return { ...d, any: d.customers + d.branches + d.staff + d.brokers > 0 };
+  }, [demoCustomers, branches, users, brokers]);
+  // Customer history is not kept loaded, so it is read in full here.
+  const demoWorld = async (): Promise<DemoWorld> => ({
+    users, companies, warehouses, branches, teams, departmentEntities, jobPositions, leads: await fetchScoped<Lead>("leads", scope.leads), visits, followUps, bookings,
+    timelineEvents: await fetchScoped<TimelineEvent>("timelineEvents", scope.timeline),
+    purchaseInvoices, brokers, notBoughtRecords, reviewRequests, reviewNotes, notifications,
+    // The audit log can't be deleted (rules), so only what is loaded matters here.
+    auditLogs,
+  });
+  /** What removing the sample data would delete, and how many real customers are tied to sample branches or staff. */
+  const previewDemoRemoval = async () => {
+    const { total, realLinked } = planDemoRemoval(await demoWorld(), await knownDemoIds(), currentUser.id);
+    return { total, realLinked };
+  };
+  const removeDemoData = async () => {
+    const { drop } = planDemoRemoval(await demoWorld(), await knownDemoIds(), currentUser.id);
+    const keep = <T extends { id: string }>(c: keyof typeof drop) => (prev: T[]) => prev.filter((i) => !drop[c].has(i.id));
+    setCompanies(keep("companies"));
+    setWarehouses(keep("warehouses"));
+    setBranches(keep("branches"));
+    setTeams(keep("teams"));
+    setDepartmentEntities(keep("departmentEntities"));
+    setJobPositions(keep("jobPositions"));
+    setUsers(keep("users"));
+    setLeads(keep("leads"));
+    deleteDocs("leads", [...drop.leads]).catch((e) => handleFirestoreError(e, OperationType.DELETE, "leads"));
+    setVisits(keep("visits"));
+    setFollowUps(keep("followUps"));
+    setBookings(keep("bookings"));
+    setTimelineEvents(keep("timelineEvents"));
+    deleteDocs("timelineEvents", [...drop.timelineEvents]).catch((e) => handleFirestoreError(e, OperationType.DELETE, "timelineEvents"));
+    setPurchaseInvoices(keep("purchaseInvoices"));
+    setBrokers(keep("brokers"));
+    setNotBoughtRecords(keep("notBoughtRecords"));
+    setReviewRequests(keep("reviewRequests"));
+    setReviewNotes(keep("reviewNotes"));
+    setNotifications(keep("notifications"));
+    setAuditLogs(keep("auditLogs"));
+    setTimeout(countDemoCustomers, 3000);
+  };
+
+  /** Developer-only: empties branches, companies, warehouses, teams, departments and job titles so the real structure can be entered from scratch. */
+  const clearOrganizationData = async () => {
+    const { allSampleUsers } = await import("../data/demoData");
+    setCompanies([]);
+    setWarehouses([]);
+    setBranches([]);
+    setTeams([]);
+    setDepartmentEntities([]);
+    setJobPositions([]);
+    // The sample staff go too; anyone with a real login (or the signed-in developer) stays.
+    const sample = new Set(allSampleUsers.map((u) => u.id));
+    setUsers((prev) => prev.filter((u) => u.id === currentUser.id || u.authUid || !sample.has(u.id)));
+    logAudit("تفريغ الهيكل الإداري", "إعدادات", "org", "تفريغ الفروع والشركات والمخازن والفرق والأقسام والمسميات");
   };
 
   // Data lives in Firestore, so a reset only clears this browser's session/cache.
@@ -1293,7 +1987,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
   ): BrokerEntity => {
     const newBroker: BrokerEntity = {
       ...brokerData,
-      id: `brk-${Date.now().toString().slice(-5)}`,
+      id: `brk-${crypto.randomUUID()}`,
       totalReferrals: 0,
       totalVolume: 0,
     };
@@ -1409,7 +2103,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         currentUser,
         logout,
         loadDemoData,
+        clearOrganizationData,
         removeDemoData,
+        addReferralLead,
+        previewDemoRemoval,
+        demoSummary,
         createLoginForUser,
         viewAsUser,
         setViewAsUser,
@@ -1417,6 +2115,15 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         permissionMatrix,
         updatePermissionMatrix,
 
+        requestAllLeads,
+        requestAllFollowUps,
+        requestAll,
+        injectLeads,
+        watchLead,
+        searchIndexReady: searchIndexVersion >= SEARCH_INDEX_VERSION,
+        reindexSearch,
+        injectVisits,
+        visitSearchReady: visitIndexVersion >= SEARCH_INDEX_VERSION,
         users,
         companies,
         governorates,
@@ -1431,6 +2138,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         timelineEvents,
         auditLogs,
         distributionRule,
+        license,
+        setLicense,
 
         addCompany,
         addGovernorate,
@@ -1468,19 +2177,37 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({
         updateFollowUpResult,
 
         addBooking,
-        completeBooking,
         addNotBoughtRecord,
         notBoughtRecords,
+        reminderDone,
+        markReminderDone,
+        aiSuggestions,
+        saveSuggestions,
+        decideSuggestion,
+        reviewRequests,
+        reviewNotes,
+        requestReview,
+        requestBrokerReview,
+        markReviewReminderSent,
+        cancelReviewRequest,
+        addReviewNote,
+        saveReviewAnalysis,
 
         addUser,
         updateUser,
         toggleUserActive,
+        deleteUser,
         updateUserPermissions,
         addBranch,
         updateBranch,
         addTeam,
         updateTeam,
 
+        watchCustomerHistory,
+        isCustomerHistoryLoaded,
+        requestAuditLogs,
+        loadMoreAuditLogs,
+        auditLogsHasMore: auditLogs.length >= auditLimit,
         addTimelineEvent,
         logAudit,
 

@@ -13,10 +13,15 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
-import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { firebaseConfig } from '../lib/firebaseConfig';
+import { auth, db, clearLocalCache, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserRole, User } from '../types/crm';
-import { toAuthEmail } from '../lib/loginId';
+import { normalizeLoginId, toAuthEmail } from '../lib/loginId';
+import { createLoginOnServer } from '../lib/adminClient';
+import { logSessionEvent, writePresence, type Who } from '../lib/sessionLog';
+
+const SIGNED_IN_FLAG = 'sessionlog_signed_in';
+const whoOf = (p: { uid: string; name: string; role: string; branchId?: string }): Who => ({ uid: p.uid, name: p.name, role: p.role, branchId: p.branchId });
 
 /** Server-trusted access record, keyed by Firebase Auth uid. Only admins write it. */
 export interface AuthProfile {
@@ -26,6 +31,8 @@ export interface AuthProfile {
   userId: string; // id of the matching document in `users`
   role: UserRole;
   branchId?: string;
+  /** Branches a supervisor / regional manager covers; the security rules read this. */
+  supervisedBranchIds?: string[];
   active: boolean;
   loginId?: string; // mobile number / username shown to the person
   mustChangePassword?: boolean; // set after an admin reset
@@ -43,6 +50,10 @@ interface AuthContextType {
   changePassword: (current: string, next: string) => Promise<void>;
   bootstrapAdmin: (data: { name: string; loginId: string; password: string; phone: string }) => Promise<void>;
   /** Creates a Firebase login for a staff member without signing the current admin out. */
+  /** Info for the "no access" screen: who is signed in, and whether they are the account that set the system up. */
+  signedInAs: { email: string | null; uid: string | null };
+  isFounder: boolean;
+  restoreFounder: () => Promise<void>;
   createStaffLogin: (data: {
     userId: string;
     loginId: string;
@@ -125,6 +136,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }, [fbUser]);
 
+  // The account that ran the first-time setup can restore its own developer record if it ever goes missing.
+  const [isFounder, setIsFounder] = useState(false);
+  useEffect(() => {
+    if (!fbUser || !profileReady || profile) return setIsFounder(false);
+    getDoc(doc(db, 'meta', 'bootstrap'))
+      .then((snap) => setIsFounder(snap.exists() && snap.data()?.createdBy === fbUser.uid))
+      .catch(() => setIsFounder(false));
+  }, [fbUser, profileReady, profile]);
+  const restoreFounder = async () => {
+    if (!fbUser) return;
+    await setDoc(doc(db, 'authProfiles', fbUser.uid), {
+      uid: fbUser.uid,
+      email: fbUser.email || '',
+      name: fbUser.displayName || fbUser.email || 'المطوّر',
+      userId: fbUser.uid,
+      role: 'admin',
+      active: true,
+    }, { merge: true });
+  };
+
   let status: AuthStatus;
   if (!authReady || busy) status = 'loading';
   else if (!fbUser) status = 'signed_out';
@@ -134,18 +165,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   else status = 'ready';
 
   const login = async (loginId: string, password: string) => {
-    await signInWithEmailAndPassword(auth, toAuthEmail(loginId), password);
+    const cred = await signInWithEmailAndPassword(auth, toAuthEmail(loginId), password);
+    try {
+      const snap = await getDoc(doc(db, 'authProfiles', cred.user.uid));
+      if (snap.exists()) {
+        const who = whoOf({ ...(snap.data() as AuthProfile), uid: cred.user.uid });
+        sessionStorage.setItem(SIGNED_IN_FLAG, '1');
+        await logSessionEvent(who, 'sign_in');
+        await writePresence(who, true, Date.now());
+      }
+    } catch {
+      /* logging is best-effort */
+    }
   };
 
   const logout = async () => {
+    if (profile && auth.currentUser) {
+      const who = whoOf({ ...profile, uid: auth.currentUser.uid });
+      await Promise.all([logSessionEvent(who, 'sign_out'), writePresence(who, false, Date.now())]);
+    }
     try {
       Object.keys(localStorage)
         .filter((k) => k.startsWith(CACHE_PREFIX))
         .forEach((k) => localStorage.removeItem(k));
+      sessionStorage.clear();
     } catch {
       /* ignore */
     }
     await signOut(auth);
+    // The device's copy of the data goes too; the database client cannot be reused after that, hence the reload.
+    await clearLocalCache();
+    window.location.reload();
   };
 
   const changePassword = async (current: string, next: string) => {
@@ -201,7 +251,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     role,
     branchId,
   }) => {
-    // A secondary app instance keeps the admin's own session untouched.
+    // Preferred: the server creates the account (the browser can then be denied sign-up entirely).
+    const serverUid = await createLoginOnServer(userId, normalizeLoginId(loginId), password);
+    if (serverUid) return serverUid;
+    // Fallback until the server key is installed. A secondary app instance keeps the admin's own session untouched.
     const secondary = getApps().some((a) => a.name === 'staff-creator')
       ? getApp('staff-creator')
       : initializeApp(firebaseConfig, 'staff-creator');
@@ -225,7 +278,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ status, profile, needsBootstrap, login, logout, changePassword, bootstrapAdmin, createStaffLogin }}
+      value={{
+        status,
+        profile,
+        needsBootstrap,
+        login,
+        logout,
+        changePassword,
+        bootstrapAdmin,
+        createStaffLogin,
+        signedInAs: { email: fbUser?.email ?? null, uid: fbUser?.uid ?? null },
+        isFounder,
+        restoreFounder,
+      }}
     >
       {children}
     </AuthContext.Provider>

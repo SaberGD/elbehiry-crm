@@ -1,4 +1,6 @@
 import type {
+  ReviewNote,
+  ReviewRequest,
   Booking,
   BrokerEntity,
   Department,
@@ -35,14 +37,14 @@ export const demoStaffExtras: User[] = [
   {
     ...base,
     id: "usr-demo-manager",
-    name: "ماجد البحيري (مدير عام المؤسسة)",
+    name: "ماجد البحيري (صاحب البيزنس)",
     email: "manager@demo.elbehiry",
     role: "general_manager",
   },
   {
     ...base,
     id: "usr-demo-regional",
-    name: "هشام عادل (مشرف عام)",
+    name: "هشام عادل (مدير المبيعات العام)",
     email: "regional@demo.elbehiry",
     role: "regional_manager",
     supervisedBranchIds: ["br-cairo", "br-giza"],
@@ -100,11 +102,43 @@ export const demoAgents: User[] = [
   agent("usr-demo-agent-giza-2", "سلمى وائل (مبيعات الجيزة)", "br-giza", "فرع الجيزة"),
 ];
 
-export const demoUsers: User[] = [
-  ...initialUsers.filter((u) => u.role !== "admin"),
-  ...demoStaffExtras,
-  ...demoAgents,
+// The business model: an owner, a general sales manager, and one sales manager per branch who sells for it.
+// Every customer, visit and follow-up in the sample data belongs to the sales manager of its branch.
+const modelRoles: User["role"][] = ["general_manager", "regional_manager", "branch_manager"];
+export const demoUsers: User[] = [...initialUsers.filter((u) => u.role !== "admin"), ...demoStaffExtras, ...demoAgents].filter((u) =>
+  modelRoles.includes(u.role),
+);
+/**
+ * Every employee any version of the sample data ever created (managers, and the old salespeople, supervisors and
+ * team leaders too). Older versions saved them without the sample flag, so removal recognises them by id.
+ * The sample developer is left out: a real developer account may share its id.
+ */
+export const allSampleUsers: User[] = [...initialUsers.filter((u) => u.role !== "admin"), ...demoStaffExtras, ...demoAgents];
+const managerOf: Record<string, User> = Object.fromEntries(demoUsers.filter((u) => u.role === "branch_manager").map((u) => [u.branchId!, u]));
+// Old salespeople and supervisors in the sample set map to their branch's sales manager.
+const toManager: Record<string, User> = Object.fromEntries(
+  [...initialUsers, ...demoStaffExtras, ...demoAgents]
+    .filter((u) => !modelRoles.includes(u.role) && u.role !== "admin" && u.branchId && managerOf[u.branchId])
+    .map((u) => [u.id, managerOf[u.branchId!]]),
+);
+const ID_NAME: [string, string][] = [
+  ["assignedAgentId", "assignedAgentName"],
+  ["receivedByAgentId", "receivedByAgentName"],
+  ["agentId", "agentName"],
+  ["followUpAgentId", ""],
+  ["authorId", "authorName"],
+  ["leadOwnerId", ""],
 ];
+function modelled<T extends object>(item: T): T {
+  const out = { ...item } as Record<string, unknown>;
+  for (const [idKey, nameKey] of ID_NAME) {
+    const m = toManager[out[idKey] as string];
+    if (!m) continue;
+    out[idKey] = m.id;
+    if (nameKey) out[nameKey] = m.name;
+  }
+  return out as T;
+}
 // ---------------------------------------------------------------------------
 // Scenario customers: every row is a different story so each screen has
 // something to show (big buyers, garden-only, partial buys, delivered work with
@@ -241,7 +275,8 @@ rows.forEach((r, i) => {
     r.notBought?.ago ?? 0,
     5,
   ) + 3;
-  const agentName = [...demoAgents, ...initialUsers].find((u) => u.id === r.agent)?.name;
+  const manager = managerOf[r.branch];
+  const agentName = manager.name;
   const lead: Lead = {
     id,
     name: r.name,
@@ -251,7 +286,7 @@ rows.forEach((r, i) => {
     source: r.source ?? (r.broker ? "referral" : "walk_in"),
     branchId: r.branch,
     branchName: branchName[r.branch],
-    assignedAgentId: r.agent,
+    assignedAgentId: manager.id,
     assignedAgentName: agentName,
     createdAt: `${iso(firstSeen)}T10:00:00.000Z`,
     status: r.status ?? "new",
@@ -274,7 +309,7 @@ rows.forEach((r, i) => {
     time: "12:30",
     branchId: r.branch,
     branchName: branchName[r.branch],
-    receivedByAgentId: r.agent,
+    receivedByAgentId: manager.id,
     receivedByAgentName: agentName,
     source: lead.source,
     department: r.dept,
@@ -290,7 +325,8 @@ rows.forEach((r, i) => {
     const total = Object.values(p.amounts).reduce((s, v) => s + (v || 0), 0);
     const primary = (Object.entries(p.amounts).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0][0]) as Department;
     const bid = `demo-booking-${i + 1}-${j + 1}`;
-    const delivered = p.deliveredAgo !== undefined ? iso(p.deliveredAgo) : undefined;
+    // Buying means receiving: every purchase is delivered the day it is made.
+    const delivered = p.cancelled ? undefined : iso(p.ago);
     gen.bookings.push({
       id: bid,
       leadId: id,
@@ -298,7 +334,7 @@ rows.forEach((r, i) => {
       leadPhone: phone,
       branchId: r.branch,
       branchName: branchName[r.branch],
-      agentId: r.agent,
+      agentId: manager.id,
       agentName,
       department: primary,
       courseId: Object.keys(p.amounts).length > 1 ? "ps-multi" : `ps-${primary}`,
@@ -323,7 +359,7 @@ rows.forEach((r, i) => {
           leadId: id,
           leadName: r.name,
           leadPhone: phone,
-          assignedAgentId: r.agent,
+          assignedAgentId: manager.id,
           assignedAgentName: agentName,
           branchId: r.branch,
           scheduledAt: m.date,
@@ -359,7 +395,7 @@ rows.forEach((r, i) => {
       leadId: id,
       leadName: r.name,
       branchId: r.branch,
-      agentId: r.agent,
+      agentId: manager.id,
       agentName,
       createdAt: `${iso(r.notBought.ago)}T14:00:00.000Z`,
       reasons: r.notBought.reasons,
@@ -374,7 +410,7 @@ rows.forEach((r, i) => {
       leadId: id,
       leadName: r.name,
       leadPhone: phone,
-      assignedAgentId: r.agent,
+      assignedAgentId: manager.id,
       assignedAgentName: agentName,
       branchId: r.branch,
       scheduledAt: date,
@@ -393,11 +429,41 @@ rows.forEach((r, i) => {
   gen.leads.push(lead);
 });
 
-export const demoLeads: Lead[] = [...initialLeads, ...gen.leads];
-export const demoVisits = [...initialVisits, ...gen.visits];
-export const demoFollowUps = [...initialFollowUps, ...gen.followUps];
-export const demoBookings = [...initialBookings, ...gen.bookings];
+export const demoLeads: Lead[] = [...initialLeads.map(modelled), ...gen.leads];
+export const demoVisits = [...initialVisits.map(modelled), ...gen.visits];
+export const demoFollowUps = [...initialFollowUps.map(modelled), ...gen.followUps];
+export const demoBookings = [...initialBookings.map(modelled), ...gen.bookings];
 export const demoNotBought: NotBoughtRecord[] = gen.notBought;
-export const demoTimeline = initialTimelineEvents;
-export const demoInvoices = initialPurchaseInvoices;
+export const demoTimeline = initialTimelineEvents.map(modelled);
+export const demoInvoices = initialPurchaseInvoices.map(modelled);
 export const demoBrokers = [...initialBrokers, ...demoExtraBrokers];
+
+// A spread of review situations: answered with praise, a fresh complaint, a handled complaint, waiting, due for the 48h nudge, expired.
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+const reviewFor = (i: number, over: Partial<ReviewRequest>): ReviewRequest => {
+  const lead = demoLeads[i % demoLeads.length];
+  return {
+    id: `demoreview${String(i).padStart(2, "0")}${"x".repeat(14)}`,
+    leadId: lead.id,
+    leadName: lead.name,
+    branchId: lead.branchId,
+    branchName: lead.branchName,
+    agentId: lead.assignedAgentId || "",
+    agentName: lead.assignedAgentName,
+    subjectKind: "general",
+    subjectLabel: "تجربتك مع البحيري",
+    sentAt: hoursAgo(30),
+    status: "sent",
+    ...over,
+  };
+};
+export const demoReviews: ReviewRequest[] = [
+  reviewFor(0, { status: "answered", answeredAt: hoursAgo(20), response: { rating: 5, treatment: 5, price: 4, quality: 5, wouldRecommend: true, comment: "تعامل محترم والشغل ممتاز، هرشحكم لأصحابي.", referral: { name: "أحمد (قريب العميل)", phone: "01155500123" } }, ai: { kind: "praise", category: "تعامل الموظف", severity: "low", summary: "العميل راضي جدًا وهيرشحنا." } }),
+  reviewFor(1, { status: "answered", answeredAt: hoursAgo(3), isComplaint: true, response: { rating: 2, treatment: 2, price: 3, quality: 2, wouldRecommend: false, comment: "الفني اتأخر 3 أيام عن الميعاد ومحدش كلمني يعتذر." }, ai: { kind: "complaint", category: "تأخير", severity: "high", summary: "تأخر الفني 3 أيام من غير أي اعتذار." } }),
+  reviewFor(2, { status: "answered", answeredAt: hoursAgo(90), response: { rating: 3, treatment: 4, price: 2, quality: 4, comment: "الأسعار أعلى من اللي توقعته." }, ai: { kind: "note", category: "السعر", severity: "low", summary: "العميل شايف الأسعار عالية." } }),
+  reviewFor(3, { sentAt: hoursAgo(5) }),
+  reviewFor(4, { sentAt: hoursAgo(60) }),
+  reviewFor(5, { sentAt: hoursAgo(130), reminderSentAt: hoursAgo(70) }),
+  reviewFor(6, { status: "answered", answeredAt: hoursAgo(50), response: { rating: 1, comment: "" } }),
+];
+export const demoReviewNotes: ReviewNote[] = [];

@@ -1,4 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { positionNames, positionNamesEn } from "../lib/permissions";
+import type { UserRole } from "../types/crm";
+import {
+  departmentNames, departmentNamesEn, statusNames, statusNamesEn, sourceNames, sourceNamesEn, followUpTypeNames, followUpTypeNamesEn,
+} from "../lib/presentation";
 
 export type Language = "ar" | "en";
 
@@ -7,6 +12,16 @@ interface LanguageContextType {
   direction: "rtl" | "ltr";
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  /** Inline pair: the Arabic text stays at the call site, the English one is shown when the language is English. */
+  tr: (ar: string, en: string) => string;
+  roleName: (role: UserRole) => string;
+  /** Display names of the shared enums (customer status, source, follow-up type, department) in the current language. */
+  labels: {
+    status: typeof statusNames;
+    source: typeof sourceNames;
+    followUpType: typeof followUpTypeNames;
+    department: typeof departmentNames;
+  };
 }
 
 const translations: Record<Language, Record<string, string>> = {
@@ -19,12 +34,12 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Roles
     "role.admin": "مطوّر",
-    "role.general_manager": "مدير عام المؤسسة",
-    "role.regional_manager": "مشرف عام",
-    "role.branch_manager": "مدير فرع",
+    "role.general_manager": "صاحب البيزنس",
+    "role.regional_manager": "مدير المبيعات العام",
+    "role.branch_manager": "مدير مبيعات الفرع",
     "role.supervisor": "مشرف مختص",
-    "role.team_leader": "موظف بفرع",
-    "role.sales_agent": "موظف بفرع",
+    "role.team_leader": "سيلز بالفرع",
+    "role.sales_agent": "سيلز بالفرع",
 
     // Customer Categories
     "category.individual": "عميل فردي",
@@ -60,7 +75,7 @@ const translations: Record<Language, Record<string, string>> = {
     "nav.my_followups": "متابعاتي",
     "nav.due_followups": "المتابعات المستحقة",
     "nav.overdue_followups": "المتابعات المتأخرة",
-    "nav.bookings": "الحجوزات والتعاقدات",
+    "nav.bookings": "المشتريات",
     "nav.invoices": "فواتير المشتريات والتصنيفات",
     "nav.brokers": "الوسطاء وجاهات الترشيح",
     "nav.reports": "التقارير والتحليلات",
@@ -80,7 +95,7 @@ const translations: Record<Language, Record<string, string>> = {
     "status.prospect": "عميل محتمل",
     "status.needs_followup": "يحتاج متابعة",
     "status.not_interested": "غير مهتم",
-    "status.booked": "تم التعاقد والبيع",
+    "status.booked": "اشترى",
 
     // FollowUp Statuses
     "followup.due": "مستحقة اليوم",
@@ -270,8 +285,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
     return translations[language][key] || translations["ar"][key] || key;
   };
 
+  const tr = (ar: string, en: string): string => (language === "en" ? en : ar);
+  const labels = language === "en"
+    ? { status: statusNamesEn, source: sourceNamesEn, followUpType: followUpTypeNamesEn, department: departmentNamesEn }
+    : { status: statusNames, source: sourceNames, followUpType: followUpTypeNames, department: departmentNames };
+  const roleName = (role: UserRole): string => (language === "en" ? positionNamesEn : positionNames)[role];
+
   return (
-    <LanguageContext.Provider value={{ language, direction, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language, direction, setLanguage, t, tr, roleName, labels }}>
       {children}
     </LanguageContext.Provider>
   );

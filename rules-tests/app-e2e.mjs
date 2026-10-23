@@ -1,0 +1,329 @@
+// The real app against the Firebase emulators with the real security rules:
+// signs in as different roles and checks what each one can see and do.
+import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { extname, join } from "node:path";
+import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { chromium } from "playwright-core";
+
+const DIST = process.env.APP_DIST;
+const PROJECT = "albehairy-group";
+const env = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: readFileSync(new URL("../firestore.rules", import.meta.url), "utf8"), host: "127.0.0.1", port: 8181 } });
+await env.clearFirestore();
+
+async function signUp(email, password) {
+  const r = await fetch(`http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, returnSecureToken: true }) });
+  return (await r.json()).localId;
+}
+const people = {
+  gm: { role: "general_manager", name: "المدير العام" },
+  bm1: { role: "branch_manager", branchId: "b1", name: "مدير فرع 1" },
+  agentA: { role: "sales_agent", branchId: "b1", name: "موظف أ" },
+  agentC: { role: "sales_agent", branchId: "b2", name: "موظف ج" },
+};
+const uids = {};
+for (const [k, p] of Object.entries(people)) uids[k] = await signUp(`${k}@staff.elbehiry.local`, "Passw0rd!x");
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const f = ctx.firestore();
+  await setDoc(doc(f, "meta", "bootstrap"), { at: "2026" });
+  for (const id of ["b1", "b2"]) await setDoc(doc(f, "branches", id), { id, name: `فرع ${id}`, code: id, city: "", phone: "", address: "", active: true, governorateId: "gov-cairo" });
+  for (const [k, p] of Object.entries(people)) {
+    await setDoc(doc(f, "authProfiles", uids[k]), { uid: uids[k], userId: `usr-${k}`, email: `${k}@staff.elbehiry.local`, name: p.name, role: p.role, active: true, ...(p.branchId ? { branchId: p.branchId } : {}) });
+    await setDoc(doc(f, "users", `usr-${k}`), { id: `usr-${k}`, name: p.name, email: "", phone: "", role: p.role, active: true, createdAt: "2026", authUid: uids[k], ...(p.branchId ? { branchId: p.branchId } : {}) });
+  }
+  const lead = (id, b, a, name) => setDoc(doc(f, "leads", id), { id, name, phone: `0100000000${id.slice(-1)}`, branchId: b, assignedAgentId: `usr-${a}`, status: "interested", source: "walk_in", classification: "B", department: "decor", notes: "", createdAt: "2026-10-01" });
+  await lead("L1", "b1", "agentA", "عميل أحمد الخاص");
+  await lead("L2", "b1", "bm1", "عميل المدير");
+  await lead("L3", "b2", "agentC", "عميل فرع تاني");
+  // A long list for the branch manager: the customer list reads it a page at a time.
+  for (let i = 25; i <= 300; i++) {
+    const n = String(i).padStart(3, "0");
+    await setDoc(doc(f, "leads", `B${n}`), { id: `B${n}`, name: `عميل عام ${n}`, phone: `0150000${String(i).padStart(4, "0")}`, branchId: "b1", assignedAgentId: "usr-bm1", status: "interested", source: "walk_in", classification: "B", department: "decor", notes: "", createdAt: `2026-08-01T${String(i % 24).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00.000Z` });
+    // So are most visits and reviews: old, handled and not needed to start work.
+    if (i % 2 === 0) {
+      await setDoc(doc(f, "visits", `V${n}`), { id: `V${n}`, visitorName: `عميل عام ${n}`, phone: `0150000${String(i).padStart(4, "0")}`, visitorType: "client", linkedLeadId: `B${n}`, branchId: "b1", branchName: "فرع b1", receivedByAgentId: "usr-bm1", receivedByAgentName: "مدير فرع 1", date: "2026-06-10", reason: "معاينة", source: "walk_in", createdAt: "2026-06-10T10:00:00.000Z" });
+      await setDoc(doc(f, "reviewRequests", `RV${n}-padpadpadpadpadpad`), { id: `RV${n}-padpadpadpadpadpad`, leadId: `B${n}`, leadName: `عميل عام ${n}`, branchId: "b1", agentId: "usr-bm1", subjectKind: "visit", subjectId: `V${n}`, subjectLabel: "زيارة", sentAt: "2026-06-10T12:00:00.000Z", status: "answered", answeredAt: "2026-06-11T12:00:00.000Z", isComplaint: false, response: { rating: 5 } });
+    }
+    // Most of the follow-ups ever made are finished ones.
+    await setDoc(doc(f, "followUps", `F${n}`), { id: `F${n}`, leadId: `B${n}`, leadName: `عميل عام ${n}`, leadPhone: "0150000000", assignedAgentId: "usr-bm1", branchId: "b1", scheduledAt: "2026-08-02T10:00:00.000Z", reason: "متابعة", type: "call", notes: "", status: "completed", completedAt: "2026-08-02T11:00:00.000Z", outcomeResult: "تمت" });
+  }
+  // The few that still matter, however old: waiting for an answer, and complaints raised three different ways.
+  const rv = (id, extra) => setDoc(doc(f, "reviewRequests", `${id}-padpadpadpadpadpad`), { id: `${id}-padpadpadpadpadpad`, leadId: "L2", leadName: "عميل المدير", branchId: "b1", agentId: "usr-bm1", subjectKind: "visit", subjectId: id, subjectLabel: "زيارة", sentAt: "2026-05-01T12:00:00.000Z", ...extra });
+  await rv("OLD-WAITING", { status: "sent" });
+  await rv("OLD-FLAGGED", { status: "answered", answeredAt: "2026-05-02T12:00:00.000Z", isComplaint: true, response: { rating: 3 } });
+  await rv("OLD-LOWSTAR", { status: "answered", answeredAt: "2026-05-02T12:00:00.000Z", isComplaint: false, response: { rating: 1 } });
+  await rv("OLD-BYAI", { status: "answered", answeredAt: "2026-05-02T12:00:00.000Z", isComplaint: false, response: { rating: 4, comment: "x" }, ai: { kind: "complaint" } });
+  // A visit from this week is followed (reminders look at it); older ones are not.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  await setDoc(doc(f, "visits", "VNOW"), { id: "VNOW", visitorName: "زيارة النهارده", phone: "01099999999", visitorType: "client", linkedLeadId: "L2", branchId: "b1", receivedByAgentId: "usr-bm1", date: todayStr, reason: "x", source: "walk_in", createdAt: `${todayStr}T10:00:00.000Z` });
+  for (let i = 1; i <= 24; i++) {
+    const n = String(i).padStart(2, "0");
+    await setDoc(doc(f, "leads", `M${n}`), { id: `M${n}`, name: `عميل كثير ${n}`, phone: `0120000${String(i).padStart(4, "0")}`, branchId: "b1", assignedAgentId: "usr-bm1", status: "interested", source: "walk_in", classification: "B", department: "decor", notes: "", createdAt: `2026-09-${n}T10:00:00.000Z` });
+  }
+  await setDoc(doc(f, "brokers", "BR1"), { id: "BR1", name: "وسيط فرع 1", phone: "01111111111", type: "individual", active: true, totalReferrals: 0, totalVolume: 0, branchIds: ["b1"] });
+  // Customer history and the audit log are read on demand (per open customer / when the page opens).
+  const ev = (id, leadId, b, owner, title) => setDoc(doc(f, "timelineEvents", id), { id, leadId, branchId: b, leadOwnerId: `usr-${owner}`, authorId: `usr-${owner}`, authorName: "x", type: "note", title, details: "", timestamp: "2026-10-02T10:00:00.000Z" });
+  await ev("T1", "L1", "b1", "agentA", "ملاحظة قديمة على عميل أحمد");
+  await ev("T3", "L3", "b2", "agentC", "ملاحظة على عميل الفرع التاني");
+  await setDoc(doc(f, "activityLogs", "A1"), { id: "A1", timestamp: "2026-10-02T10:00:00.000Z", userId: "usr-gm", userName: "المدير العام", userRole: "general_manager", action: "عملية قديمة في السجل", entity: "x", entityId: "x", details: "" });
+  await setDoc(doc(f, "brokers", "BR2"), { id: "BR2", name: "وسيط فرع 2", phone: "01222222222", type: "individual", active: true, totalReferrals: 0, totalVolume: 0, branchIds: ["b2"] });
+});
+
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json" };
+const server = createServer((req, res) => {
+  let path = decodeURIComponent(req.url.split("?")[0]);
+  if (path.endsWith("/")) path += "index.html";
+  try {
+    const body = readFileSync(join(DIST, path));
+    res.writeHead(200, { "Content-Type": types[extname(path)] || "application/octet-stream" });
+    res.end(body);
+  } catch {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(readFileSync(join(DIST, "index.html")));
+  }
+}).listen(8090);
+
+const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ["--no-sandbox"] });
+let failures = 0;
+const check = (ok, what) => {
+  console.log(`${ok ? "✔" : "✖"} ${what}`);
+  if (!ok) failures++;
+};
+async function as(who, fn) {
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: "ar-EG", serviceWorkers: "block" });
+  const page = await ctx.newPage();
+  const denied = [];
+  page.on("console", (m) => m.type() === "error" && /permission|insufficient/i.test(m.text()) && denied.push(m.text().slice(0, 700)));
+  page.on("dialog", (d) => d.accept());
+  await page.goto("http://127.0.0.1:8090/");
+  await page.locator("input").first().fill(`${who}@staff.elbehiry.local`);
+  await page.locator('input[type="password"]').fill("Passw0rd!x");
+  await page.locator('button[type="submit"]').click();
+  await page.waitForSelector("aside", { timeout: 20000 });
+  await page.waitForTimeout(2500);
+  const landing = await page.evaluate(() => window.__fsReads || { total: 0, by: {} });
+  console.log(`  reads after signing in as ${who}: ${landing.total} ${JSON.stringify(landing.by)}`);
+  const go = async (t) => { await page.locator("aside").getByText(t, { exact: true }).first().click(); await page.waitForTimeout(1200); };
+  await fn(page, go, landing);
+  check(denied.length === 0, `${who}: no permission errors while working${denied.length ? " → " + denied.join(" | ") : ""}`);
+  await ctx.close();
+}
+
+await as("agentA", async (page, go) => {
+  await go("العملاء");
+  const txt = await page.locator("main").innerText();
+  check(txt.includes("عميل أحمد الخاص"), "agent sees own customer");
+  check(!txt.includes("عميل المدير") && !txt.includes("عميل فرع تاني"), "agent does not see colleagues' or other branches' customers");
+  await go("الزيارات");
+  await page.getByRole("button", { name: "تسجيل زيارة" }).click();
+  await page.getByRole("radio", { name: /عميل ومعاه وسيط/ }).click();
+  await page.getByPlaceholder("اكتب اسم الوسيط أو رقمه").fill("وسيط");
+  const brokerOptions = await page.getByRole("option").allInnerTexts();
+  check(brokerOptions.some((o) => o.includes("وسيط فرع 1")) && !brokerOptions.some((o) => o.includes("وسيط فرع 2")), "agent picks brokers of own branch only");
+  // Search-first: nobody matches, so the new customer starts from what was typed.
+  await page.getByPlaceholder("اكتب اسم العميل أو رقمه").fill("زائر جديد");
+  await page.getByRole("button", { name: /كعميل جديد/ }).click();
+  await page.locator(".party-block input[type=tel]").first().fill("01055555555");
+  await page.getByPlaceholder("اكتب اسم الوسيط أو رقمه").fill("وسيط فرع 1");
+  await page.getByRole("option", { name: /وسيط فرع 1/ }).click();
+  // Every visit now records its result: an inquiry needs no reason.
+  await page.locator(".outcome-tile.is-inquiry").click();
+  await page.getByRole("button", { name: "حفظ الزيارة" }).click();
+  await page.waitForTimeout(2500);
+  check((await page.locator(".notice").allInnerTexts()).some((t) => t.includes("اتسجلت")), "agent records a visit with a broker");
+  await go("العملاء");
+  check((await page.locator("main").innerText()).includes("زائر جديد"), "the visitor became the agent's customer (saved on the server)");
+  // A visit that needs a follow-up: creates the customer, the follow-up and the history.
+  await go("الزيارات");
+  await page.getByRole("button", { name: "تسجيل زيارة" }).click();
+  await page.getByPlaceholder("اكتب اسم العميل أو رقمه").fill("زائر بمتابعة");
+  await page.getByRole("button", { name: /كعميل جديد/ }).click();
+  await page.locator(".party-block input[type=tel]").first().fill("01066666666");
+  await page.getByText("متابعة بعد الزيارة").click();
+  await page.getByText("العميل ده محتاج متابعة").click();
+  await page.locator('input[type="date"]').last().fill("2030-01-15");
+  await page.locator(".outcome-tile.is-inquiry").click();
+  await page.getByRole("button", { name: "حفظ الزيارة" }).click();
+  await page.waitForTimeout(2500);
+  await go("متابعاتي");
+  await page.waitForTimeout(600); // upcoming follow-ups are listed on the page itself now
+  check((await page.locator("main").innerText()).includes("زائر بمتابعة"), "agent's follow-up was saved");
+  // Finishing a follow-up: it stops being "open", so it leaves the always-loaded set but is still saved and can be shown on request.
+  await page.locator("article.followup-card", { hasText: "زائر بمتابعة" }).getByRole("button", { name: "تسجيل النتيجة" }).click();
+  await page.locator("textarea").first().fill("كلمته وهيرد قريب");
+  await page.getByRole("button", { name: "حفظ النتيجة" }).click();
+  await page.waitForTimeout(2500);
+  let fu;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const qs = await getDocs(query(collection(ctx.firestore(), "followUps"), where("leadName", "==", "زائر بمتابعة")));
+    fu = qs.docs.map((d) => d.data().status);
+  });
+  check(fu.length === 1 && fu[0] === "completed", `a follow-up is completed from the list and saved (${JSON.stringify(fu)})`);
+  check(!(await page.locator("main").innerText()).includes("كلمته وهيرد قريب"), "a finished follow-up leaves the open list");
+  await page.getByRole("button", { name: /عرض المكتملة والملغاة/ }).click();
+  await page.waitForTimeout(1500);
+  check((await page.locator("main").innerText()).includes("كلمته وهيرد قريب"), "finished follow-ups load when asked for");
+  // A new customer from the customer form.
+  await go("العملاء");
+  await page.getByRole("button", { name: /عميل جديد/ }).first().click();
+  await page.waitForTimeout(800);
+  await page.locator("input[name=customerName]").fill("عميل من الفورم");
+  await page.locator("input[name=customerPhone]").fill("01077777777");
+  await page.getByRole("button", { name: /حفظ العميل/ }).click();
+  await page.waitForTimeout(2500);
+  check((await page.locator("main").innerText()).includes("عميل من الفورم"), "agent adds a customer from the form");
+  await go("العملاء");
+  await page.locator("button.customer-name", { hasText: "عميل أحمد الخاص" }).click();
+  await page.waitForTimeout(2000);
+  check((await page.locator("body").innerText()).includes("ملاحظة قديمة على عميل أحمد"), "opening a customer loads their history");
+  // Signing out clears the device's cached data and returns to the login screen.
+  await page.keyboard.press("Escape");
+  await page.locator('summary[aria-label="الحساب ونطاق العمل"]').click();
+  await page.locator(".logout-button").click();
+  await page.waitForSelector('input[type="password"]', { timeout: 20000 }).catch(() => {});
+  check(await page.locator('input[type="password"]').isVisible(), "signing out returns to the login screen");
+});
+
+await as("gm", async (page, go) => {
+  await go("العملاء");
+  const txt = await page.locator("main").innerText();
+  check(txt.includes("عميل فرع تاني") && txt.includes("عميل أحمد الخاص"), "general manager sees every branch");
+  await go("العملاء");
+  // Reassigning re-points the whole history on the server, loaded or not.
+  await page.locator("button.customer-name", { hasText: "عميل أحمد الخاص" }).click();
+  await page.waitForTimeout(1500);
+  await page.locator("button.client-more-toggle").click();
+  await page.getByRole("button", { name: "تغيير المسؤول" }).first().click();
+  await page.locator("select").filter({ has: page.locator("option", { hasText: "اختَر موظفًا من نفس الفرع" }) }).selectOption({ label: "مدير فرع 1" });
+  await page.locator('form button[type="submit"]').last().click();
+  await page.waitForTimeout(2500);
+  let owner;
+  await env.withSecurityRulesDisabled(async (ctx) => { owner = (await getDoc(doc(ctx.firestore(), "timelineEvents", "T1"))).data()?.leadOwnerId; });
+  check(owner === "usr-bm1", `reassigning moves the customer's history to the new owner (${owner})`);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  await page.locator("aside summary", { hasText: "إدارة المؤسسة" }).click();
+  await go("سجل العمليات");
+  await page.waitForTimeout(1500);
+  check((await page.locator("main").innerText()).includes("عملية قديمة في السجل"), "the audit log loads when its page opens");
+  // Opening the app as top management indexes the customers saved before search existed.
+  await page.waitForTimeout(3000);
+  let indexed;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    indexed = { marker: (await getDoc(doc(f, "settings", "searchIndex"))).data()?.version, keys: (await getDoc(doc(f, "leads", "M07"))).data()?.searchKeys?.length };
+  });
+  check(indexed.marker === 1 && indexed.keys > 10, `earlier customers are indexed for search once (${JSON.stringify(indexed)})`);
+  let visitIndexed;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    visitIndexed = { marker: (await getDoc(doc(f, "settings", "searchIndex"))).data()?.visits, keys: (await getDoc(doc(f, "visits", "V100"))).data()?.searchKeys?.length };
+  });
+  check(visitIndexed.marker === 1 && visitIndexed.keys > 10, `earlier visits are indexed for search too (${JSON.stringify(visitIndexed)})`);
+});
+
+
+
+await as("bm1", async (page, go) => {
+  await go("العملاء");
+  const txt = await page.locator("main").innerText();
+  check(txt.includes("عميل أحمد الخاص") && txt.includes("عميل المدير") && txt.includes("زائر جديد"), "branch manager sees the whole branch");
+  check(!txt.includes("عميل فرع تاني"), "branch manager does not see the other branch");
+});
+
+await as("bm1", async (page, go, landing) => {
+  // 300 customers and 300 follow-ups sit in this branch; signing in reads a small part of that.
+  check(landing.total < 80, `signing in reads ${landing.total} documents, not the ~800 in the branch`);
+  const v = landing.by.visits || 0;
+  const r = landing.by.reviewRequests || 0;
+  check(v >= 1 && v < 10, `this week's visit is read, the 138 old ones are not (${v})`);
+  check(r >= 4 && r < 30, `reviews waiting for an answer and complaints are read, the 138 handled ones are not (${r})`);
+  // Page by page: the list reads 20 customers, the rest on request.
+  await go("العملاء");
+  await page.waitForTimeout(1500);
+  const rowsNow = () => page.locator("button.customer-name").count();
+  check((await rowsNow()) === 20, `the list loads 20 customers first (${await rowsNow()})`);
+  check(await page.getByRole("button", { name: "عرض المزيد" }).isVisible(), "a button loads more");
+  check((await page.locator("main").innerText()).includes("من 305"), "the total comes from a count");
+  await page.getByRole("button", { name: "عرض المزيد" }).click();
+  await page.waitForTimeout(1500);
+  check((await rowsNow()) === 40, `the next page adds 20 (${await rowsNow()})`);
+  // Search is the database's: beginnings of words, ends of phone numbers.
+  const search = page.locator("main input[type=search]").first();
+  await search.fill("كثير 07");
+  await page.waitForTimeout(1500);
+  check((await rowsNow()) === 1 && (await page.locator("main").innerText()).includes("عميل كثير 07"), "a name search finds that customer");
+  await search.fill("0007");
+  await page.waitForTimeout(1500);
+  check((await rowsNow()) === 1 && (await page.locator("main").innerText()).includes("عميل كثير 07"), "the end of a phone number finds that customer");
+  await search.fill("زائر");
+  await page.waitForTimeout(1500);
+  check((await rowsNow()) === 2, `a search finds customers added from visits (${await rowsNow()})`);
+  await search.fill("");
+  // The search box in the header.
+  const header = page.locator('input[aria-label="البحث عن عميل"]');
+  await header.fill("عميل كثير 21");
+  await page.waitForTimeout(1500);
+  check(await page.locator(".search-results").getByText("عميل كثير 21").isVisible(), "the header search finds a customer");
+  await page.locator(".search-results button").first().click();
+  await page.waitForTimeout(2000);
+  check((await page.locator("body").innerText()).includes("عميل كثير 21"), "a customer found by search opens");
+  await page.keyboard.press("Escape");
+  // Visits are read a page at a time too, with the same kind of search.
+  await go("الزيارات");
+  await page.waitForTimeout(1500);
+  const visitRows = () => page.locator(".data-table tbody tr").count();
+  check((await visitRows()) === 20, `the visits list loads 20 first (${await visitRows()})`);
+  check((await page.locator("main").innerText()).includes("من 141"), "the visits total comes from a count");
+  await page.getByRole("button", { name: "عرض المزيد" }).click();
+  await page.waitForTimeout(1500);
+  check((await visitRows()) === 40, `more visits load on request (${await visitRows()})`);
+  const visitSearch = page.locator("main input[type=search]").first();
+  await visitSearch.fill("عام 100");
+  await page.waitForTimeout(1500);
+  check((await visitRows()) === 1, `a visit is found by the visitor's name (${await visitRows()})`);
+  await visitSearch.fill("5555");
+  await page.waitForTimeout(1500);
+  check((await visitRows()) === 1 && (await page.locator("main").innerText()).includes("زائر جديد"), "a visit is found by the end of the phone number");
+  await visitSearch.fill("");
+  // Recording a visit for a customer found by the database search.
+  await page.getByRole("button", { name: "تسجيل زيارة" }).click();
+  await page.locator('input[placeholder="اكتب اسم العميل أو رقمه"]').fill("كثير 05");
+  await page.waitForTimeout(1500);
+  await page.locator('[role=option]').first().click();
+  await page.locator("button.outcome-tile.is-inquiry").click();
+  await page.getByRole("button", { name: "حفظ الزيارة" }).click();
+  await page.waitForTimeout(2500);
+  let savedVisit;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const qs = await getDocs(query(collection(ctx.firestore(), "visits"), where("linkedLeadId", "==", "M05")));
+    savedVisit = qs.docs.map((d) => d.data().searchKeys?.length);
+  });
+  check(savedVisit.length === 1 && savedVisit[0] > 5, `a visit for a found customer is saved on their file with its search keys (${JSON.stringify(savedVisit)})`);
+  // The dashboard counts customers without reading them.
+  await go("الرئيسية");
+  await page.waitForTimeout(2000);
+  check((await page.locator(".studio-metrics").innerText()).includes("305"), "the dashboard shows the customer count");
+});
+
+await as("agentC", async (page, go) => {
+  await go("العملاء");
+  const txt = await page.locator("main").innerText();
+  check(txt.includes("عميل فرع تاني") && !txt.includes("عميل أحمد الخاص") && !txt.includes("زائر جديد"), "agent in branch 2 sees only their own");
+  const search = page.locator("main input[type=search]").first();
+  await search.fill("كثير");
+  await page.waitForTimeout(1500);
+  check((await page.locator("button.customer-name").count()) === 0, "a search never returns another branch's customers");
+});
+
+// Signing in again as top management does not read the customers again: the index is already built.
+await as("gm", async (page, go, landing) => {
+  check(landing.total < 120 && !(landing.by["leads/fetch"] > 0), `a later sign-in as top management does not re-read the customers (${landing.total} read, ${landing.by["leads/fetch"] || 0} for indexing)`);
+});
+
+await browser.close();
+server.close();
+await env.cleanup();
+console.log(failures ? `\n${failures} check(s) failed` : "\nall app checks passed");
+process.exit(failures ? 1 : 0);

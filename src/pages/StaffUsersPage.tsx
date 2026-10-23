@@ -1,3 +1,10 @@
+import { useAllData } from "../lib/useAllData";
+import { useAllFollowUps } from "../lib/useAllFollowUps";
+import { PageGuide } from "../components/common/PageGuide";
+import { RatingBadge } from "../components/reviews/EmployeeRatings";
+import { employeeRatings } from "../lib/employeeRating";
+import { userLimitMessage, userQuota } from "../lib/license";
+import { FilterBar } from "../components/common/FilterBar";
 import { authErrorMessage } from "../context/AuthContext";
 import { resetStaffPassword } from "../lib/adminClient";
 import {
@@ -5,6 +12,7 @@ import {
   canEditStaff,
   canManageOrganization,
   assignableRoles,
+  grantableOnEdit,
 } from "../lib/access";
 import {
   positionNames,
@@ -13,7 +21,7 @@ import {
   specialties,
   type Specialty,
 } from "../lib/permissions";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useCRM } from "../context/CRMContext";
 import { useLanguage } from "../context/LanguageContext";
 import { UserRole, User } from "../types/crm";
@@ -29,6 +37,7 @@ import {
   ChevronRight,
   ShieldCheck,
   KeyRound,
+  Trash2,
   Copy,
   X,
 } from "lucide-react";
@@ -43,14 +52,23 @@ export const StaffUsersPage: React.FC = () => {
     governorates,
     departmentEntities,
     jobPositions,
+    updateJobPosition,
     addUser,
     updateUser,
     toggleUserActive,
+    deleteUser,
     createLoginForUser,
     logAudit,
     addDepartmentEntity,
     addJobPosition,
+    reviewRequests,
+    followUps,
+    license,
   } = useCRM();
+  useAllFollowUps();
+  useAllData(["reviews"]);
+  const uQuota = { ...userQuota(users, license), full: userQuota(users, license).full && effectiveUser.role !== "admin" };
+  const ratings = useMemo(() => employeeRatings(users, reviewRequests, followUps), [users, reviewRequests, followUps]);
 
   const { t } = useLanguage();
 
@@ -85,7 +103,8 @@ export const StaffUsersPage: React.FC = () => {
   const [role, setRole] = useState<UserRole>("sales_agent");
   const [companyId, setCompanyId] = useState(companies[0]?.id || "");
   const [governorateId, setGovernorateId] = useState(governorates[0]?.id || "");
-  const [branchId, setBranchId] = useState(branches[0]?.id || "");
+  const [formBranchId, setBranchId] = useState(branches[0]?.id || "");
+  const branchId = formBranchId;
   const [teamId, setTeamId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [jobPositionId, setJobPositionId] = useState("");
@@ -131,11 +150,11 @@ export const StaffUsersPage: React.FC = () => {
     setEmail("");
     setLoginPassword("");
     setPhone("");
-    setRole("sales_agent");
+    setRole(assignableRoles(effectiveUser)[0] ?? "sales_agent");
     setSpecialty("sales");
     setSupervisedBranchIds([]);
     setCompanyId(companies[0]?.id || "");
-    setGovernorateId(governorates[0]?.id || "");
+    setGovernorateId(branches[0]?.governorateId || "");
     setBranchId(branches[0]?.id || "");
     setTeamId("");
     setDepartmentId("");
@@ -154,7 +173,7 @@ export const StaffUsersPage: React.FC = () => {
     setSpecialty(u.specialty || "sales");
     setSupervisedBranchIds(u.supervisedBranchIds || []);
     setCompanyId(u.companyId || companies[0]?.id || "");
-    setGovernorateId(u.governorateId || governorates[0]?.id || "");
+    setGovernorateId(u.governorateId || branches.find((b) => b.id === u.branchId)?.governorateId || "");
     setBranchId(u.branchId || branches[0]?.id || "");
     setTeamId(u.teamId || "");
     setDepartmentId(u.departmentId || "");
@@ -167,8 +186,11 @@ export const StaffUsersPage: React.FC = () => {
   const handleEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // The owner and the general sales manager work across branches, so they are not placed in one.
+    const crossBranch = ["admin", "general_manager", "regional_manager"].includes(role);
+    const branchId = crossBranch ? "" : formBranchId;
     const companyObj = companies.find((c) => c.id === companyId);
-    const govObj = governorates.find((g) => g.id === governorateId);
+    const govObj = governorates.find((g) => g.id === (branches.find((b) => b.id === branchId)?.governorateId || governorateId));
     const branchObj = branches.find((b) => b.id === branchId);
     const teamObj = teams.find((t) => t.id === teamId);
     const deptObj = departmentEntities.find((d) => d.id === departmentId);
@@ -187,11 +209,12 @@ export const StaffUsersPage: React.FC = () => {
         ...(isDirector(effectiveUser)
           ? {
               specialty: role === "supervisor" ? specialty : undefined,
-              supervisedBranchIds: ["supervisor", "regional_manager"].includes(
-                role,
-              )
-                ? supervisedBranchIds
-                : undefined,
+              supervisedBranchIds:
+                role === "supervisor"
+                  ? supervisedBranchIds
+                  : role === "regional_manager"
+                    ? [] // the general sales manager covers every branch: no list to go stale
+                    : undefined,
             }
           : {}),
         companyId,
@@ -219,11 +242,12 @@ export const StaffUsersPage: React.FC = () => {
         ...(isDirector(effectiveUser)
           ? {
               specialty: role === "supervisor" ? specialty : undefined,
-              supervisedBranchIds: ["supervisor", "regional_manager"].includes(
-                role,
-              )
-                ? supervisedBranchIds
-                : undefined,
+              supervisedBranchIds:
+                role === "supervisor"
+                  ? supervisedBranchIds
+                  : role === "regional_manager"
+                    ? [] // the general sales manager covers every branch: no list to go stale
+                    : undefined,
             }
           : {}),
         companyId,
@@ -268,7 +292,7 @@ export const StaffUsersPage: React.FC = () => {
     if (!newDeptName) return;
     addDepartmentEntity({
       name: newDeptName,
-      code: newDeptCode || `DEPT-${Date.now().toString().slice(-4)}`,
+      code: `DEPT-${Date.now().toString(36).toUpperCase().slice(-4)}`,
       description: newDeptDesc,
       active: true,
     });
@@ -280,16 +304,21 @@ export const StaffUsersPage: React.FC = () => {
 
   const handleAddJob = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newJobTitle || !newJobDeptId) return;
-    const deptObj = departmentEntities.find((d) => d.id === newJobDeptId);
-    addJobPosition({
+    const deptId = newJobDeptId || departmentEntities[0]?.id || "";
+    if (!newJobTitle || !deptId) return;
+    const deptObj = departmentEntities.find((d) => d.id === deptId);
+    const created = addJobPosition({
       title: newJobTitle,
-      departmentId: newJobDeptId,
+      departmentId: deptId,
       departmentName: deptObj?.name,
       active: true,
     });
     setNewJobTitle("");
     setShowJobModal(false);
+    if (showAddModal || editingUser) {
+      setDepartmentId(deptId);
+      setJobPositionId(created.id);
+    }
   };
 
   const filteredUsers = users.filter((u) => {
@@ -303,6 +332,8 @@ export const StaffUsersPage: React.FC = () => {
 
     if (selectedBranchFilter && u.branchId !== selectedBranchFilter)
       return false;
+    // Developer accounts are not company staff: they stay out of the list and the counts unless picked on purpose.
+    if (u.role === "admin" && selectedRoleFilter !== "admin") return false;
     if (selectedRoleFilter && u.role !== selectedRoleFilter) return false;
     if (selectedDeptFilter && u.departmentId !== selectedDeptFilter)
       return false;
@@ -319,133 +350,64 @@ export const StaffUsersPage: React.FC = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-150">
-      {/* Page Title Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 glass-card p-4 sm:p-5 rounded-2xl shadow-xs">
+      <div className="page-heading">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-            <UserCheck2 className="w-6 h-6 text-[#dc424b]" />
-            <span>إدارة أطقم العمل والهيكل المؤسسي (EL.BEHERY)</span>
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            إدارة الموظفين، الأدوار القيادية، الأقسام والوظائف، المسميات،
-            والمسيرات المالية والعمولات
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+          <span className="eyebrow">فريق العمل</span>
+          <h1>الموظفون</h1>
+          <p>{assignableRoles(effectiveUser).length ? "إضافة الموظفين وتحديد أدوارهم وفروعهم وأقسامهم ومسمياتهم الوظيفية." : "تعديل بيانات الموظفين وإعادة تعيين كلمات المرور وإيقاف الحسابات."}</p>
           {canManageStaff(effectiveUser) && (
-            <button
-              onClick={openAddEmployeeModal}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#292928] dark:hover:bg-[#343431] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 shadow-sm flex items-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4 text-[#dc424b]" />
-              <span>إضافة موظف جديد</span>
-            </button>
+            <p className="table-secondary">
+              الباقة: مستخدم {uQuota.used} من {uQuota.max}
+              {uQuota.full && ". وصلت للحد الأقصى، للتوسعة كلّم المطوّر."}
+            </p>
           )}
         </div>
+        {assignableRoles(effectiveUser).length > 0 && (
+          <button
+            className="btn-primary"
+            onClick={openAddEmployeeModal}
+            disabled={uQuota.full}
+            title={uQuota.full ? userLimitMessage(uQuota) : undefined}
+          >
+            <Plus size={16} />
+            إضافة موظف
+          </button>
+        )}
       </div>
+      <PageGuide id="staff" />
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-        <button
-          onClick={() => setActiveTab("employees")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            activeTab === "employees"
-              ? "bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm"
-              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-          }`}
-        >
-          <UserCheck2 className="w-4 h-4 text-[#dc424b]" />
-          <span>سجل الموظفين والأطقم ({filteredUsers.length})</span>
+      <div className="tab-filter" role="group" aria-label="الموظفون والأقسام" style={{ marginBottom: 12 }}>
+        <button aria-pressed={activeTab === "employees"} onClick={() => setActiveTab("employees")}>
+          سجل الموظفين ({filteredUsers.length})
         </button>
-
-        <button
-          onClick={() => setActiveTab("departments")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            activeTab === "departments"
-              ? "bg-slate-800 dark:bg-[#1e2636] text-white border border-white/15 shadow-sm"
-              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-          }`}
-        >
-          <Briefcase className="w-4 h-4 text-[#dc424b]" />
-          <span>هيكل الأقسام والوظائف ({departmentEntities.length})</span>
+        <button aria-pressed={activeTab === "departments"} onClick={() => setActiveTab("departments")}>
+          الأقسام والمسميات ({departmentEntities.length})
         </button>
-
       </div>
 
       {/* TAB 1: EMPLOYEES LIST */}
       {activeTab === "employees" && (
         <div className="space-y-4">
-          {/* Filters Bar */}
-          <div className="glass-card p-4 rounded-2xl shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 dir-ltr:right-auto dir-ltr:left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="بحث بالاسم أو البريد أو الهاتف..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pr-9 dir-ltr:pr-3 dir-ltr:pl-9 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs outline-none"
-              />
-            </div>
-
-            <div>
-              <select
-                value={selectedBranchFilter}
-                onChange={(e) => setSelectedBranchFilter(e.target.value)}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-              >
-                <option value="">جميع الفروع ({branches.length})</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <select
-                value={selectedRoleFilter}
-                onChange={(e) => setSelectedRoleFilter(e.target.value)}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-              >
-                <option value="">جميع الأدوار الوظيفية</option>
-                {positionRoles.map((r) => (
-                  <option key={r} value={r}>
-                    {positionNames[r]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <select
-                value={selectedDeptFilter}
-                onChange={(e) => setSelectedDeptFilter(e.target.value)}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-              >
-                <option value="">جميع الأقسام</option>
-                {departmentEntities.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-              >
-                <option value="all">جميع الحالات</option>
-                <option value="active">مفعل فقط</option>
-                <option value="inactive">معطل فقط</option>
-              </select>
-            </div>
-          </div>
+          <section className="panel">
+            <FilterBar
+              search={{ value: searchQuery, onChange: setSearchQuery, placeholder: "بحث بالاسم أو البريد أو الهاتف…" }}
+              selects={[
+                { id: "branch", label: "الفرع", value: selectedBranchFilter, onChange: setSelectedBranchFilter, all: "", allLabel: "كل الفروع", primary: true, options: branches.map((b) => ({ value: b.id, label: b.name })) },
+                { id: "role", label: "الدور الوظيفي", value: selectedRoleFilter, onChange: setSelectedRoleFilter, all: "", allLabel: "كل الأدوار", primary: true, options: positionRoles.map((r) => ({ value: r, label: positionNames[r] })) },
+                { id: "dept", label: "القسم", value: selectedDeptFilter, onChange: setSelectedDeptFilter, all: "", allLabel: "كل الأقسام", options: departmentEntities.map((d) => ({ value: d.id, label: d.name })) },
+                { id: "status", label: "الحالة", value: statusFilter, onChange: (v) => setStatusFilter(v as "all" | "active" | "inactive"), allLabel: "كل الحالات", options: [{ value: "active", label: "مفعل فقط" }, { value: "inactive", label: "معطل فقط" }] },
+              ]}
+              count={{ shown: filteredUsers.length, noun: "موظف" }}
+              onReset={() => {
+                setSearchQuery("");
+                setSelectedBranchFilter("");
+                setSelectedRoleFilter("");
+                setSelectedDeptFilter("");
+                setStatusFilter("all");
+              }}
+            />
+          </section>
 
           {/* Employee Table */}
           <div className="glass-card rounded-2xl shadow-xs overflow-hidden">
@@ -459,6 +421,7 @@ export const StaffUsersPage: React.FC = () => {
                     <th className="p-3.5">الفرع</th>
                     <th className="p-3.5">المسؤول المباشر</th>
                     <th className="p-3.5">بيانات التواصل</th>
+                    <th className="p-3.5">تقييم العملاء</th>
                     <th className="p-3.5">الحالة</th>
                     <th className="p-3.5 text-center">الإجراءات</th>
                   </tr>
@@ -516,6 +479,14 @@ export const StaffUsersPage: React.FC = () => {
                       </td>
 
                       <td className="p-3.5">
+                        {["sales_agent", "team_leader"].includes(u.role) ? (
+                          <RatingBadge rating={ratings.find((r) => r.userId === u.id)} />
+                        ) : (
+                          <span className="table-secondary">—</span>
+                        )}
+                      </td>
+
+                      <td className="p-3.5">
                         <span
                           className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                             u.active
@@ -533,7 +504,7 @@ export const StaffUsersPage: React.FC = () => {
                             <button
                               onClick={() => openEditEmployeeModal(u)}
                               className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                              title="تعديل الموظف والمسير المالي"
+                              title="تعديل بيانات الموظف"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
@@ -549,9 +520,33 @@ export const StaffUsersPage: React.FC = () => {
                             </button>
                           )}
 
+                          {effectiveUser.role === "admin" && u.id !== effectiveUser.id && (
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm(`هتمسح ${u.name} نهائيًا: بياناته وحساب دخوله. مش هينفع ترجّعه. متأكد؟`)) return;
+                                try {
+                                  await deleteUser(u.id);
+                                } catch (e) {
+                                  window.alert(e instanceof Error ? e.message : "تعذر المسح");
+                                }
+                              }}
+                              className="p-1.5 bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 hover:bg-red-100 rounded-lg cursor-pointer transition-colors"
+                              title="مسح الموظف نهائيًا (للمطوّر فقط)"
+                              aria-label={`مسح ${u.name}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
                           {canEditStaff(effectiveUser, u, branches) && (
                             <button
-                              onClick={() => toggleUserActive(u.id)}
+                              onClick={() => {
+                                try {
+                                  toggleUserActive(u.id);
+                                } catch (e) {
+                                  window.alert(e instanceof Error ? e.message : "تعذر التنفيذ");
+                                }
+                              }}
                               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                                 u.active
                                   ? "bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 hover:bg-red-100"
@@ -605,9 +600,6 @@ export const StaffUsersPage: React.FC = () => {
                       <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
                         {d.name}
                       </span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-mono">
-                        {d.code}
-                      </span>
                     </div>
                     {d.description && (
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -639,8 +631,13 @@ export const StaffUsersPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              {jobPositions
-                .filter((j) => j.active && j.departmentId === departmentId)
+              {jobPositions.length === 0 && (
+                <p className="quiet-note">
+                  مفيش مسميات وظيفية لسه. اضغط «إضافة مسمى وظيفي» وابدأ بأول مسمى (مثال: مدير مبيعات الفرع، مسؤول مبيعات، مهندس موقع).
+                </p>
+              )}
+              {[...jobPositions]
+                .sort((a, b) => (a.departmentName || "").localeCompare(b.departmentName || "", "ar"))
                 .map((j) => (
                   <div
                     key={j.id}
@@ -654,6 +651,15 @@ export const StaffUsersPage: React.FC = () => {
                         القسم: {j.departmentName || "عام"}
                       </span>
                     </div>
+                    {canManageOrganization(effectiveUser) && (
+                      <button
+                        type="button"
+                        onClick={() => updateJobPosition(j.id, { active: !j.active })}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 cursor-pointer"
+                      >
+                        {j.active ? "تعطيل" : "تفعيل"}
+                      </button>
+                    )}
                   </div>
                 ))}
             </div>
@@ -672,7 +678,7 @@ export const StaffUsersPage: React.FC = () => {
                   : "إنشاء حساب موظف جديد"}
               </span>
               <span className="text-xs font-normal text-slate-400">
-                مؤسسة EL.BEHERY
+                مؤسسة البحيري
               </span>
             </h3>
 
@@ -716,9 +722,9 @@ export const StaffUsersPage: React.FC = () => {
                       <input
                         type="password"
                         dir="ltr"
-                        minLength={6}
+                        minLength={8}
                         autoComplete="new-password"
-                        placeholder="6 أحرف على الأقل. رقم الدخول = رقم الموبايل. اتركها فارغة لعدم إنشاء حساب دخول"
+                        placeholder="8 أحرف على الأقل. اسم الدخول = رقم الموبايل. اتركها فارغة لعدم إنشاء حساب دخول"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
@@ -742,7 +748,7 @@ export const StaffUsersPage: React.FC = () => {
               </div>
 
               {isDirector(effectiveUser) &&
-                ["supervisor", "regional_manager"].includes(role) && (
+                role === "supervisor" && (
                   <section className="panel" style={{ padding: 16 }}>
                     {role === "supervisor" && (
                       <label className="field">
@@ -764,9 +770,7 @@ export const StaffUsersPage: React.FC = () => {
                     )}
                     <p>
                       الفروع المشمولـة بالإشراف{" "}
-                      {role === "regional_manager"
-                        ? "(تركها فارغة يعني كل الفروع)"
-                        : "(اختر الفروع؛ عند تركها فارغة يكون النطاق هو الفرع المسجل فقط)"}
+                      (اختر الفروع؛ عند تركها فارغة يكون النطاق هو الفرع المسجل فقط)
                     </p>
                     {branches.map((b) => (
                       <label className="checkbox-line" key={b.id}>
@@ -803,7 +807,7 @@ export const StaffUsersPage: React.FC = () => {
                       onChange={(e) => setRole(e.target.value as UserRole)}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-semibold"
                     >
-                      {assignableRoles(effectiveUser).map((r) => (
+                      {[...new Set([...(editingUser ? grantableOnEdit(effectiveUser) : assignableRoles(effectiveUser)), ...(editingUser ? [editingUser.role] : [])])].map((r) => (
                         <option key={r} value={r}>
                           {positionNames[r]}
                         </option>
@@ -811,25 +815,14 @@ export const StaffUsersPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                      المحافطة / الإقليم *
-                    </label>
-                    <select
-                      value={governorateId}
-                      onChange={(e) => setGovernorateId(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-                    >
-                      {governorates.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {["admin", "general_manager", "regional_manager"].includes(role) ? (
+                    <p className="text-xs text-slate-600 dark:text-slate-400 sm:col-span-2 bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+                      الدور ده بيشتغل على كل الفروع، فمش محتاج فرع محدد.
+                    </p>
+                  ) : (
                   <div>
                     <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                       الفرع المباشر *
@@ -855,6 +848,7 @@ export const StaffUsersPage: React.FC = () => {
                       ))}
                     </select>
                   </div>
+                  )}
 
                   <div>
                     <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -864,11 +858,12 @@ export const StaffUsersPage: React.FC = () => {
                       value={departmentId}
                       onChange={(e) => {
                         setDepartmentId(e.target.value);
-                        setJobPositionId("");
+                        const keep = jobPositions.find((j) => j.id === jobPositionId);
+                        if (keep && e.target.value && keep.departmentId !== e.target.value) setJobPositionId("");
                       }}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                     >
-                      <option value="">اختر القسم</option>
+                      <option value="">كل الأقسام</option>
                       {departmentEntities.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name}
@@ -885,20 +880,38 @@ export const StaffUsersPage: React.FC = () => {
                     </label>
                     <select
                       value={jobPositionId}
-                      onChange={(e) => setJobPositionId(e.target.value)}
+                      onChange={(e) => {
+                        setJobPositionId(e.target.value);
+                        const pos = jobPositions.find((j) => j.id === e.target.value);
+                        if (pos) setDepartmentId(pos.departmentId);
+                      }}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                     >
-                      <option value="">اختر الوظيفة</option>
-                      {jobPositions
-                        .filter(
-                          (j) => j.active && j.departmentId === departmentId,
-                        )
-                        .map((j) => (
-                          <option key={j.id} value={j.id}>
-                            {j.title} ({j.departmentName || "عام"})
-                          </option>
-                        ))}
+                      <option value="">{jobPositions.some((j) => j.active) ? "اختر الوظيفة" : "لا توجد مسميات بعد"}</option>
+                      {departmentEntities
+                        .filter((d) => !departmentId || d.id === departmentId)
+                        .map((d) => {
+                          const list = jobPositions.filter((j) => j.active && j.departmentId === d.id);
+                          return list.length ? (
+                            <optgroup key={d.id} label={d.name}>
+                              {list.map((j) => (
+                                <option key={j.id} value={j.id}>
+                                  {j.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null;
+                        })}
                     </select>
+                    {canManageOrganization(effectiveUser) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowJobModal(true)}
+                        className="mt-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 cursor-pointer"
+                      >
+                        + مسمى وظيفي جديد
+                      </button>
+                    )}
                   </div>
 
                   <div>
@@ -1035,19 +1048,6 @@ export const StaffUsersPage: React.FC = () => {
 
               <div>
                 <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  كود القسم
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: DECOR"
-                  value={newDeptCode}
-                  onChange={(e) => setNewDeptCode(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono uppercase"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                   الوصف والمهام
                 </label>
                 <textarea
@@ -1104,8 +1104,11 @@ export const StaffUsersPage: React.FC = () => {
                 <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                   القسم التابع له *
                 </label>
+                {departmentEntities.length === 0 && (
+                  <p className="quiet-note">لازم تضيف قسم الأول من تبويب «هيكل الأقسام والوظائف».</p>
+                )}
                 <select
-                  value={newJobDeptId}
+                  value={newJobDeptId || departmentEntities[0]?.id || ""}
                   onChange={(e) => setNewJobDeptId(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
                 >

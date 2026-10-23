@@ -8,6 +8,8 @@ export type UserRole =
   | "sales_agent";
 
 export interface JobPosition {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   title: string;
   departmentId: string;
@@ -17,6 +19,8 @@ export interface JobPosition {
 }
 
 export interface DepartmentEntity {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   code: string;
@@ -25,6 +29,8 @@ export interface DepartmentEntity {
 }
 
 export interface User {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   email: string;
@@ -57,6 +63,8 @@ export interface User {
 }
 
 export interface Company {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   code: string;
@@ -77,6 +85,8 @@ export interface Governorate {
 }
 
 export interface Warehouse {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   code: string;
@@ -98,6 +108,8 @@ export type BranchType =
   | "project_site";
 
 export interface Branch {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   code: string;
@@ -115,6 +127,8 @@ export interface Branch {
 }
 
 export interface Team {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   branchId: string;
@@ -176,6 +190,8 @@ export type CustomerCategory =
   | "broker_company";
 
 export interface Lead {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   phone: string;
@@ -195,6 +211,10 @@ export interface Lead {
   classification: LeadClassification;
   department: Department;
   departmentName?: string;
+  /** Salespeople handling a follow-up on this customer for its owner (they may read and update it). */
+  delegatedTo?: string[];
+  /** Everything the customer is interested in; `department` is the first of them. */
+  interests?: Department[];
   courseOfInterest?: string; // alias for department / service details
   locationRating?: number; // 1-5 rating for location
   treatmentRating?: number; // 1-5 rating for staff treatment
@@ -214,10 +234,25 @@ export interface Lead {
   customerRatingComment?: string;
   brokerId?: string; // broker who referred this customer
   brokerName?: string;
+  /** The customer who recommended this one (a prospect added from a review or a post-sale call). */
+  referredByLeadId?: string;
+  referredByName?: string;
+  /** What the customer can be found by in the database search (see lib/leadSearch.ts). Written with every save. */
+  searchKeys?: string[];
 }
 
+export type VisitorType = "client" | "broker" | "both";
+
 export interface Visit {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
+  /** Who came: a customer, a broker on their own, or a customer who came with a broker. */
+  visitorType?: VisitorType;
+  brokerId?: string;
+  brokerName?: string;
+  /** Interests chosen for a customer registered through this visit. */
+  interests?: Department[];
   visitorName: string;
   phone: string;
   whatsappPhone?: string;
@@ -241,6 +276,11 @@ export interface Visit {
   requiresFollowUp: boolean;
   followUpAgentId?: string;
   followUpDate?: string;
+  /** What the visit can be found by in the database search (see lib/leadSearch.ts). Written with every save. */
+  searchKeys?: string[];
+  followUpReason?: string;
+  /** "auto" when the system chose the follow-up (after a purchase), not the salesperson. */
+  followUpOrigin?: "auto";
 }
 
 export type FollowUpStatus =
@@ -257,6 +297,8 @@ export type FollowUpType =
   | "meeting";
 
 export interface FollowUp {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   leadId: string;
   leadName: string;
@@ -279,6 +321,13 @@ export interface FollowUp {
   satisfactionRating?: number; // 1-5
   satisfactionComment?: string;
   referralNote?: string; // relatives / acquaintances the customer mentioned
+  referralLeadId?: string; // the prospect registered from what the customer said
+  /** Who made it: the salesperson (default), the system's own rules ("auto"), or a Zaki suggestion the salesperson accepted ("zaki"). */
+  origin?: "auto" | "zaki";
+  /** The accepted suggestion this follow-up came from. */
+  suggestionId?: string;
+  /** The broker it is about, when it is not for a customer. */
+  brokerId?: string;
 }
 
 export type BookingStatus =
@@ -289,6 +338,8 @@ export type BookingStatus =
 export type PaymentStatus = "full" | "deposit" | "pending" | "refunded";
 
 export interface Booking {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   leadId: string;
   leadName: string;
@@ -309,6 +360,8 @@ export interface Booking {
   notes: string;
   createdAt: string;
   deliveredAt?: string; // set when the work is finished and handed over
+  /** The visit this purchase was made in, when it was recorded with the visit. */
+  visitId?: string;
 }
 
 export type TimelineEventType =
@@ -323,9 +376,13 @@ export type TimelineEventType =
   | "agent_reassigned"
   | "branch_transferred"
   | "booking_created"
+  | "review_requested"
+  | "review_received"
   | "admin_action";
 
 export interface TimelineEvent {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   leadId: string;
   timestamp: string;
@@ -334,9 +391,14 @@ export interface TimelineEvent {
   type: TimelineEventType;
   title: string;
   details: string;
+  /** Copied from the customer so the security rules can scope history without reading the customer. */
+  branchId?: string;
+  leadOwnerId?: string;
 }
 
 export interface AuditLog {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   timestamp: string;
   userId: string;
@@ -368,6 +430,8 @@ export interface InvoiceLineItem {
 }
 
 export interface PurchaseInvoice {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   invoiceNumber: string;
   date: string;
@@ -390,6 +454,8 @@ export interface PurchaseInvoice {
 }
 
 export interface BrokerEntity {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   name: string;
   type: "individual" | "company" | "engineering_company" | "contractor";
@@ -402,9 +468,13 @@ export interface BrokerEntity {
   totalVolume: number;
   active: boolean;
   notes?: string;
+  /** Branches that registered or work with this broker; staff see the brokers of their own branch. */
+  branchIds?: string[];
 }
 
 export interface NotificationItem {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
   title: string;
   message: string;
@@ -420,7 +490,11 @@ export interface NotificationItem {
 }
 
 export interface NotBoughtRecord {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
   id: string;
+  /** The visit after which the customer had not bought yet. */
+  visitId?: string;
   leadId: string;
   leadName: string;
   branchId: string;
@@ -441,4 +515,121 @@ export interface NotBoughtRecord {
   )[];
   otherText?: string;
   note?: string;
+}
+
+// ---------- Customer reviews (a unique link per customer per visit/booking) ----------
+export type ReviewStatus = "sent" | "answered" | "cancelled";
+
+export interface ReviewAnalysis {
+  kind: "complaint" | "note" | "praise";
+  category?: string; // e.g. جودة، تأخير، تعامل، سعر
+  severity?: "low" | "medium" | "high";
+  summary?: string;
+}
+
+export interface ReviewRequest {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
+  /** The document id IS the secret token in the customer's link. */
+  id: string;
+  leadId: string;
+  leadName: string;
+  branchId: string;
+  branchName?: string;
+  agentId: string;
+  agentName?: string;
+  /** Who was asked: the customer (default) or a broker; a broker's request is kept on the broker, not on any customer. */
+  partyKind?: "client" | "broker";
+  brokerId?: string;
+  subjectKind: "visit" | "booking" | "general";
+  subjectId?: string;
+  subjectLabel: string; // shown to the customer, e.g. "زيارة فرع الإسكندرية يوم 12 أكتوبر"
+  sentAt: string; // ISO
+  status: ReviewStatus;
+  /** The single 48h nudge: when the salesperson sent it. */
+  reminderSentAt?: string;
+  cancelReason?: string;
+  cancelledAt?: string;
+  // Filled by the customer from the public page.
+  answeredAt?: string;
+  isComplaint?: boolean;
+  response?: {
+    rating: number; // 1-5 overall
+    treatment?: number;
+    price?: number;
+    quality?: number;
+    wouldRecommend?: boolean;
+    comment?: string;
+    /** Someone the customer recommends us to, left on the public review page. */
+    referral?: { name: string; phone: string };
+  };
+  /** The customer record made (or found) from the referral. */
+  referralLeadId?: string;
+  ai?: ReviewAnalysis;
+}
+
+/** Managers can only add follow-up notes to a complaint; nothing is ever edited or deleted. */
+export interface ReviewNote {
+  /** Sample data loaded from Settings; it can be removed again without touching real records. */
+  isDemo?: boolean;
+  id: string;
+  requestId: string;
+  branchId?: string;
+  agentId?: string;
+  text: string;
+  kind: "note" | "resolved";
+  byId: string;
+  byName: string;
+  at: string;
+}
+
+/** A reminder task the salesperson marked as done (for example "send the review request"). */
+export interface ReminderDone {
+  isDemo?: boolean;
+  /** Same as the task key, so a task can only be done once. */
+  id: string;
+  branchId: string;
+  agentId: string;
+  agentName?: string;
+  doneAt: string;
+}
+
+/**
+ * A follow-up Zaki noticed nobody scheduled (for example "the customer said he will build a villa next month").
+ * "checked" is only a marker that the data was already reviewed with nothing to suggest, so it is not read again.
+ */
+export interface AiSuggestion {
+  isDemo?: boolean;
+  id: string;
+  status: "pending" | "accepted" | "rejected" | "checked";
+  partyKind: "client" | "broker";
+  leadId?: string;
+  brokerId?: string;
+  /** Customer or broker name. */
+  name: string;
+  branchId: string;
+  agentId: string;
+  agentName?: string;
+  createdAt: string;
+  /** YYYY-MM-DD it was made: the daily limit counts these. */
+  dayKey: string;
+  /** What was reviewed, so the same data is not reviewed twice. */
+  fingerprint: string;
+  // The proposal.
+  proposedDate?: string;
+  reason?: string;
+  evidence?: string;
+  source?: string;
+  confidence?: number;
+  /** The facts Zaki was given, as plain lines, so the salesperson can see the whole picture before deciding. */
+  snapshot?: string[];
+  // The decision.
+  decidedAt?: string;
+  decidedById?: string;
+  decidedByName?: string;
+  rejectReason?: string;
+  finalDate?: string;
+  finalReason?: string;
+  edited?: boolean;
+  followUpId?: string;
 }

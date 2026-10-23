@@ -1,3 +1,5 @@
+import { useAllData } from "../../lib/useAllData";
+import { useAllFollowUps } from "../../lib/useAllFollowUps";
 import React, { useEffect, useState } from 'react';
 import { Lead } from '../../types/crm';
 import { useLanguage } from '../../context/LanguageContext';
@@ -20,6 +22,8 @@ export const DuplicateModal: React.FC<DuplicateModalProps> = ({
 }) => {
   const { t } = useLanguage();
   const { visits, followUps } = useCRM();
+  useAllFollowUps();
+  useAllData(["visits"]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {

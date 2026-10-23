@@ -1,3 +1,5 @@
+import { useAllData } from "../../lib/useAllData";
+import { useAllLeads } from "../../lib/useAllLeads";
 import { hasPermission } from "../../lib/permissions";
 import { useDialog } from "./useDialog";
 import React from "react";
@@ -62,6 +64,8 @@ export const HierarchyControlModal: React.FC<HierarchyControlModalProps> = ({
     bookings,
     users,
   } = useCRM();
+  useAllLeads(isOpen);
+  useAllData(["bookings"], isOpen);
   const { t } = useLanguage();
 
   const dialogRef = useDialog(isOpen, onClose);
@@ -149,9 +153,6 @@ export const HierarchyControlModal: React.FC<HierarchyControlModalProps> = ({
                 <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white truncate">
                   {title}
                 </h2>
-                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-slate-100 dark:bg-[#232322] text-slate-800 dark:text-[#c8232b] border border-slate-200 dark:border-white/10">
-                  {code}
-                </span>
                 <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
                   مفعل إدارياً
                 </span>
@@ -232,9 +233,6 @@ export const HierarchyControlModal: React.FC<HierarchyControlModalProps> = ({
                   <Building className="w-4 h-4 text-[#c8232b]" />
                   <span>الفرع الرئيسي التابع لهذا النطاق:</span>
                 </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-[#232322] text-slate-800 dark:text-[#c8232b] border border-slate-300 dark:border-white/10 font-mono">
-                  {mainHq.code}
-                </span>
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-200/60 dark:border-white/10 text-xs">
@@ -286,9 +284,6 @@ export const HierarchyControlModal: React.FC<HierarchyControlModalProps> = ({
                   >
                     <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100">
                       <span>{wh.name}</span>
-                      <span className="font-mono text-[10px] text-slate-700 dark:text-[#c8232b] font-bold">
-                        {wh.code}
-                      </span>
                     </div>
                     <div className="text-slate-600 dark:text-slate-300">
                       أمين المخزن:{" "}
@@ -328,9 +323,6 @@ export const HierarchyControlModal: React.FC<HierarchyControlModalProps> = ({
                   >
                     <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100">
                       <span>{sh.name}</span>
-                      <span className="font-mono text-[10px] text-slate-700 dark:text-[#c8232b] font-bold">
-                        {sh.code}
-                      </span>
                     </div>
                     <div className="text-slate-600 dark:text-slate-300">
                       مدير المعرض:{" "}

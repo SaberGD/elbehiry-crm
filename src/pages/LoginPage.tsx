@@ -15,7 +15,7 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     dir="rtl"
     className="min-h-screen bg-[#07090e] flex items-center justify-center p-4 text-[#dfe2ee] font-sans"
   >
-    <div className="w-full max-w-sm bg-[#181c24] border border-white/10 rounded-2xl p-6 shadow-2xl">
+    <div className="w-full max-w-sm bg-[#1d1d1c] border border-white/10 rounded-2xl p-6 shadow-2xl">
       <div className="flex justify-center mb-5">
         <ElBeheryLogo size="xl" />
       </div>
@@ -33,7 +33,9 @@ export const LoadingScreen: React.FC = () => (
 );
 
 export const BlockedScreen: React.FC<{ kind: 'no_profile' | 'inactive' }> = ({ kind }) => {
-  const { logout, profile } = useAuth();
+  const { logout, profile, signedInAs, isFounder, restoreFounder } = useAuth();
+  const [fixing, setFixing] = useState(false);
+  const [fixError, setFixError] = useState('');
   return (
     <Shell>
       <div className="text-center space-y-3">
@@ -46,6 +48,35 @@ export const BlockedScreen: React.FC<{ kind: 'no_profile' | 'inactive' }> = ({ k
             ? `الحساب ${profile?.email ?? ''} تم إيقافه. تواصل مع مدير النظام.`
             : 'تم تسجيل الدخول لكن لا توجد صلاحيات مرتبطة بحسابك. تواصل مع مدير النظام لتفعيله.'}
         </p>
+        {/* Shown so whoever fixes it knows exactly which account this is. */}
+        <p className="text-[11px] text-[#9aa0aa] leading-relaxed" dir="ltr">
+          {signedInAs.email}
+          <br />
+          UID: {signedInAs.uid}
+        </p>
+        {kind === 'no_profile' && isFounder && (
+          <div className="space-y-2">
+            <p className="text-xs text-[#e9c349]">ده الحساب اللي جهّز النظام أول مرة، وتقدر ترجّع صلاحيات المطوّر بنفسك.</p>
+            <button
+              disabled={fixing}
+              onClick={async () => {
+                setFixing(true);
+                setFixError('');
+                try {
+                  await restoreFounder();
+                } catch {
+                  setFixError('تعذر الاسترجاع. اتأكد إن قواعد Firestore الجديدة منشورة.');
+                } finally {
+                  setFixing(false);
+                }
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#c8232b] hover:bg-[#ad1c24] text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-60"
+            >
+              استرجاع صلاحيات المطوّر
+            </button>
+            {fixError && <p className="text-xs text-red-300">{fixError}</p>}
+          </div>
+        )}
         <button
           onClick={logout}
           className="inline-flex items-center gap-2 px-4 py-2 bg-[#262a33] hover:bg-[#31353e] rounded-xl text-xs font-semibold cursor-pointer"

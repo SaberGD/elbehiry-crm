@@ -32,9 +32,9 @@ export const initialDepartments: DepartmentEntity[] = [
 ];
 
 export const initialJobPositions: JobPosition[] = [
-  { id: 'pos-gm', title: 'مدير عام المؤسسة', departmentId: 'dept-exec', departmentName: 'الإدارة التنفيذية والعامة', active: true },
+  { id: 'pos-gm', title: 'صاحب البيزنس', departmentId: 'dept-exec', departmentName: 'الإدارة التنفيذية والعامة', active: true },
   { id: 'pos-rm', title: 'مدير إقليمي / محافظة', departmentId: 'dept-exec', departmentName: 'الإدارة التنفيذية والعامة', active: true },
-  { id: 'pos-bm', title: 'مدير فرع / موقع', departmentId: 'dept-exec', departmentName: 'الإدارة التنفيذية والعامة', active: true },
+  { id: 'pos-bm', title: 'مدير مبيعات الفرع', departmentId: 'dept-exec', departmentName: 'الإدارة التنفيذية والعامة', active: true },
   { id: 'pos-sup-sales', title: 'مشرف مبيعات وديكور', departmentId: 'dept-sales', departmentName: 'المبيعات والتسويق', active: true },
   { id: 'pos-tl', title: 'قائد فريق تنفيذ', departmentId: 'dept-sales', departmentName: 'المبيعات والتسويق', active: true },
   { id: 'pos-agent', title: 'مسؤول مبيعات وتسويق', departmentId: 'dept-sales', departmentName: 'المبيعات والتسويق', active: true },
@@ -641,7 +641,7 @@ export const initialBranches: Branch[] = [
 export const initialUsers: User[] = [
   {
     id: 'usr-admin',
-    name: 'م. خالد البحيري (مدير عام المؤسسة)',
+    name: 'م. خالد البحيري (صاحب البيزنس)',
     email: 'admin@elbehery-paints.com',
     phone: '01000000001',
     role: 'admin',
@@ -1051,7 +1051,7 @@ export const initialAuditLogs: AuditLog[] = [
     id: 'aud-001',
     timestamp: `${twoDaysAgo}T09:00:00Z`,
     userId: 'usr-admin',
-    userName: 'م. خالد البحيري (مدير عام المؤسسة)',
+    userName: 'م. خالد البحيري (صاحب البيزنس)',
     userRole: 'admin',
     action: 'تسجيل دخول للنظام',
     entity: 'نظام',
@@ -1062,7 +1062,6 @@ export const initialAuditLogs: AuditLog[] = [
 
 export const initialPurchaseCategories: PurchaseCategory[] = [
   { id: 'cat-decor', name: 'ديكور', code: 'DECOR', active: true },
-  { id: 'cat-paints', name: 'دهانات', code: 'PAINTS', active: true },
   { id: 'cat-construction', name: 'إنشائي', code: 'CONST', active: true },
   { id: 'cat-garden', name: 'بستان', code: 'GARDEN', active: true },
   { id: 'cat-misc', name: 'متنوع', code: 'MISC', active: true },

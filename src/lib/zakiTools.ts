@@ -1,9 +1,13 @@
-import type { Booking, Branch, BrokerEntity, Department, FollowUp, Lead, NotBoughtRecord, User, Visit } from "../types/crm";
+import type { Booking, Branch, BrokerEntity, Department, FollowUp, Lead, NotBoughtRecord, ReviewNote, ReviewRequest, User, Visit } from "../types/crm";
 import { addToDate } from "./postSale";
 import { bookingSplit, departmentIds } from "./purchases";
 import { brokerRows, customerRows, feedbackSummary } from "./overview";
 import { departmentNames, followUpStatus, sourceNames, statusNames } from "./presentation";
 import { notBoughtReasons, reasonLabel } from "./notBought";
+import { isSalesCapable } from "./permissions";
+import { employeeRatings, ratingLevelLabel } from "./employeeRating";
+import { pendingReferral, referrerRows } from "./referrals";
+import { complaintOpenedAt, complaintState, complaintStateLabel, isComplaint, isLateComplaint, resolutionHours, reviewStats } from "./reviews";
 
 /** Live, role-scoped data the assistant may query. Built from the workspace (never raw database access). */
 export interface ToolData {
@@ -16,6 +20,8 @@ export interface ToolData {
   brokers: BrokerEntity[];
   users: User[];
   branches: Branch[];
+  reviewRequests?: ReviewRequest[];
+  reviewNotes?: ReviewNote[];
 }
 
 type Args = Record<string, unknown>;
@@ -168,7 +174,7 @@ export function runTool(name: string, a: Args, d: ToolData): unknown {
         byDepartmentEGP: c ? byDeptNames(c.split) : {},
         purchases: d.bookings
           .filter((b) => b.leadId === l.id)
-          .map((b) => ({ date: b.bookingDate, totalEGP: b.amount, byDepartmentEGP: byDeptNames(bookingSplit(b)), cancelled: b.bookingStatus === "cancelled", deliveredAt: b.deliveredAt ?? null })),
+          .map((b) => ({ date: b.bookingDate, totalEGP: b.amount, byDepartmentEGP: byDeptNames(bookingSplit(b)), cancelled: b.bookingStatus === "cancelled" })),
         followUps: d.followUps
           .filter((f) => f.leadId === l.id)
           .sort((x, y) => x.scheduledAt.localeCompare(y.scheduledAt))
@@ -246,7 +252,7 @@ export function runTool(name: string, a: Args, d: ToolData): unknown {
         .filter((b) => !str(a.customer) || has(b.leadName, a.customer))
         .filter((b) => !dep || bookingSplit(b)[dep] > 0)
         .sort((x, y) => y.bookingDate.localeCompare(x.bookingDate))
-        .map((b) => ({ date: b.bookingDate, customer: b.leadName, branch: branchName(b.branchId), totalEGP: b.amount, byDepartmentEGP: byDeptNames(bookingSplit(b)), delivered: !!b.deliveredAt }));
+        .map((b) => ({ date: b.bookingDate, customer: b.leadName, branch: branchName(b.branchId), totalEGP: b.amount, byDepartmentEGP: byDeptNames(bookingSplit(b)) }));
       return { totalEGP: sum(rows.map((r) => r.totalEGP)), ...page(rows, limitOf(a)) };
     }
 
@@ -307,10 +313,82 @@ export function runTool(name: string, a: Args, d: ToolData): unknown {
         groupBy === "branch"
           ? d.branches.map((b) => ({ name: b.name, ...mk(d.leads.filter((l) => l.branchId === b.id)) })).filter((r) => r.customers)
           : d.users
-              .filter((u) => ["sales_agent", "team_leader"].includes(u.role))
+              .filter(isSalesCapable)
               .map((u) => ({ name: u.name, branch: branchName(u.branchId ?? ""), ...mk(d.leads.filter((l) => l.assignedAgentId === u.id)) }))
               .filter((r) => r.customers);
       return { groupBy, ...page(rows.sort((x, y) => y.purchasesTotalEGP - x.purchasesTotalEGP), limitOf(a)) };
+    }
+
+    case "reviews": {
+      const bids = branchIdsFor(a.branch);
+      const aids = agentIdsFor(a.agent);
+      const notes = d.reviewNotes ?? [];
+      const only = str(a.only) ?? "all";
+      const rs = (d.reviewRequests ?? [])
+        .filter((r) => inBranch(r.branchId, bids) && (!aids || aids.includes(r.agentId)))
+        .filter((r) => inRange(r.answeredAt || r.sentAt, from, to));
+      const rows = rs
+        .filter((r) =>
+          only === "complaints" ? isComplaint(r)
+          : only === "open_complaints" ? isComplaint(r) && complaintState(r, notes) !== "resolved"
+          : only === "late" ? isLateComplaint(r, notes)
+          : only === "low" ? r.status === "answered" && (r.response?.rating ?? 5) <= 3
+          : r.status === "answered",
+        )
+        .sort((x, y) => complaintOpenedAt(y).localeCompare(complaintOpenedAt(x)))
+        .map((r) => {
+          const mine = notes.filter((n) => n.requestId === r.id).sort((x, y) => x.at.localeCompare(y.at));
+          return {
+            customer: r.leadName,
+            branch: branchName(r.branchId),
+            agent: r.agentName ?? userName(r.agentId) ?? null,
+            about: r.subjectLabel,
+            date: (r.answeredAt || r.sentAt).slice(0, 10),
+            stars: r.response?.rating ?? null,
+            comment: r.response?.comment?.slice(0, 300) ?? null,
+            complaint: isComplaint(r),
+            complaintState: isComplaint(r) ? complaintStateLabel[complaintState(r, notes)] : null,
+            lateOver24h: isLateComplaint(r, notes),
+            resolutionHours: resolutionHours(r, notes),
+            aiSummary: r.ai?.summary ?? null,
+            lastFollowUp: mine.length ? { by: mine[mine.length - 1].byName, text: mine[mine.length - 1].text.slice(0, 200) } : null,
+          };
+        });
+      return { stats: reviewStats(rs, notes), ...page(rows, limitOf(a)) };
+    }
+
+    case "employee_ratings": {
+      const bids = branchIdsFor(a.branch);
+      const aids = agentIdsFor(a.agent);
+      const rows = employeeRatings(d.users, d.reviewRequests ?? [], d.followUps)
+        .filter((r) => (!bids || (r.branchId && bids.includes(r.branchId))) && (!aids || aids.includes(r.userId)))
+        .filter((r) => a.onlyRated !== true || r.count > 0)
+        .map((r, i) => ({
+          rank: i + 1,
+          employee: r.name,
+          branch: r.branchId ? branchName(r.branchId) : null,
+          rating: r.score,
+          plainAverage: r.average,
+          ratingsCount: r.count,
+          level: ratingLevelLabel[r.level],
+          complaints: r.complaints,
+          customersRepliedPercent: r.responseRatePercent,
+          last30Days: r.last30,
+          trend: r.trend === "up" ? "في تحسن" : r.trend === "down" ? "في تراجع" : r.trend === "flat" ? "ثابت" : null,
+        }));
+      return { note: "rating = المتوسط مع تعديل بسيط للتقييمات القليلة؛ level «لسه بدري» = أقل من 3 تقييمات", ...page(rows, limitOf(a)) };
+    }
+
+    case "referrals": {
+      const bids = branchIdsFor(a.branch);
+      const rows = referrerRows(d.leads, d.bookings)
+        .filter((r) => inBranch(r.branchId, bids))
+        .map((r, i) => ({ rank: i + 1, customer: r.name, branch: branchName(r.branchId), referred: r.referred, contacted: r.visited, bought: r.bought, boughtTotalEGP: r.totalEGP }));
+      const waiting = (d.reviewRequests ?? []).filter(pendingReferral).filter((r) => inBranch(r.branchId, bids));
+      return {
+        referralsWaitingToBeRegistered: waiting.map((r) => ({ from: r.leadName, person: r.response!.referral!.name, branch: branchName(r.branchId) })),
+        ...page(rows, limitOf(a)),
+      };
     }
 
     default:
@@ -331,6 +409,9 @@ export const toolLabels: Record<string, string> = {
   not_bought: "بشوف أسباب عدم الشراء",
   feedback: "بقرا تقييمات العملاء",
   performance: "بقارن الفروع والموظفين",
+  reviews: "بقرا التقييمات والشكاوى",
+  employee_ratings: "بشوف تقييم الموظفين",
+  referrals: "بشوف الترشيحات",
 };
 
 export const defaultToolDate = (daysAgo: number, today: string) => addToDate(today, { days: -daysAgo });

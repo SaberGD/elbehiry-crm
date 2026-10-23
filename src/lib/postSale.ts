@@ -8,13 +8,13 @@ interface MilestoneDef {
   months?: number;
 }
 
-// Follow-ups scheduled after the work is delivered, counted from the delivery date.
+// Follow-ups scheduled after a purchase, counted from the purchase date (buying means receiving: there is no separate delivery).
 export const postSaleMilestones: MilestoneDef[] = [
   {
     id: "7d",
-    label: "بعد أسبوع من التسليم",
+    label: "بعد أسبوع من الشراء",
     days: 7,
-    reason: "متابعة بعد التسليم: تأكد من رضا العميل وسجّل أي ملاحظات على الشغل.",
+    reason: "متابعة بعد الشراء: تأكد من رضا العميل وسجّل أي ملاحظات على الشغل.",
   },
   {
     id: "30d",
@@ -37,8 +37,9 @@ export const postSaleMilestones: MilestoneDef[] = [
   },
 ];
 
-export const milestoneLabel = (id?: PostSaleMilestone) =>
-  postSaleMilestones.find((m) => m.id === id)?.label ?? "";
+const milestoneLabelsEn: Record<string, string> = { "30d": "After 1 month", "6m": "After 6 months", "12m": "After 1 year" };
+export const milestoneLabel = (id?: PostSaleMilestone, en = false) =>
+  en ? (id ? milestoneLabelsEn[id] ?? "" : "") : postSaleMilestones.find((m) => m.id === id)?.label ?? "";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -57,10 +58,22 @@ export function addToDate(
   return `${out.getUTCFullYear()}-${pad(out.getUTCMonth() + 1)}-${pad(out.getUTCDate())}`;
 }
 
-export function buildPostSaleSchedule(deliveredDate: string) {
+export function buildPostSaleSchedule(purchaseDate: string) {
   return postSaleMilestones.map((m) => ({
     milestone: m.id,
-    date: addToDate(deliveredDate, { days: m.days, months: m.months }),
+    date: addToDate(purchaseDate, { days: m.days, months: m.months }),
     reason: m.reason,
   }));
+}
+
+/** The post-sale follow-ups still ahead of today for a purchase (a late-recorded one skips what already passed). */
+export function upcomingPostSale(purchaseDate: string, todayStr: string, have: Set<string | undefined> = new Set()) {
+  return buildPostSaleSchedule(purchaseDate).filter((m) => m.date >= todayStr && !have.has(m.milestone));
+}
+
+/** "أسبوع"، "شهر"، "6 شهور"، "سنة": how long after the purchase a milestone comes, in words. */
+export function milestoneSpan(m: { days?: number; months?: number }): string {
+  if (m.months) return m.months === 12 ? "سنة" : m.months === 1 ? "شهر" : m.months <= 10 ? `${m.months} شهور` : `${m.months} شهر`;
+  const d = m.days ?? 0;
+  return d === 7 ? "أسبوع" : d === 30 ? "شهر" : d === 1 ? "يوم" : d === 2 ? "يومين" : `${d} يوم`;
 }

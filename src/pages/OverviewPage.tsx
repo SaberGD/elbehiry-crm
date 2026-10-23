@@ -1,3 +1,6 @@
+import { useAllData } from "../lib/useAllData";
+import { useAllFollowUps } from "../lib/useAllFollowUps";
+import { useAllLeads } from "../lib/useAllLeads";
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
@@ -58,6 +61,9 @@ function SplitLegend({ split }: { split: Split }) {
 
 export function OverviewPage({ onOpenLead }: { onOpenLead: (id: string) => void }) {
   const { effectiveUser: u, leads, bookings, brokers } = useCRM();
+  useAllFollowUps();
+  useAllData(["bookings", "visits", "notBought", "reviews"]);
+  useAllLeads();
   const [sortBy, setSortBy] = useState<"total" | Department>("total");
   const [openCustomer, setOpenCustomer] = useState<string | null>(null);
   const [openBroker, setOpenBroker] = useState<string | null>(null);
@@ -330,7 +336,7 @@ export function OverviewPage({ onOpenLead }: { onOpenLead: (id: string) => void 
         <div className="panel-header">
           <div>
             <h2>رأي العملاء فينا</h2>
-            <p>تقييمات العملاء بعد الشراء والتسليم</p>
+            <p>تقييمات العملاء بعد الشراء</p>
           </div>
         </div>
         {feedback.count ? (

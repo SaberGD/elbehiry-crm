@@ -2,24 +2,38 @@ import type { User, UserRole } from "../types/crm";
 
 // Existing stored role IDs are retained so saved prototype records remain compatible.
 // admin = المطوّر (فوق كل المناصب، كل الصلاحيات + أدوات المطورين)
-// general_manager = مدير عام المؤسسة (تحت المطوّر، ينشئه المطوّر)
+// general_manager = صاحب البيزنس (تحت المطوّر، ينشئه المطوّر)
+// regional_manager = مدير المبيعات العام (كل الفروع، وبيتعامل كسيلز كمان)
+// branch_manager = مدير مبيعات الفرع (هو سيلز الفرع، والعملاء بيتسجلوا باسمه)
+// supervisor و sales_agent أدوار قديمة لسه شغالة لو موجودة، بس مش متاحة للإضافة.
 export const positionRoles: UserRole[] = [
   "admin",
   "general_manager",
   "regional_manager",
-  "supervisor",
   "branch_manager",
   "sales_agent",
 ];
 export const positionNames: Record<UserRole, string> = {
   admin: "مطوّر",
-  general_manager: "مدير عام المؤسسة",
-  regional_manager: "مشرف عام",
+  general_manager: "صاحب البيزنس",
+  regional_manager: "مدير المبيعات العام",
   supervisor: "مشرف مختص",
-  branch_manager: "مدير فرع",
-  sales_agent: "موظف بفرع",
-  team_leader: "موظف بفرع",
+  branch_manager: "مدير مبيعات الفرع",
+  sales_agent: "سيلز",
+  team_leader: "سيلز",
 };
+export const positionNamesEn: Record<UserRole, string> = {
+  admin: "Developer",
+  general_manager: "Business owner",
+  regional_manager: "General sales manager",
+  supervisor: "Specialist supervisor",
+  branch_manager: "Branch sales manager",
+  sales_agent: "Branch sales",
+  team_leader: "Branch sales",
+};
+/** Roles that talk to customers and carry their own customers and ratings. */
+export const salesCapableRoles: UserRole[] = ["sales_agent", "team_leader", "branch_manager", "regional_manager"];
+export const isSalesCapable = (user: Pick<User, "role">) => salesCapableRoles.includes(user.role);
 export const specialties = {
   sales: "المبيعات",
   accounts: "الحسابات",
@@ -62,13 +76,13 @@ export type PermissionProfile =
   | "employee";
 export type PermissionMatrix = Record<PermissionProfile, Permission[]>;
 export const profileNames: Record<PermissionProfile, string> = {
-  director: "مدير عام المؤسسة",
-  general: "مشرف عام",
+  director: "صاحب البيزنس",
+  general: "مدير المبيعات العام",
   specialist_sales: "مشرف مختص · مبيعات",
   specialist_accounts: "مشرف مختص · حسابات",
   specialist_operations: "مشرف مختص · تشغيل الفروع",
-  branch: "مدير فرع",
-  employee: "موظف بفرع",
+  branch: "مدير مبيعات الفرع",
+  employee: "سيلز",
 };
 const oversight: Permission[] = [
   "customers.view",
@@ -106,7 +120,19 @@ export const defaultPermissionMatrix: PermissionMatrix = {
     "catalog.manage",
     "audit.view",
   ],
-  general: [...oversight, "staff.manage", "teams.manage", "customers.assign"],
+  // Also sells: registers customers, follows up and records purchases, besides seeing every branch.
+  general: [
+    ...oversight,
+    "customers.create",
+    "customers.edit",
+    "customers.contact",
+    "followups.create",
+    "followups.complete",
+    "bookings.create",
+    "invoices.manage",
+    "customers.assign",
+    "staff.manage",
+  ],
   specialist_sales: [
     "customers.view",
     "visits.view",
@@ -135,16 +161,9 @@ export const defaultPermissionMatrix: PermissionMatrix = {
     "teams.view",
     "branches.view",
   ],
-  branch: [
-    ...daily,
-    "customers.assign",
-    "staff.view",
-    "staff.manage",
-    "teams.view",
-    "teams.manage",
-    "branches.view",
-    "brokers.view",
-  ],
+  // The branch sales manager is the branch's salesperson: customers, visits, follow-ups, purchases, reviews.
+  // Staff and structure screens come back when salespeople are added under them.
+  branch: [...daily, "brokers.view"],
   employee: daily,
 };
 export const normalizeUser = (user: User): User => ({
@@ -183,6 +202,8 @@ export function sanitizeMatrix(
         ]
       : [...defaultPermissionMatrix[profile]];
   }
+  // The general sales manager always manages people below the owner: it cannot be switched off.
+  result.general = [...new Set([...result.general, "staff.view", "staff.manage"])] as Permission[];
   return result;
 }
 export const withPermissions = (

@@ -5,21 +5,23 @@ import {
   togglePermission,
   isDirector,
   permissionDefinitions,
+  permissionProfile,
   profileNames,
   type PermissionMatrix,
   type PermissionProfile,
   type Permission,
 } from "../lib/permissions";
 export function PermissionsPage() {
-  const { effectiveUser, permissionMatrix, updatePermissionMatrix } = useCRM();
+  const { effectiveUser, permissionMatrix, updatePermissionMatrix, users } = useCRM();
   const [draft, setDraft] = useState<PermissionMatrix>(() =>
     structuredClone(permissionMatrix || defaultPermissionMatrix),
   );
   const [selectedProfile, setSelectedProfile] =
-    useState<PermissionProfile>("employee");
+    useState<PermissionProfile>("branch");
   const [saved, setSaved] = useState(false);
   if (!isDirector(effectiveUser)) return null;
-  const profiles = Object.keys(profileNames) as PermissionProfile[];
+  // The four positions of the company, always. Older positions are not shown here.
+  const profiles: PermissionProfile[] = ["director", "general", "branch", "employee"];
   const toggle = (profile: PermissionProfile, permission: Permission) => {
     setSaved(false);
     setDraft((prev) => ({
@@ -61,10 +63,10 @@ export function PermissionsPage() {
       <section className="panel">
         <div className="panel-header">
           <div>
-            <h2>خمسة مناصب، وصلاحيات حسب الاختصاص</h2>
+            <h2>صلاحيات كل منصب</h2>
             <p>
-              «موظف بفرع» منصب صلاحيات؛ المسمى الوظيفي مثل سيلز أو محاسب يُحدّد
-              بشكل مستقل في ملف الموظف.
+              صاحب البيزنس ومدير المبيعات العام ومدير مبيعات الفرع والسيلز.
+              مدير المبيعات العام بيدير الموظفين تحت صاحب البيزنس دايمًا (تعديل بياناتهم وإعادة تعيين كلمات المرور)، وده مش بيتقفل من هنا.
             </p>
           </div>
         </div>
@@ -88,7 +90,7 @@ export function PermissionsPage() {
           </select>
         </label>
         <div className="table-scroll">
-          <table className="data-table permission-table">
+          <table className="data-table permission-table no-stack">
             <thead>
               <tr>
                 <th>الصلاحية</th>
@@ -115,6 +117,8 @@ export function PermissionsPage() {
                         type="checkbox"
                         aria-label={`${profileNames[profile]}: ${label}`}
                         checked={draft[profile].includes(key)}
+                        disabled={profile === "general" && (key === "staff.manage" || key === "staff.view")}
+                        title={profile === "general" && key === "staff.manage" ? "ثابتة لمدير المبيعات العام" : undefined}
                         onChange={() => toggle(profile, key)}
                       />
                     </td>
@@ -128,7 +132,7 @@ export function PermissionsPage() {
                     key={p}
                     className={`permission-column ${p === selectedProfile ? "is-selected" : ""}`}
                   >
-                    {p === "director" ? "مدير عام المؤسسة فقط" : "—"}
+                    {p === "director" ? "صاحب البيزنس فقط" : "—"}
                   </td>
                 ))}
               </tr>

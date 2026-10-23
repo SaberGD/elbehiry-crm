@@ -1,3 +1,6 @@
+import { BackupPanel } from "../components/common/BackupPanel";
+import { SessionLogPanel } from "../components/common/SessionLogPanel";
+import { DEFAULT_AI_PER_DAY, DEFAULT_AI_PER_HOUR, DEFAULT_SUGGESTIONS_PER_DAY, branchQuota, userQuota } from "../lib/license";
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, Code2, RefreshCw, Server } from "lucide-react";
 import { auth } from "../lib/firebase";
@@ -24,6 +27,8 @@ const MODE_LABELS: Record<string, string> = {
   weekly: "الملخص الأسبوعي",
   transcribe: "تحويل الصوت لنص",
   refine: "تحسين النص",
+  brief: "ملخص العميل",
+  classify: "تصنيف الشكاوى",
   unknown: "غير مصنّف",
 };
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
@@ -60,7 +65,23 @@ function Num({ label, value, onChange, step = 1, hint }: { label: string; value:
 
 /** Developer-only tools: real AI token usage, a what-if cost calculator, and service health. */
 export function DeveloperPage() {
-  const { currentUser, users: staff } = useCRM();
+  const { currentUser, users: staff, clearOrganizationData, license, setLicense, branches, reindexSearch, searchIndexReady } = useCRM();
+  const [indexNote, setIndexNote] = useState("");
+  const [maxBranches, setMaxBranches] = useState<number>(license.maxBranches);
+  useEffect(() => setMaxBranches(license.maxBranches), [license.maxBranches]);
+  const quota = branchQuota(branches, license);
+  const uQuota = userQuota(staff, license);
+  const [maxUsers, setMaxUsers] = useState<number>(uQuota.max);
+  useEffect(() => setMaxUsers(uQuota.max), [uQuota.max]);
+  const curHour = license.aiPerHour ?? DEFAULT_AI_PER_HOUR;
+  const curDay = license.aiPerDay ?? DEFAULT_AI_PER_DAY;
+  const [aiHour, setAiHour] = useState<number>(curHour);
+  const [aiDay, setAiDay] = useState<number>(curDay);
+  const curSug = license.suggestionsPerDay ?? DEFAULT_SUGGESTIONS_PER_DAY;
+  const [sugDay, setSugDay] = useState<number>(curSug);
+  useEffect(() => setSugDay(curSug), [curSug]);
+  useEffect(() => setAiHour(curHour), [curHour]);
+  useEffect(() => setAiDay(curDay), [curDay]);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -187,6 +208,87 @@ export function DeveloperPage() {
           <Dot ok={adminOk} /> إعادة تعيين كلمات المرور (<code>api/admin.php</code>): {adminOk === null ? "جاري الفحص…" : adminOk ? "شغّال" : "مش مفعّل (ملف Firebase Admin ناقص)"}
         </p>
       </section>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <div>
+            <h2>فهرسة البحث (العملاء والزيارات)</h2>
+            <p>
+              البحث بيدور في قاعدة البيانات بمفاتيح محفوظة مع كل عميل. الحالة: <strong>{searchIndexReady ? "جاهزة" : "لسه ما اتعملتش"}</strong>.
+              اضغط الزرار بعد أي رفع لنسخة قديمة من الموقع كانت بتعدّل عملاء (النسخة القديمة بتمسح المفاتيح من اللي بتعدّله)، أو لو بحث ما لقاش عميل موجود.
+              بيقرا كل العملاء مرة واحدة.
+            </p>
+            {indexNote && <p role="status">{indexNote}</p>}
+          </div>
+          <button
+            className="btn-secondary"
+            onClick={async () => {
+              setIndexNote("جاري الفهرسة…");
+              try {
+                const r = await reindexSearch();
+                setIndexNote(`تمت الفهرسة: ${r.customers} عميل (اتصلّح ${r.fixed}) و${r.visits} زيارة (اتصلّح ${r.visitsFixed}).`);
+              } catch {
+                setIndexNote("تعذّرت الفهرسة. جرّب تاني.");
+              }
+            }}
+          >
+            <RefreshCw size={15} /> إعادة الفهرسة
+          </button>
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <div>
+            <h2>تفريغ الهيكل والموظفين التجريبيين</h2>
+            <p>
+              بيمسح الفروع والمقرات والشركات والمخازن والفرق والأقسام والمسميات الوظيفية والموظفين التجريبيين من قاعدة البيانات عشان تضيف الحقيقي من الأول. المحافظات والمدن
+              بتفضل، وأي موظف ليه حساب دخول فعلي بيفضل.
+            </p>
+          </div>
+          <button
+            className="btn-secondary"
+            style={{ color: "#c8232b", borderColor: "#c8232b" }}
+            onClick={async () => {
+              if (window.confirm("هتمسح كل الفروع والشركات والمخازن والفرق والأقسام والمسميات والموظفين التجريبيين. متأكد؟")) {
+                await clearOrganizationData();
+                window.alert("تم التفريغ. ابدأ بإضافة الشركة ثم الفروع من صفحة الهيكل الإداري.");
+              }
+            }}
+          >
+            تفريغ الهيكل
+          </button>
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <div>
+            <h2>باقة الشركة (الفروع والمستخدمين والذكاء الاصطناعي)</h2>
+            <p>الحدود المتاحة لصاحب البيزنس. الفروع والمستخدمين التجريبيين وحساب المطوّر مش بيتحسبوا. أنت بس اللي تقدر تغيّرها.</p>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap", padding: "0 22px 20px" }}>
+          <Num label="أقصى عدد فروع" value={maxBranches} onChange={setMaxBranches} hint={`مستخدم دلوقتي: ${quota.used} من ${quota.max}`} />
+          <Num label="أقصى عدد مستخدمين" value={maxUsers} onChange={setMaxUsers} hint={`مستخدم دلوقتي: ${uQuota.used} من ${uQuota.max}`} />
+          <Num label="طلبات الذكاء الاصطناعي في الساعة (لكل حساب)" value={aiHour} onChange={setAiHour} hint="لو عدّى الحد بيتوقف مؤقتًا" />
+          <Num label="طلبات الذكاء الاصطناعي في اليوم (لكل حساب)" value={aiDay} onChange={setAiDay} hint="حماية من الإساءة وتكلفة زايدة" />
+          <Num label="اقتراحات زكي في اليوم (لكل سيلز)" value={sugDay} onChange={setSugDay} hint="الحد الأقصى لاقتراحات المتابعة" />
+          <button
+            className="btn-primary"
+            disabled={
+              maxBranches < 1 || maxUsers < 1 || aiHour < 1 || aiDay < 1 || sugDay < 1 ||
+              (maxBranches === license.maxBranches && maxUsers === uQuota.max && aiHour === curHour && aiDay === curDay && sugDay === curSug)
+            }
+            onClick={() => setLicense({ maxBranches, maxUsers, aiPerHour: aiHour, aiPerDay: aiDay, suggestionsPerDay: sugDay })}
+          >
+            حفظ الباقة
+          </button>
+        </div>
+      </section>
+
+      <SessionLogPanel />
+      <BackupPanel />
 
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-header">

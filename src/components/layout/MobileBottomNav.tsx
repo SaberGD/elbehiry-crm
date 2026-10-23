@@ -1,5 +1,6 @@
 import { useCRM } from "../../context/CRMContext";
-import { canAccessPage, isSales } from "../../lib/access";
+import { useLanguage } from "../../context/LanguageContext";
+import { canAccessPage, isSales, worksOwnCustomers } from "../../lib/access";
 import { LayoutDashboard, Users, PhoneCall, Plus, Menu } from "lucide-react";
 interface Props {
   activeTab: string;
@@ -12,20 +13,21 @@ export function MobileBottomNav({
   setSidebarOpen,
 }: Props) {
   const { effectiveUser } = useCRM();
+  const { tr } = useLanguage();
   const items = [
-    { id: "dashboard", label: "الرئيسية", Icon: LayoutDashboard },
-    { id: "clients", label: "العملاء", Icon: Users },
+    { id: "dashboard", label: tr("الرئيسية", "Home"), Icon: LayoutDashboard },
+    { id: "clients", label: tr("العملاء", "Customers"), Icon: Users },
     canAccessPage(effectiveUser, "add_client")
-      ? { id: "add_client", label: "إضافة عميل", Icon: Plus }
-      : { id: "reports", label: "التقارير", Icon: LayoutDashboard },
+      ? { id: "add_client", label: tr("إضافة عميل", "Add customer"), Icon: Plus }
+      : { id: "reports", label: tr("التقارير", "Reports"), Icon: LayoutDashboard },
     {
       id: "followups",
-      label: isSales(effectiveUser) ? "متابعاتي" : "المتابعات",
+      label: worksOwnCustomers(effectiveUser) ? tr("متابعاتي", "My follow-ups") : tr("المتابعات", "Follow-ups"),
       Icon: PhoneCall,
     },
   ];
   return (
-    <nav className="mobile-nav" aria-label="التنقل السريع">
+    <nav className="mobile-nav" aria-label={tr("التنقل السريع", "Quick navigation")}>
       {items
         .filter((item) => canAccessPage(effectiveUser, item.id))
         .map(({ id, label, Icon }) => (
@@ -41,7 +43,7 @@ export function MobileBottomNav({
         ))}
       <button onClick={() => setSidebarOpen(true)}>
         <Menu size={21} />
-        <span>المزيد</span>
+        <span>{tr("المزيد", "More")}</span>
       </button>
     </nav>
   );

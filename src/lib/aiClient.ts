@@ -33,6 +33,9 @@ async function call(init: RequestInit): Promise<any> {
     headers: { ...(init.headers || {}), ...(await authHeader()) },
   });
   const data = await res.json().catch(() => ({}));
+  if (!res.ok && data?.error === "rate_limited") {
+    throw new Error(data?.detail === "day" ? "وصلت للحد اليومي لطلبات الذكاء الاصطناعي، جرّب بكرة." : "طلبات كتير في وقت قصير، جرّب بعد شوية.");
+  }
   if (!res.ok) throw new Error([data?.error || `HTTP ${res.status}`, data?.detail].filter(Boolean).join(": "));
   return data;
 }
@@ -58,6 +61,23 @@ export async function refineText(
     body: JSON.stringify({ mode: "refine", text, reasons }),
   });
   return { text: String(data.text || text), reasonId: data.reasonId || null };
+}
+
+import type { ReviewAnalysis } from "../types/crm";
+
+/** Is a customer's review a complaint, a remark or praise? Called only for reviews that have a comment. */
+export async function classifyReview(rating: number, comment: string): Promise<ReviewAnalysis> {
+  const data = await call({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "classify", rating, comment }),
+  });
+  return {
+    kind: data.kind,
+    category: data.category || undefined,
+    severity: data.severity,
+    summary: data.summary || undefined,
+  };
 }
 
 export interface ChatTurn {
@@ -119,6 +139,10 @@ export interface WeeklyReport {
   improved: { title: string; detail: string }[];
   dropped: { title: string; why: string }[];
   next_week: { action: string; reason: string }[];
+  /** Added in the second version of the report; older cached reports lack them. */
+  team?: { name: string; verdict: string; detail: string }[];
+  lost?: { customer: string; responsible: string; why: string }[];
+  complaints?: { headline: string; items: { customer: string; state: string; detail: string }[] };
 }
 
 export async function weeklySummary(snapshot: unknown): Promise<WeeklyReport> {
@@ -127,4 +151,35 @@ export async function weeklySummary(snapshot: unknown): Promise<WeeklyReport> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode: "weekly", snapshot }),
   });
+}
+
+export interface CustomerBriefResult {
+  last_update: string;
+  summary: string;
+  suggestion: string;
+  watch_out: string;
+  tone: "hot" | "warm" | "cold" | "at_risk";
+}
+
+/** A quick brief on one customer: the last update, the picture, and how to deal with them now. */
+export async function customerBrief(customer: unknown): Promise<CustomerBriefResult> {
+  return call({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "brief", customer }),
+  });
+}
+
+export interface FollowUpSuggestionResult {
+  opportunity: boolean;
+  date?: string;
+  reason?: string;
+  evidence?: string;
+  source?: string;
+  confidence?: number;
+}
+
+/** Asks the assistant whether this customer or broker deserves a follow-up nobody scheduled. */
+export async function followUpSuggestion(candidate: unknown): Promise<FollowUpSuggestionResult> {
+  return call({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "suggest", candidate }) });
 }

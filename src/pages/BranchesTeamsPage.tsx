@@ -1,3 +1,5 @@
+import { PageGuide } from "../components/common/PageGuide";
+import { branchLimitMessage, branchQuota } from "../lib/license";
 import { canManageOrganization } from "../lib/access";
 import React, { useState } from "react";
 import { useCRM } from "../context/CRMContext";
@@ -9,6 +11,7 @@ import {
   Warehouse,
   BranchType,
 } from "../types/crm";
+import { citiesOf } from "../data/egypt";
 import { BranchDetailsModal } from "../components/common/BranchDetailsModal";
 import {
   HierarchyControlModal,
@@ -46,9 +49,10 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
     warehouses,
     addBranch,
     addCompany,
-    addGovernorate,
     addWarehouse,
+    license,
   } = useCRM();
+  const quota = { ...branchQuota(branches, license), full: branchQuota(branches, license).full && effectiveUser.role !== "admin" };
   const { t } = useLanguage();
 
   const [activeTab, setActiveTab] = useState<
@@ -74,14 +78,12 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
 
   // Form States
   const [formName, setFormName] = useState("");
-  const [formCode, setFormCode] = useState("");
-  const [formCity, setFormCity] = useState("القاهرة");
+  const [formCity, setFormCity] = useState("");
+  const [govSearch, setGovSearch] = useState("");
   const [formPhone, setFormPhone] = useState("");
   const [formAddress, setFormAddress] = useState("");
-  const [formCompanyId, setFormCompanyId] = useState(companies[0]?.id || "");
-  const [formGovernorateId, setFormGovernorateId] = useState(
-    governorates[0]?.id || "",
-  );
+  const [formCompanyId, setFormCompanyId] = useState("");
+  const [formGovernorateId, setFormGovernorateId] = useState("");
   const [formWarehouseBranchId, setFormWarehouseBranchId] = useState("");
   const [formCapacity, setFormCapacity] = useState("");
   const [formBranchType, setFormBranchType] = useState<BranchType>("showroom");
@@ -105,19 +107,23 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
     setIsBranchModalOpen(true);
   };
 
+  // Codes are internal: generated, never typed or shown.
+  const autoCode = (prefix: string) => `${prefix}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManageOrganization(effectiveUser)) return;
 
     if (addType === "branch") {
+      if (quota.full) return;
       addBranch({
         name: formName,
-        code: formCode,
+        code: autoCode("BR"),
         city: formCity,
         phone: formPhone,
         address: formAddress,
         branchType: formBranchType,
-        companyId: formCompanyId,
+        companyId: formCompanyId || undefined,
         companyName: companies.find((c) => c.id === formCompanyId)?.name,
         governorateId: formGovernorateId,
         governorateName: governorates.find((g) => g.id === formGovernorateId)
@@ -127,23 +133,15 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
     } else if (addType === "company") {
       addCompany({
         name: formName,
-        code: formCode,
+        code: autoCode("X"),
         description: formAddress,
-        phone: formPhone,
-        active: true,
-      });
-    } else if (addType === "governorate") {
-      addGovernorate({
-        name: formName,
-        code: formCode,
-        region: formAddress || formCity,
         phone: formPhone,
         active: true,
       });
     } else if (addType === "warehouse") {
       addWarehouse({
         name: formName,
-        code: formCode,
+        code: autoCode("X"),
         governorateId: formGovernorateId,
         governorateName: governorates.find((g) => g.id === formGovernorateId)
           ?.name,
@@ -156,7 +154,7 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
     }
 
     setFormName("");
-    setFormCode("");
+    setFormCity("");
     setFormPhone("");
     setFormAddress("");
     setShowAddModal(false);
@@ -164,39 +162,33 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
-      {/* Header Banner */}
-      <div className="bg-[#1d1d1c] dark:bg-[#0c0f17] text-[#f0efea] p-5 sm:p-6 rounded-2xl shadow-md border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="page-heading">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 text-slate-300 border border-white/10">
-              الهيكل الإداري والميداني متعدد المستويات
-            </span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-bold mt-1 text-white tracking-tight flex items-center gap-2">
-            <Building2 className="w-6 h-6 text-[#dc424b]" />
-            <span>إدارة الفروع والمقرّات والشركات والمخازن</span>
-          </h1>
-          <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-            التحكم الشجري الكامل بالشركات، المحافظات الجغرافية، الفروع الرئيسية،
-            المعارض الفرعية، والمخازن اللوجستية المركزية.
-          </p>
+          <span className="eyebrow">إدارة المؤسسة</span>
+          <h1>الهيكل الإداري</h1>
+          <p>المحافظات والشركات والفروع والمعارض والمخازن، وكل فرع بتفاصيله.</p>
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {canManageOrganization(effectiveUser) && (
-            <button
-              onClick={() => {
-                setAddType("branch");
-                setShowAddModal(true);
-              }}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#292928] dark:hover:bg-[#343431] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 cursor-pointer flex items-center gap-1.5 min-h-[44px] shadow-sm"
-            >
-              <Plus className="w-4 h-4 text-[#dc424b]" />
-              <span>+ إضافة فرع / مقر جديد</span>
-            </button>
-          )}
-        </div>
+        {canManageOrganization(effectiveUser) && (
+          <button
+            className="btn-primary"
+            disabled={quota.full}
+            title={quota.full ? branchLimitMessage(quota) : undefined}
+            onClick={() => {
+              setAddType("branch");
+              setShowAddModal(true);
+            }}
+          >
+            <Plus size={16} />
+            إضافة فرع أو مقر
+          </button>
+        )}
       </div>
+      <PageGuide id="branches" />
+
+      <p className={`notice${quota.full ? " warning" : ""}`} role="status">
+        الباقة الحالية: {quota.max === 2 ? "فرعين" : `${quota.max} فرع`}. مستخدم {quota.used} من {quota.max}.
+        {quota.full && " وصلت للحد الأقصى، ولإضافة فرع جديد كلّم المطوّر."}
+      </p>
 
       {/* Top Level Category Filter Selector */}
       <div className="flex glass-card p-2 rounded-2xl shadow-xs overflow-x-auto gap-1">
@@ -268,31 +260,29 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
             <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center gap-2">
               <MapPin className="w-4 h-4 text-[#c8232b]" />
               <span>
-                دليل المحافظات والإقاليم الجغرافية (عند النقر يفتح تحكم المحافظة
-                بالكامل):
+                محافظات مصر ({governorates.length}) · اضغط على المحافظة لفتح تفاصيلها:
               </span>
             </h3>
 
-            {canManageOrganization(effectiveUser) && (
-              <button
-                onClick={() => {
-                  setAddType("governorate");
-                  setShowAddModal(true);
-                }}
-                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 dark:bg-[#292928] dark:hover:bg-[#343431] text-white border border-slate-600/30 dark:border-white/10 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-              >
-                + إضافة محافظة
-              </button>
-            )}
           </div>
 
+          <input
+            type="search"
+            value={govSearch}
+            onChange={(e) => setGovSearch(e.target.value)}
+            placeholder="ابحث عن محافظة…"
+            aria-label="بحث في المحافظات"
+            className="w-full sm:w-72 p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs"
+          />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {governorates.map((gov) => {
-              const govBranches = branches.filter(
-                (b) =>
-                  b.governorateId === gov.id ||
-                  b.city.includes(gov.name.replace("محافظة ", "")),
-              );
+            {[...governorates]
+              .filter((g) => !govSearch.trim() || g.name.includes(govSearch.trim()))
+              .sort((a, b) => {
+                const n = (g: Governorate) => branches.filter((x) => x.governorateId === g.id).length;
+                return n(b) - n(a) || a.name.localeCompare(b.name, "ar");
+              })
+              .map((gov) => {
+              const govBranches = branches.filter((b) => b.governorateId === gov.id);
               const govWarehouses = warehouses.filter(
                 (w) => w.governorateId === gov.id,
               );
@@ -308,9 +298,6 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
                       <span className="font-bold text-slate-900 dark:text-slate-100 text-sm group-hover:text-[#c8232b] transition-colors flex items-center gap-1.5">
                         <span>🗺️ {gov.name}</span>
                         <ChevronLeft className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity dir-ltr:rotate-180" />
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-[#232322] text-slate-800 dark:text-[#c8232b] border border-slate-200 dark:border-white/10 font-mono text-[10px] font-bold">
-                        {gov.code}
                       </span>
                     </div>
 
@@ -388,9 +375,6 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
                         <span>🏛️ {cmp.name}</span>
                         <ChevronLeft className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity dir-ltr:rotate-180" />
                       </span>
-                      <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-bold">
-                        {cmp.code}
-                      </span>
                     </div>
 
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
@@ -440,6 +424,8 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
 
             {canManageOrganization(effectiveUser) && (
               <button
+                disabled={quota.full}
+                title={quota.full ? branchLimitMessage(quota) : undefined}
                 onClick={() => {
                   setAddType("branch");
                   setShowAddModal(true);
@@ -465,21 +451,23 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
                         <span>{b.name}</span>
                         <ChevronLeft className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity dir-ltr:rotate-180" />
                       </span>
-                      <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-bold">
-                        {b.code}
-                      </span>
                     </div>
 
                     <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 mt-3">
                       <div>
-                        المدينة: <strong>{b.city}</strong>
+                        {b.city ? (
+                          <>
+                            المدينة: <strong>{b.city}</strong>
+                          </>
+                        ) : (
+                          <span className="opacity-60">المدينة: غير محددة</span>
+                        )}
                       </div>
-                      <div>
-                        الشركة:{" "}
-                        <strong>
-                          {b.companyName || "مؤسسة البحيري العامة"}
-                        </strong>
-                      </div>
+                      {b.companyName && (
+                        <div>
+                          الشركة: <strong>{b.companyName}</strong>
+                        </div>
+                      )}
                       <div>
                         المدير المسؤول:{" "}
                         <strong className="text-indigo-800 dark:text-indigo-300">
@@ -540,9 +528,6 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
                     <span className="font-bold text-slate-900 dark:text-slate-100 text-sm group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
                       <span>🏭 {wh.name}</span>
                       <ChevronLeft className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity dir-ltr:rotate-180" />
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-bold">
-                      {wh.code}
                     </span>
                   </div>
 
@@ -605,42 +590,13 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    الكود الإداري *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formCode}
-                    onChange={(e) => setFormCode(e.target.value)}
-                    placeholder="CODE-01"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono uppercase"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    المدينة / النطاق *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formCity}
-                    onChange={(e) => setFormCity(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-                  />
-                </div>
-              </div>
-
               <div>
                 <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  رقم الهاتف *
+                  رقم الهاتف {addType === "company" ? "" : "*"}
                 </label>
                 <input
                   type="tel"
-                  required
+                  required={addType !== "company"}
                   value={formPhone}
                   onChange={(e) => setFormPhone(e.target.value)}
                   placeholder="01000000000"
@@ -650,11 +606,11 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  العنوان / الوصف *
+                  {addType === "company" ? "الوصف" : "العنوان *"}
                 </label>
                 <input
                   type="text"
-                  required
+                  required={addType !== "company"}
                   value={formAddress}
                   onChange={(e) => setFormAddress(e.target.value)}
                   placeholder="التفاصيل..."
@@ -666,14 +622,13 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
                 <>
                   <label className="field">
                     <span>
-                      الشركة <em>مطلوب</em>
+                      الشركة <em>اختياري</em>
                     </span>
                     <select
-                      required
                       value={formCompanyId}
                       onChange={(e) => setFormCompanyId(e.target.value)}
                     >
-                      <option value="">اختر الشركة</option>
+                      <option value="">{companies.some((c) => c.active) ? "بدون شركة" : "لا توجد شركات بعد"}</option>
                       {companies
                         .filter((c) => c.active)
                         .map((c) => (
@@ -701,28 +656,52 @@ export const BranchesTeamsPage: React.FC<BranchesTeamsPageProps> = ({
                 </>
               )}
               {["branch", "warehouse"].includes(addType) && (
-                <label className="field">
-                  <span>
-                    المحافظة <em>مطلوب</em>
-                  </span>
-                  <select
-                    required
-                    value={formGovernorateId}
-                    onChange={(e) => {
-                      setFormGovernorateId(e.target.value);
-                      setFormWarehouseBranchId("");
-                    }}
-                  >
-                    <option value="">اختر المحافظة</option>
-                    {governorates
-                      .filter((g) => g.active)
-                      .map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
+                <>
+                  <label className="field">
+                    <span>
+                      المحافظة <em>مطلوب</em>
+                    </span>
+                    <select
+                      required
+                      value={formGovernorateId}
+                      onChange={(e) => {
+                        setFormGovernorateId(e.target.value);
+                        setFormCity("");
+                        setFormWarehouseBranchId("");
+                      }}
+                    >
+                      <option value="">اختر المحافظة</option>
+                      {governorates
+                        .filter((g) => g.active)
+                        .map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  {addType === "branch" && (
+                    <label className="field">
+                      <span>
+                        المدينة <em>اختياري</em>
+                      </span>
+                      <select
+                        value={formCity}
+                        disabled={!formGovernorateId}
+                        onChange={(e) => setFormCity(e.target.value)}
+                      >
+                        <option value="">
+                          {formGovernorateId ? "بدون تحديد مدينة" : "اختر المحافظة أولًا"}
                         </option>
-                      ))}
-                  </select>
-                </label>
+                        {citiesOf(governorates.find((g) => g.id === formGovernorateId)?.name).map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </>
               )}
               {addType === "warehouse" && (
                 <>

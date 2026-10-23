@@ -1,48 +1,69 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ShieldCheck, Search, ShieldAlert, Clock } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Clock } from 'lucide-react';
+import { FilterBar, inDateRange } from '../components/common/FilterBar';
+import { roleNames } from '../lib/presentation';
 
 export const AuditLogPage: React.FC = () => {
-  const { auditLogs } = useCRM();
+  const { auditLogs, requestAuditLogs, loadMoreAuditLogs, auditLogsHasMore } = useCRM();
+  // The log is read only when this page is opened, newest first.
+  useEffect(() => requestAuditLogs(), [requestAuditLogs]);
   const { t } = useLanguage();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [fUser, setFUser] = useState('all');
+  const [fRole, setFRole] = useState('all');
+  const [fAction, setFAction] = useState('all');
+  const [fFrom, setFFrom] = useState('');
+  const [fTo, setFTo] = useState('');
+  const uniq = (list: string[]) => [...new Set(list.filter(Boolean))];
 
   const filteredLogs = auditLogs.filter((l) => {
     const matchesSearch =
       l.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.details.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
+    return (
+      matchesSearch &&
+      (fUser === 'all' || l.userName === fUser) &&
+      (fRole === 'all' || l.userRole === fRole) &&
+      (fAction === 'all' || l.action === fAction) &&
+      inDateRange(l.timestamp, fFrom, fTo)
+    );
   });
 
   return (
     <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-150">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-          <ShieldCheck className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-          <span>سجل العمليات والرقابة الإدارية (Audit Log)</span>
-        </h1>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          تسجيل لكافة إجراءات التعديل والتخصيص والحذف والعمليات المنفذة في النظام
-        </p>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">للإدارة العليا</span>
+          <h1>سجل العمليات</h1>
+          <p>كل إضافة وتعديل في النظام: مين عمله وإمتى. السجل ده مش بيتعدّل ولا بيتمسح.</p>
+        </div>
       </div>
 
       {/* Table */}
       <div className="glass-card rounded-2xl shadow-xs overflow-hidden">
         <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
-          <div className="relative max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 dir-ltr:right-auto dir-ltr:left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="البحث بالعملية، اسم المستخدم، أو التفاصيل..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pr-9 dir-ltr:pr-3 dir-ltr:pl-9 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs outline-none"
-            />
-          </div>
+          <FilterBar
+            search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'ابحث بالعملية أو اسم المستخدم أو التفاصيل…' }}
+            selects={[
+              { id: 'user', label: 'المستخدم', value: fUser, onChange: setFUser, allLabel: 'كل المستخدمين', primary: true, options: uniq(auditLogs.map((l) => l.userName)).map((u) => ({ value: u, label: u })) },
+              { id: 'action', label: 'العملية', value: fAction, onChange: setFAction, allLabel: 'كل العمليات', primary: true, options: uniq(auditLogs.map((l) => l.action)).map((a) => ({ value: a, label: a })) },
+              { id: 'role', label: 'الدور', value: fRole, onChange: setFRole, allLabel: 'كل الأدوار', options: uniq(auditLogs.map((l) => l.userRole)).map((r) => ({ value: r, label: (roleNames as Record<string, string>)[r] || r })) },
+            ]}
+            dates={{ from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, label: 'التاريخ' }}
+            count={{ shown: filteredLogs.length, noun: 'عملية' }}
+            onReset={() => {
+              setSearchQuery('');
+              setFUser('all');
+              setFRole('all');
+              setFAction('all');
+              setFFrom('');
+              setFTo('');
+            }}
+          />
         </div>
 
         <div className="overflow-x-auto">
@@ -80,6 +101,13 @@ export const AuditLogPage: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {auditLogsHasMore && (
+          <div className="p-3 text-center border-t border-slate-100 dark:border-slate-800">
+            <button className="btn-secondary" onClick={loadMoreAuditLogs}>
+              عرض سجلات أقدم
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

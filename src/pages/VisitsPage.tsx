@@ -1,608 +1,752 @@
-import { hasPermission } from "../lib/permissions";
-import { canCreateCustomer } from "../lib/access";
-import React, { useState, useMemo, useEffect } from "react";
+import { useAllData } from "../lib/useAllData";
+import { useAllLeads } from "../lib/useAllLeads";
+import { useDebounced } from "../lib/useDebounced";
+import { usePagedList } from "../lib/usePagedList";
+import { findLeadsByPhone, searchLeads } from "../lib/leadQueries";
+import { visitParty } from "../lib/leadSearch";
+import { profileOf, scopesFor } from "../lib/scopes";
+import type { ScopeFilter } from "../lib/useFirestoreSync";
+import { PageGuide } from "../components/common/PageGuide";
+import { BrokerSearch } from "../components/common/BrokerSearch";
+import { CustomerSearch } from "../components/common/CustomerSearch";
+import { PostVisitReview, type VisitReviewTarget } from "../components/common/PostVisitReview";
+import { CustomerRatingModal } from "../components/common/CustomerRatingModal";
+import { MessageCircle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, ArrowUpLeft, CheckCircle2, ChevronDown, Handshake, MessageSquare, PlusCircle, ShoppingBag, UserRound, Users, CalendarClock, SlidersHorizontal } from "lucide-react";
 import { useCRM } from "../context/CRMContext";
-import { useLanguage } from "../context/LanguageContext";
-import { Visit, LeadSource, Department, InvoiceLineItem } from "../types/crm";
-import { PurchaseCategorySelector } from "../components/common/PurchaseCategorySelector";
-import {
-  Compass,
-  Search,
-  PlusCircle,
-  Calendar,
-  User,
-  Phone,
-  MessageSquare,
-  Star,
-  Building,
-  Paintbrush,
-  Trees,
-  Layers,
-  Send,
-} from "lucide-react";
+import { branchAgents, canCreateCustomer, canSeeBranch, defaultAgent } from "../lib/access";
+import { hasPermission } from "../lib/permissions";
+import { departmentNames, sourceNames } from "../lib/presentation";
+import { FilterBar, inDateRange } from "../components/common/FilterBar";
+import { NameWithTitle } from "../components/common/NameWithTitle";
+import { InterestPicker, interestNames } from "../components/common/InterestPicker";
+import { purchaseFromItems } from "../lib/purchases";
+import { OutcomeSection, emptyOutcome, outcomeError, outcomeLabel, type OutcomeState } from "../components/common/OutcomeSection";
+import { VoiceNoteField } from "../components/common/VoiceNoteField";
+import { addToDate } from "../lib/postSale";
+import { reasonLabel } from "../lib/notBought";
+import type { Department, Lead, LeadSource, Visit, VisitorType } from "../types/crm";
 
-interface VisitsPageProps {
+interface Props {
   onOpenLead: (leadId: string) => void;
 }
 
-export const VisitsPage: React.FC<VisitsPageProps> = ({ onOpenLead }) => {
-  const {
-    effectiveUser,
-    visits,
-    branches,
-    users,
-    leads,
-    addVisit,
-    addPurchaseInvoice,
-  } = useCRM();
-  const { t } = useLanguage();
+const typeLabels: Record<VisitorType, string> = { client: "عميل", broker: "وسيط", both: "عميل ومعاه وسيط" };
+const typeChoices: { id: VisitorType; title: string; hint: string; Icon: typeof UserRound }[] = [
+  { id: "client", title: "عميل", hint: "جه لنفسه", Icon: UserRound },
+  { id: "broker", title: "وسيط", hint: "مقاول أو مهندس جه لوحده", Icon: Handshake },
+  { id: "both", title: "عميل ومعاه وسيط", hint: "الوسيط هو اللي جابه", Icon: Users },
+];
 
-  const [showForm, setShowForm] = useState(false);
-  const [customerSearchTerm, setCustomerSearchTerm] = useState("");
-  const [visitorName, setVisitorName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [whatsappPhone, setWhatsappPhone] = useState("");
-  const [isSameWhatsApp, setIsSameWhatsApp] = useState(true);
-  const [branchId, setBranchId] = useState(
-    effectiveUser.branchId || branches[0]?.id || "",
+export function VisitsPage({ onOpenLead }: Props) {
+  const { effectiveUser, visits, branches, users, leads, brokers, addVisit, addBroker, addBooking, addNotBoughtRecord, updateLead, injectLeads, injectVisits, searchIndexReady, visitSearchReady } = useCRM();
+  // Customers and visits are asked of the database (a page of visits, a handful of matching customers). Until their
+  // search keys are built, the screen works on the full lists as it used to.
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const serverLookup = searchIndexReady && !lookupFailed;
+  useAllLeads(!serverLookup);
+  const [mode, setMode] = useState<"list" | "form">("list");
+  const [notice, setNotice] = useState("");
+  // Offered right after saving a visit of a customer: optional, one tap.
+  const [reviewFor, setReviewFor] = useState<{ leadId: string; label: string } | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [justSaved, setJustSaved] = useState<VisitReviewTarget | null>(null);
+
+  // ---------- list filters ----------
+  const [q, setQ] = useState("");
+  const [fType, setFType] = useState("all");
+  const [fBranch, setFBranch] = useState("all");
+  const [fAgent, setFAgent] = useState("all");
+  const [fOutcome, setFOutcome] = useState("all");
+  const [fFrom, setFFrom] = useState("");
+  const [fTo, setFTo] = useState("");
+  const resetFilters = () => {
+    setQ("");
+    setFType("all");
+    setFBranch("all");
+    setFAgent("all");
+    setFOutcome("all");
+    setFFrom("");
+    setFTo("");
+  };
+  const typedQuery = useDebounced(q, 300);
+  const listFilters = useMemo<ScopeFilter[]>(
+    () => [
+      // A visit with no type written down is a customer's, so that filter is checked on the rows (see `keep` below).
+      ...(fType !== "all" && fType !== "client" ? [["visitorType", "==", fType] as ScopeFilter] : []),
+      ...(fBranch !== "all" ? [["branchId", "==", fBranch] as ScopeFilter] : []),
+      ...(fAgent !== "all" ? [["receivedByAgentId", "==", fAgent] as ScopeFilter] : []),
+      ...(fOutcome !== "all" ? [["outcome", "==", fOutcome] as ScopeFilter] : []),
+      ...(fFrom ? [["date", ">=", fFrom] as ScopeFilter] : []),
+      ...(fTo ? [["date", "<=", fTo] as ScopeFilter] : []),
+    ],
+    [fType, fBranch, fAgent, fOutcome, fFrom, fTo],
   );
-  const [receivedByAgentId, setReceivedByAgentId] = useState(effectiveUser.id);
+  const visitScope = useMemo(
+    () => scopesFor(profileOf(effectiveUser)).visits,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effectiveUser.id, effectiveUser.role, effectiveUser.branchId, JSON.stringify(effectiveUser.supervisedBranchIds ?? [])],
+  );
+  const list = usePagedList<Visit>({
+    collection: "visits",
+    scope: visitScope,
+    filters: listFilters,
+    text: typedQuery,
+    orderField: "date",
+    pageSize: 20,
+    searchReady: visitSearchReady,
+    toParty: visitParty,
+    keep: fType === "client" ? (v) => (v.visitorType || "client") === "client" : undefined,
+    listKey: fType,
+    scopeFields: ["branchId", "receivedByAgentId"],
+    inject: injectVisits,
+  });
+  const legacy = list.needsFullList;
+  useAllData(["visits"], legacy);
+  const [shown, setShown] = useState(20);
+  useEffect(() => setShown(20), [typedQuery, fType, fBranch, fAgent, fOutcome, fFrom, fTo]);
+  const legacyRows = useMemo(() => {
+    if (!legacy) return [];
+    const t = typedQuery.trim().toLowerCase();
+    return visits
+      .filter(
+        (v) =>
+          (!t || [v.visitorName, v.phone, v.reason, v.outcome, v.brokerName].some((x) => (x || "").toLowerCase().includes(t))) &&
+          (fType === "all" || (v.visitorType || "client") === fType) &&
+          (fBranch === "all" || v.branchId === fBranch) &&
+          (fAgent === "all" || v.receivedByAgentId === fAgent) &&
+          (fOutcome === "all" || v.outcome === fOutcome) &&
+          inDateRange(v.date, fFrom, fTo),
+      )
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [legacy, visits, typedQuery, fType, fBranch, fAgent, fOutcome, fFrom, fTo]);
+  const rows: Visit[] = legacy ? legacyRows.slice(0, shown) : list.rows;
+  const rowsTotal = legacy ? legacyRows.length : list.total;
+  const hasMoreRows = legacy ? legacyRows.length > shown : list.hasMore;
 
-  // Sync default branch to current logged-in employee branch
-  useEffect(() => {
-    if (effectiveUser.branchId) {
-      setBranchId(effectiveUser.branchId);
-    }
-  }, [effectiveUser.branchId]);
-  const [source, setSource] = useState<LeadSource>("walk_in");
-  const [department, setDepartment] = useState<Department>("decor");
+  // ---------- the form ----------
+  const availableBranches = branches.filter((b) => b.active && canSeeBranch(effectiveUser, b.id, branches));
+  const [type, setType] = useState<VisitorType>("client");
+  const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
+  const [pickedLead, setPickedLead] = useState<Lead | null>(null);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [interests, setInterests] = useState<Department[]>(["decor"]);
+  const [brokerMode, setBrokerMode] = useState<"existing" | "new">("existing");
+  const [brokerId, setBrokerId] = useState("");
+  const [brokerName, setBrokerName] = useState("");
+  const [brokerPhone, setBrokerPhone] = useState("");
+  const [branchId, setBranchId] = useState(effectiveUser.branchId || availableBranches[0]?.id || "");
+  const agents = branchAgents(users, branchId);
+  const [agentId, setAgentId] = useState(effectiveUser.id);
   const [reason, setReason] = useState("");
-  const [outcome, setOutcome] = useState("");
-  const [locationRating, setLocationRating] = useState<number>(0);
-  const [treatmentRating, setTreatmentRating] = useState<number>(0);
-  const [priceRating, setPriceRating] = useState<number>(0);
+  const [outcome, setOutcome] = useState<OutcomeState>(emptyOutcome);
+  const [source, setSource] = useState<LeadSource>("walk_in");
   const [notes, setNotes] = useState("");
-  const [requiresFollowUp, setRequiresFollowUp] = useState(false);
+  const [whatsapp, setWhatsapp] = useState("");
+  const [followUp, setFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState("");
-  const [visitorPurchaseItems, setVisitorPurchaseItems] = useState<
-    InvoiceLineItem[]
-  >([]);
+  const [error, setError] = useState("");
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const hasClient = type !== "broker";
+  const hasBroker = type !== "client";
+  const validAgent = agents.some((u) => u.id === agentId) ? agentId : defaultAgent(users, effectiveUser, branchId);
+  const typedPhone = phone.replace(/\D/g, "");
+  const checkPhone = hasClient && clientMode === "new" && typedPhone.length >= 10;
+  const [foundByPhone, setFoundByPhone] = useState<Lead | undefined>();
+  useEffect(() => {
+    if (!checkPhone || !serverLookup) return setFoundByPhone(undefined);
+    let current = true;
+    const timer = setTimeout(() => {
+      findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, phone)
+        .then((rows) => {
+          if (!current) return;
+          injectLeads(rows);
+          setFoundByPhone(rows[0]);
+        })
+        .catch(() => current && (setFoundByPhone(undefined), setLookupFailed(true)));
+    }, 350);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, checkPhone, serverLookup, effectiveUser.id]);
+  const duplicate = !checkPhone ? undefined : serverLookup ? foundByPhone : leads.find((l) => l.phone.replace(/\D/g, "") === typedPhone);
+  const activeBrokers = brokers.filter((b) => b.active);
+  const pickedBroker = brokers.find((b) => b.id === brokerId);
+  const total = outcome.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
-  // Search existing customers for pre-filling visitor
-  const matchingCustomers = useMemo(() => {
-    if (!customerSearchTerm.trim()) return [];
-    const q = customerSearchTerm.toLowerCase();
-    return leads
-      .filter((l) => l.name.toLowerCase().includes(q) || l.phone.includes(q))
-      .slice(0, 5);
-  }, [customerSearchTerm, leads]);
-
-  const selectExistingCustomer = (l: any) => {
-    setVisitorName(l.name);
-    setPhone(l.phone);
-    if (l.branchId) setBranchId(l.branchId);
-    if (l.assignedAgentId) setReceivedByAgentId(l.assignedAgentId);
-    setCustomerSearchTerm("");
+  const openForm = () => {
+    setType("client");
+    setClientMode("existing");
+    setPickedLead(null);
+    setName("");
+    setPhone("");
+    setInterests(["decor"]);
+    setBrokerMode(activeBrokers.length ? "existing" : "new");
+    setBrokerId("");
+    setBrokerName("");
+    setBrokerPhone("");
+    setBranchId(effectiveUser.branchId || availableBranches[0]?.id || "");
+    setAgentId(effectiveUser.id);
+    setReason("");
+    setOutcome(emptyOutcome);
+    setSource("walk_in");
+    setNotes("");
+    setWhatsapp("");
+    setFollowUp(false);
+    setFollowUpDate("");
+    setError("");
+    setNotice("");
+    setJustSaved(null);
+    setMode("form");
   };
 
-  const deptLabels: Record<Department, string> = {
-    construction: "🏗️ قسم الإنشائي والمقاولات",
-    decor: "🎨 قسم الديكورات والدهانات",
-    garden: "🌿 قسم البستان واللاندسكيب",
-    general: "📦 قسم المتنوع والخدمات",
-  };
-
-  const handlePhoneChange = (val: string) => {
-    setPhone(val);
-    if (isSameWhatsApp) {
-      setWhatsappPhone(val);
-    }
-  };
-
-  const handleAddVisit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canCreateCustomer(effectiveUser)) return;
-    if (
-      !users.some(
-        (u) =>
-          u.id === receivedByAgentId && u.active && u.branchId === branchId,
-      )
-    ) {
-      alert("اختَر موظفًا نشطًا من نفس الفرع.");
-      return;
+    setError("");
+    const clientName = pickedLead ? pickedLead.name : name.trim();
+    const clientPhone = pickedLead ? pickedLead.phone : phone.trim();
+    if (hasClient && (!clientName || !/^\+?[\d\s()-]{10,18}$/.test(clientPhone))) return setError("اكتب اسم العميل ورقم هاتف صحيح، أو اختار عميل مسجّل.");
+    if (hasBroker && brokerMode === "existing" && !pickedBroker) return setError("اكتب اسم الوسيط واختاره من النتايج، أو أضفه كوسيط جديد.");
+    if (hasBroker && brokerMode === "new" && (!brokerName.trim() || !/^\+?[\d\s()-]{10,18}$/.test(brokerPhone.trim()))) return setError("اكتب اسم الوسيط ورقم هاتفه.");
+    const outErr = hasClient ? outcomeError(outcome, true) : "";
+    if (outErr) return setError(outErr);
+    if (hasClient && outcome.result === "bought" && !hasPermission(effectiveUser, "bookings.create")) return setError("حسابك مش مسموحله يسجل مشتريات. اختار «لسه» أو «استفسار فقط».");
+    if (followUp && hasClient && !followUpDate) return setError("حدد تاريخ المتابعة.");
+    if (!agents.some((u) => u.id === validAgent) && validAgent !== effectiveUser.id) return setError("اختار موظف نشط من نفس الفرع.");
+
+    // A number that is already a customer's of this branch is the same customer: the visit goes on their file. The check
+    // on screen may still be waiting for the typing to pause, so it is made once more here.
+    let linkTo = pickedLead?.id;
+    if (hasClient && !pickedLead && clientMode === "new") {
+      const known = duplicate ?? (serverLookup ? (await findLeadsByPhone(scopesFor(profileOf(effectiveUser)).leads, clientPhone).catch(() => []))[0] : undefined);
+      if (known && known.branchId === branchId) {
+        injectLeads([known]);
+        if (!duplicate) {
+          // Found only now: show it, and the next save goes on its file.
+          setFoundByPhone(known);
+          return setError(`الرقم ده موجود عندنا باسم ${known.name}، والزيارة هتتسجل على ملفه. اضغط حفظ تاني.`);
+        }
+        linkTo = known.id;
+      }
     }
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const timeStr = new Date().toLocaleTimeString("ar-EG", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    // Append purchase summary to visit notes if any exists
-    const validItems = visitorPurchaseItems.filter((i) => i.amount > 0);
-    const totalPurchase = validItems.reduce(
-      (s, i) => s + (Number(i.amount) || 0),
-      0,
-    );
-    const purchaseNoteStr =
-      validItems.length > 0
-        ? ` | المشتريات بالفرع: ${validItems.map((i) => `${i.categoryName}: ${i.amount} ج.م`).join("، ")} (الإجمالي: ${totalPurchase} ج.م)`
-        : "";
-
-    const createdVisit = addVisit({
-      visitorName,
-      phone,
-      whatsappPhone: whatsappPhone || phone,
-      date: todayStr,
-      time: timeStr,
-      branchId,
-      receivedByAgentId,
-      source,
-      department,
-      locationRating: locationRating || undefined,
-      treatmentRating: treatmentRating || undefined,
-      priceRating: priceRating || undefined,
-      reason,
-      outcome,
-      notes: (notes || "") + purchaseNoteStr,
-      hasPreviousRecord: false,
-      requiresFollowUp,
-      followUpAgentId: receivedByAgentId,
-      followUpDate: requiresFollowUp ? followUpDate : undefined,
-    });
-
-    // If visitor made purchases, generate invoice automatically
-    if (validItems.length > 0 && totalPurchase > 0) {
-      const branchObj = branches.find((b) => b.id === branchId);
-      const agentObj = users.find((u) => u.id === receivedByAgentId);
-      addPurchaseInvoice({
-        date: todayStr,
-        leadId: createdVisit.linkedLeadId!,
-        leadName: visitorName,
-        leadPhone: phone,
+    // The broker: pick the existing one or register the new one.
+    const broker = hasBroker ? (brokerMode === "existing" ? pickedBroker : addBroker({ name: brokerName.trim(), phone: brokerPhone.trim(), type: "individual", active: true, notes: "", branchIds: [branchId] })) : undefined;
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const bits = [notes.trim()];
+    const bought = hasClient && outcome.result === "bought";
+    const finalOutcome = hasClient && outcome.result ? outcomeLabel[outcome.result] : "زيارة وسيط";
+    // A purchase schedules its own post-sale follow-ups; only a follow-up the salesperson chose is added here.
+    const followUpOn = hasClient && followUp;
+    const followUpOnDate = followUpDate;
+    try {
+      const visit = addVisit({
+        visitorType: type,
+        brokerId: broker?.id,
+        brokerName: broker?.name,
+        interests: hasClient && !pickedLead ? interests : undefined,
+        visitorName: hasClient ? clientName : broker!.name,
+        phone: hasClient ? clientPhone : broker!.phone,
+        whatsappPhone: hasClient ? whatsapp.trim() || clientPhone : broker!.phone,
+        date,
+        time: now.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }),
         branchId,
-        branchName: branchObj?.name || "الفرع الرئيسي",
-        agentId: receivedByAgentId,
-        agentName: agentObj?.name || effectiveUser.name,
-        items: validItems,
-        totalAmount: totalPurchase,
-        status: "draft",
-        notes: `فاتورة مبيعات زائر بالفرع بتاريخ ${todayStr}`,
+        receivedByAgentId: validAgent,
+        source,
+        department: interests[0],
+        reason: reason.trim() || "زيارة للفرع",
+        outcome: finalOutcome,
+        notes: bits.filter(Boolean).join(" | "),
+        hasPreviousRecord: false,
+        linkedLeadId: linkTo,
+        requiresFollowUp: followUpOn && hasPermission(effectiveUser, "followups.create"),
+        followUpAgentId: validAgent,
+        followUpDate: followUpOn ? followUpOnDate : undefined,
       });
+      // A customer who came with a broker belongs to that broker; the purchase is credited to them.
+      if (hasClient && broker && visit.linkedLeadId) {
+        const lead = leads.find((l) => l.id === visit.linkedLeadId);
+        // A brand-new customer already got the broker when the visit created them.
+        if (lead && !lead.brokerId) updateLead(visit.linkedLeadId, { brokerId: broker.id, brokerName: broker.name });
+      }
+      // The result belongs to this visit: a purchase becomes the customer's purchase, "not yet" keeps its reason.
+      if (hasClient && visit.linkedLeadId) {
+        const leadId = visit.linkedLeadId;
+        const branchName = branches.find((b) => b.id === branchId)?.name;
+        if (bought && hasPermission(effectiveUser, "bookings.create")) {
+          const purchase = purchaseFromItems(outcome.items);
+          addBooking({
+            leadId,
+            leadName: clientName,
+            leadPhone: clientPhone,
+            branchId,
+            branchName,
+            agentId: validAgent,
+            ...purchase,
+            bookingDate: date,
+            bookingStatus: "confirmed",
+            source,
+            notes: "",
+            visitId: visit.id,
+          });
+        } else if (outcome.result === "not_yet") {
+          addNotBoughtRecord({
+            leadId,
+            leadName: clientName,
+            branchId,
+            agentId: validAgent,
+            visitId: visit.id,
+            reasons: outcome.reasons,
+            otherText: outcome.reasons.includes("other") ? outcome.otherText.trim() : undefined,
+            note: outcome.note.trim() || undefined,
+          });
+        }
+      }
+      setNotice(`اتسجلت الزيارة${hasClient ? ` وملف ${clientName} موجود في العملاء` : ""}.`);
+      setReviewFor(null);
+      setJustSaved(
+        (hasClient && visit.linkedLeadId) || broker
+          ? {
+              visitId: visit.id,
+              label: `زيارة ${branches.find((b) => b.id === branchId)?.name || "الفرع"} يوم ${date}`,
+              client: hasClient && visit.linkedLeadId ? { leadId: visit.linkedLeadId, name: clientName, phone: clientPhone } : undefined,
+              broker: broker ? { brokerId: broker.id } : undefined,
+            }
+          : null,
+      );
+      setMode("list");
+      list.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر تسجيل الزيارة.");
     }
-
-    // Reset Form
-    setVisitorName("");
-    setPhone("");
-    setWhatsappPhone("");
-    setReason("");
-    setOutcome("");
-    setNotes("");
-    setRequiresFollowUp(false);
-    setFollowUpDate("");
-    setVisitorPurchaseItems([]);
-    setShowForm(false);
   };
 
-  const renderStarRating = (value: number, onChange: (val: number) => void) => (
-    <div className="flex items-center gap-1 mt-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          onClick={() => onChange(star)}
-          className={`p-1 rounded transition-colors cursor-pointer ${
-            star <= value
-              ? "text-amber-400"
-              : "text-slate-300 dark:text-slate-700"
-          }`}
-        >
-          <Star className="w-4 h-4 fill-current" />
-        </button>
-      ))}
-      <span className="text-xs font-bold text-slate-600 dark:text-slate-400 mr-1.5 font-mono-numbers">
-        {value}/5
-      </span>
-    </div>
-  );
-
-  const filteredVisits = visits.filter((v) => {
-    const matchesSearch =
-      v.visitorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.phone.includes(searchQuery) ||
-      v.reason.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
-
-  return (
-    <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-150">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-            <Compass className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-            <span>تسجيل الزيارات والاستفسارات بمقرات الفروع</span>
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            تسجيل وتوثيق كل شخص يزور الفرع أو يستفسر عن الخدمات حتى لو لم يقم
-            بالحجز المباشر
-          </p>
+  // ---------- list ----------
+  if (mode === "list")
+    return (
+      <div>
+        <div className="page-heading">
+          <div>
+            <span className="eyebrow">اللي بيزور الفروع</span>
+            <h1>الزيارات</h1>
+            <p>سجّل مين جه الفرع: عميل، أو وسيط، أو عميل ومعاه وسيط. أي عميل بيتسجل هنا بيظهر لوحده في العملاء.</p>
+          </div>
+          {canCreateCustomer(effectiveUser) && (
+            <button className="btn-primary" onClick={openForm}>
+              <PlusCircle size={16} />
+              تسجيل زيارة
+            </button>
+          )}
         </div>
-
-        {canCreateCustomer(effectiveUser) && (
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer min-h-[40px] justify-center"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>{showForm ? "إغلاق النموذج" : "تسجيل زيارة فرع جديدة"}</span>
-          </button>
+        <PageGuide id="visits" />
+        {notice && (
+          <div className="notice" role="status">
+            {notice}
+            {justSaved && <PostVisitReview target={justSaved} />}
+          </div>
         )}
+        <CustomerRatingModal
+          lead={leads.find((l) => l.id === reviewFor?.leadId) ?? null}
+          isOpen={reviewOpen}
+          onClose={() => {
+            setReviewOpen(false);
+            setReviewFor(null);
+          }}
+          subject={reviewFor ? { kind: "visit", label: reviewFor.label } : undefined}
+        />
+        <section className="panel">
+          <FilterBar
+            search={{ value: q, onChange: setQ, placeholder: "ابحث باسم الزائر أو الوسيط أو الهاتف…" }}
+            selects={[
+              { id: "type", label: "نوع الزائر", value: fType, onChange: setFType, allLabel: "كل الزوار", primary: true, options: (Object.keys(typeLabels) as VisitorType[]).map((t) => ({ value: t, label: typeLabels[t] })) },
+              { id: "branch", label: "الفرع", value: fBranch, onChange: setFBranch, allLabel: "كل الفروع", primary: true, options: branches.filter((b) => canSeeBranch(effectiveUser, b.id, branches)).map((b) => ({ value: b.id, label: b.name })) },
+              { id: "agent", label: "الموظف المستقبِل", value: fAgent, onChange: setFAgent, allLabel: "كل الموظفين", options: users.filter((u) => u.active).map((u) => ({ value: u.id, label: u.name })) },
+              { id: "outcome", label: "نتيجة الزيارة", value: fOutcome, onChange: setFOutcome, allLabel: "كل النتائج", options: [...Object.values(outcomeLabel), "زيارة وسيط"].map((o) => ({ value: o, label: o })) },
+            ]}
+            dates={{ from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, label: "تاريخ الزيارة" }}
+            count={{ shown: rowsTotal ?? rows.length, noun: "زيارة" }}
+            onReset={resetFilters}
+          />
+          {list.error && !legacy && (
+            <div className="notice" role="alert">
+              {list.error} <button className="btn-text" onClick={list.refresh}>إعادة المحاولة</button>
+            </div>
+          )}
+          {list.searchTooShort && !legacy && <div className="quiet-note" role="status">اكتب حرفين من الاسم أو 4 أرقام من الهاتف عشان يشتغل البحث.</div>}
+          {!legacy && list.loading && !rows.length ? (
+            <div className="quiet-note" role="status" style={{ padding: 30 }}>جاري تحميل الزيارات…</div>
+          ) : rows.length ? (
+            <div className="overflow-x-auto">
+              <table className="data-table stack-table">
+                <thead>
+                  <tr>
+                    <th>الزائر</th>
+                    <th>التاريخ</th>
+                    <th>الفرع</th>
+                    <th>السبب والنتيجة</th>
+                    <th>استقبله</th>
+                    <th>الملف</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((v: Visit) => {
+                    const t = v.visitorType || "client";
+                    return (
+                      <tr key={v.id}>
+                        <td data-label="الزائر">
+                          <strong>{v.visitorName}</strong>
+                          <span className="table-secondary" dir="ltr" style={{ textAlign: "end" }}>
+                            {v.phone || "—"}
+                          </span>
+                          <span className="status-pill" style={{ marginTop: 4 }}>
+                            {typeLabels[t]}
+                            {t === "both" && v.brokerName ? `: ${v.brokerName}` : ""}
+                          </span>
+                        </td>
+                        <td data-label="التاريخ" style={{ whiteSpace: "nowrap" }}>
+                          {v.date}
+                          <span className="table-secondary">{v.time}</span>
+                        </td>
+                        <td data-label="الفرع">{v.branchName}</td>
+                        <td data-label="السبب والنتيجة">
+                          {v.reason}
+                          <span className="table-secondary">{v.outcome}</span>
+                        </td>
+                        <td data-label="استقبله">{v.receivedByAgentName}</td>
+                        <td data-label="الملف">
+                          {v.linkedLeadId ? (
+                            <button className="btn-text" onClick={() => onOpenLead(v.linkedLeadId!)}>
+                              ملف العميل
+                              <ArrowUpLeft size={13} />
+                            </button>
+                          ) : null}
+                          {v.linkedLeadId && t !== "broker" ? (
+                            <button
+                              className="btn-text"
+                              onClick={() => {
+                                setReviewFor({ leadId: v.linkedLeadId!, label: `زيارة ${v.branchName || "الفرع"} يوم ${v.date}` });
+                                setReviewOpen(true);
+                              }}
+                            >
+                              <MessageCircle size={13} />
+                              تقييم
+                            </button>
+                          ) : null}
+                          {!v.linkedLeadId ? (
+                            <span className="table-secondary">{t === "broker" ? "وسيط" : "—"}</span>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <h3>مفيش زيارات تطابق البحث</h3>
+              <p>سجّل أول زيارة بزر «تسجيل زيارة».</p>
+            </div>
+          )}
+          {hasMoreRows && (
+            <div className="filter-count">
+              <span>
+                معروض {rows.length}
+                {rowsTotal !== null ? ` من ${rowsTotal}` : ""} زيارة
+              </span>
+              <button className="btn-secondary" onClick={legacy ? () => setShown((n) => n + 20) : list.loadMore} disabled={!legacy && list.loadingMore}>
+                {!legacy && list.loadingMore ? "جاري التحميل…" : "عرض المزيد"}
+              </button>
+            </div>
+          )}
+        </section>
       </div>
+    );
 
-      {/* New Visit Form */}
-      {showForm && (
-        <form
-          onSubmit={handleAddVisit}
-          className="glass-card p-5 sm:p-6 rounded-2xl shadow-md space-y-4 text-xs animate-in slide-in-from-top duration-150"
-        >
-          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm pb-2 border-b border-slate-100 dark:border-slate-800">
-            نموذج استقبال زائر بمقر الفرع
-          </h3>
-
-          {/* Existing Customer Search Auto-fill */}
-          <div className="relative bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60">
-            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-              <Search className="w-3.5 h-3.5 text-indigo-500" />
-              <span>البحث عن عميل سابق لملء بيانات الزائر تلقائياً:</span>
-            </label>
-            <input
-              type="text"
-              value={customerSearchTerm}
-              onChange={(e) => setCustomerSearchTerm(e.target.value)}
-              placeholder="ابحث باسم العميل أو رقم الهاتف..."
-              className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs"
-            />
-            {matchingCustomers.length > 0 && (
-              <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700">
-                {matchingCustomers.map((mc) => (
-                  <button
-                    key={mc.id}
-                    type="button"
-                    onClick={() => selectExistingCustomer(mc)}
-                    className="w-full text-right p-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors flex items-center justify-between cursor-pointer"
-                  >
-                    <div>
-                      <span className="font-bold text-slate-900 dark:text-slate-100 block">
-                        {mc.name}
-                      </span>
-                      <span className="text-[11px] text-slate-500 font-mono-numbers">
-                        {mc.phone}
-                      </span>
-                    </div>
-                    <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full font-bold">
-                      تعبئة بيانات الزائر
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+  // ---------- form ----------
+  return (
+    <div className="form-page">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">الزيارات / تسجيل جديد</span>
+          <h1>مين زار الفرع؟</h1>
+          <p>اختار نوع الزائر وكمّل الأساسيات. الباقي اختياري تفتحه لو محتاجه.</p>
+        </div>
+        <button className="btn-text" onClick={() => setMode("list")}>
+          <ArrowRight size={15} />
+          رجوع
+        </button>
+      </div>
+      <PageGuide id="visits" />
+      <form className="panel" onSubmit={submit} noValidate>
+        <section className="form-section">
+          <div className="section-title">
+            <span className="section-number">01</span>
+            <div>
+              <h2>الزائر</h2>
+              <p>عميل، أو وسيط، أو عميل جاي معاه وسيط.</p>
+            </div>
+          </div>
+          <div className="visitor-types" role="radiogroup" aria-label="نوع الزائر">
+            {typeChoices.map(({ id, title, hint, Icon }) => (
+              <button type="button" key={id} role="radio" aria-checked={type === id} className={type === id ? "on" : ""} onClick={() => setType(id)}>
+                <Icon size={20} />
+                <strong>{title}</strong>
+                <small>{hint}</small>
+              </button>
+            ))}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                اسم الزائر الكامل *
-              </label>
-              <input
-                type="text"
-                required
-                value={visitorName}
-                onChange={(e) => setVisitorName(e.target.value)}
-                placeholder="أدخل اسم الشخص..."
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                رقم الهاتف الرئيسي
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                placeholder="01012345678"
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono-numbers"
-              />
-              <label className="flex items-center gap-2 mt-2 cursor-pointer font-semibold text-slate-700 dark:text-slate-300 text-[11px]">
-                <input
-                  type="checkbox"
-                  checked={isSameWhatsApp}
-                  onChange={(e) => {
-                    setIsSameWhatsApp(e.target.checked);
-                    if (e.target.checked) setWhatsappPhone(phone);
+          {hasClient && (
+            <div className="party-block">
+              <h3>العميل</h3>
+              {clientMode === "existing" ? (
+                <CustomerSearch
+                  {...(serverLookup
+                    ? {
+                        lookup: async (typed: string) => {
+                          try {
+                            const rows = await searchLeads(scopesFor(profileOf(effectiveUser)).leads, typed, 8);
+                            injectLeads(rows);
+                            return rows;
+                          } catch {
+                            setLookupFailed(true);
+                            return [];
+                          }
+                        },
+                      }
+                    : { leads })}
+                  value={pickedLead}
+                  onChange={(l) => {
+                    setPickedLead(l);
+                    if (l?.branchId) setBranchId(l.branchId);
                   }}
-                  className="w-3.5 h-3.5 text-emerald-600 rounded"
+                  onCreate={(typed) => {
+                    // What was typed becomes the start of the new customer: digits are the phone, otherwise the name.
+                    if (typed.replace(/\D/g, "").length >= 7) setPhone(typed);
+                    else setName(typed);
+                    setPickedLead(null);
+                    setClientMode("new");
+                  }}
                 />
-                <span>نفس رقم الواتس؟</span>
-              </label>
+              ) : (
+                <div className="field-grid">
+                  <NameWithTitle value={name} onChange={setName} required />
+                  <label className="field">
+                    <span>
+                      رقم الهاتف <em>مطلوب</em>
+                    </span>
+                    <input dir="ltr" type="tel" inputMode="tel" autoComplete="off" placeholder="01xxxxxxxxx" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  </label>
+                  {duplicate && (
+                    <div className="notice warning full-width" role="status">
+                      الرقم ده موجود عندنا باسم {duplicate.name}، والزيارة هتتسجل على ملفه.
+                      <button type="button" onClick={() => { setPickedLead(duplicate); setClientMode("existing"); }}>
+                        استخدم الملف الموجود
+                      </button>
+                    </div>
+                  )}
+                  <div className="full-width">
+                    <InterestPicker value={interests} onChange={setInterests} />
+                  </div>
+                  {leads.length > 0 && (
+                    <button type="button" className="btn-text full-width" onClick={() => setClientMode("existing")}>
+                      ← دوّر في العملاء المسجلين بدل كده
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-
-            <div>
-              <label className="block font-bold text-emerald-800 dark:text-emerald-400 mb-1 flex items-center gap-1">
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                <span>رقم الواتس</span>
-              </label>
-              <input
-                type="tel"
-                value={whatsappPhone}
-                onChange={(e) => setWhatsappPhone(e.target.value)}
-                placeholder="01012345678"
-                disabled={isSameWhatsApp}
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-slate-900 dark:text-slate-100 rounded-xl font-mono-numbers disabled:opacity-80"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                الفرع الذي تمت زيارته *
-              </label>
-              <select
-                value={branchId}
-                onChange={(e) => {
-                  setBranchId(e.target.value);
-                  setReceivedByAgentId("");
-                }}
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                الموظف المستقبل *
-              </label>
-              <select
-                disabled={effectiveUser.role === "sales_agent"}
-                value={receivedByAgentId}
-                onChange={(e) => setReceivedByAgentId(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-              >
-                <option value="">اختر الموظف المسؤول</option>
-                {users
-                  .filter(
-                    (u) =>
-                      u.active &&
-                      u.branchId === branchId &&
-                      ["sales_agent", "branch_manager", "supervisor"].includes(
-                        u.role,
-                      ),
-                  )
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.branchName || "عام"})
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                القسم محل الاستفسار *
-              </label>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value as Department)}
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl font-bold"
-              >
-                <option value="decor">🎨 قسم الديكورات والدهانات</option>
-                <option value="construction">🏗️ قسم الإنشائي والمقاولات</option>
-                <option value="garden">🌿 قسم البستان واللاندسكيب</option>
-                <option value="general">📦 قسم المتنوع والخدمات</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                مصدر الزيارة
-              </label>
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value as LeadSource)}
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-              >
-                <option value="walk_in">حضور مباشر (Walk-in)</option>
-                <option value="facebook">إعلان فيسبوك</option>
-                <option value="referral">ترشيح عميل</option>
-                <option value="google">بحث جوجل</option>
-                <option value="phone_inquiry">استفسار سابق</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                سبب الزيارة بالتفصيل *
-              </label>
-              <input
-                type="text"
-                required
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="مثال: حضر لمعاينة درجات الدهانات وطلب عرض سعر"
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
-                نتيجة الزيارة *
-              </label>
-              <input
-                type="text"
-                required
-                value={outcome}
-                onChange={(e) => setOutcome(e.target.value)}
-                placeholder="مثال: أبدى اهتماماً كبيراً وطلب مهلة يوم للتأكيد"
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl"
-              />
-            </div>
-          </div>
-
-          {/* Purchase Categories & Prices for Visitor Purchases */}
-          {hasPermission(effectiveUser, "invoices.manage") && (
-            <PurchaseCategorySelector
-              items={visitorPurchaseItems}
-              onChange={setVisitorPurchaseItems}
-              isOptional={true}
-              title="مشتريات/تعاقدات الزائر بالفرع (اختياري)"
-              subtitle="إذا قام الزائر بشراء منتجات/خدمات أثناء الزيارة، حدد التصنيفات والأسعار بالجنيه المصري (EGP)"
-            />
           )}
 
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800 dark:text-slate-200">
-              <input
-                type="checkbox"
-                disabled={!hasPermission(effectiveUser, "followups.create")}
-                checked={requiresFollowUp}
-                onChange={(e) => setRequiresFollowUp(e.target.checked)}
-                className="w-4 h-4 text-indigo-600 rounded"
-              />
-              <span>تعتبر هذه الزيارة فرصة تحتاج إلى متابعة لاحقة؟</span>
-            </label>
-
-            {requiresFollowUp && (
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-700 dark:text-slate-300">
-                  موعد المتابعة:
-                </span>
-                <input
-                  type="datetime-local"
-                  required
-                  value={followUpDate}
-                  onChange={(e) => setFollowUpDate(e.target.value)}
-                  className="p-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded text-xs"
+          {hasBroker && (
+            <div className="party-block">
+              <h3>الوسيط</h3>
+              {brokerMode === "existing" ? (
+                <BrokerSearch
+                  label="دوّر على الوسيط (يمكن يكون مسجّل قبل كده)"
+                  brokers={activeBrokers}
+                  value={brokerId}
+                  onChange={setBrokerId}
+                  onCreate={(typed) => {
+                    if (typed.replace(/\D/g, "").length >= 7) setBrokerPhone(typed);
+                    else setBrokerName(typed);
+                    setBrokerId("");
+                    setBrokerMode("new");
+                  }}
                 />
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="field-grid">
+                  <label className="field">
+                    <span>
+                      اسم الوسيط <em>مطلوب</em>
+                    </span>
+                    <input autoComplete="off" value={brokerName} onChange={(e) => setBrokerName(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>
+                      رقم الوسيط <em>مطلوب</em>
+                    </span>
+                    <input dir="ltr" type="tel" inputMode="tel" autoComplete="off" placeholder="01xxxxxxxxx" value={brokerPhone} onChange={(e) => setBrokerPhone(e.target.value)} />
+                  </label>
+                  {activeBrokers.length > 0 && (
+                    <button type="button" className="btn-text full-width" onClick={() => setBrokerMode("existing")}>
+                      ← دوّر في الوسطاء المسجلين بدل كده
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-semibold"
-            >
+          <label className="field" style={{ marginTop: 18 }}>
+            <span>
+              سبب الزيارة <em>اختياري</em>
+            </span>
+            <input placeholder="استفسار، معاينة، عرض سعر…" value={reason} onChange={(e) => setReason(e.target.value)} />
+          </label>
+        </section>
+
+        {hasClient && (
+          <section className="form-section">
+            <div className="section-title">
+              <span className="section-number">02</span>
+              <div>
+                <h2>نتيجة الزيارة</h2>
+                <p>اشترى ولا لسه؟ سجلها دلوقتي عشان تتربط بالزيارة دي.</p>
+              </div>
+            </div>
+            <OutcomeSection
+              value={outcome}
+              onChange={setOutcome}
+              required
+              boughtHint={type === "both" ? "المبلغ بيتحسب على الوسيط لأنه هو اللي دخّله." : undefined}
+            />
+          </section>
+        )}
+
+        <details className="optional-section">
+          <summary>
+            <UserRound size={18} />
+            <span>الفرع والموظف المستقبِل</span>
+            <ChevronDown size={16} />
+          </summary>
+          <div className="optional-content">
+            <p className="quiet-note" style={{ padding: "0 0 18px" }}>
+              محدد تلقائيًا: {branches.find((b) => b.id === branchId)?.name || "لم يُحدد"} · {users.find((u) => u.id === validAgent)?.name || "لم يُحدد"}
+            </p>
+            <div className="field-grid">
+              <label className="field">
+                <span>الفرع</span>
+                <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                  {availableBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>الموظف المستقبِل</span>
+                <select value={validAgent} onChange={(e) => setAgentId(e.target.value)}>
+                  {agents.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+        </details>
+
+        {hasClient && hasPermission(effectiveUser, "followups.create") && (
+          <details className="optional-section" open={followUp || undefined}>
+            <summary>
+              <CalendarClock size={18} />
+              <span>
+                متابعة بعد الزيارة <em className="optional-tag">اختياري</em>
+              </span>
+              <ChevronDown size={16} />
+            </summary>
+            <div className="optional-content">
+              <label className="checkbox-line">
+                <input type="checkbox" checked={followUp} onChange={(e) => setFollowUp(e.target.checked)} />
+                العميل ده محتاج متابعة
+              </label>
+              {outcome.result === "bought" && !followUp && (
+                <p className="quiet-note">لأنه اشترى، هتتجدول متابعة تلقائي بعد 3 أيام (رأيه في الخدمة والتقييم). علّم هنا لو عايز ميعاد تاني.</p>
+              )}
+              {followUp && (
+                <label className="field" style={{ marginTop: 12 }}>
+                  <span>ميعاد المتابعة</span>
+                  <input type="date" value={followUpDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setFollowUpDate(e.target.value)} />
+                </label>
+              )}
+            </div>
+          </details>
+        )}
+
+        <details className="optional-section">
+          <summary>
+            <SlidersHorizontal size={18} />
+            <span>
+              تفاصيل إضافية <em className="optional-tag">اختياري</em>
+            </span>
+            <ChevronDown size={16} />
+          </summary>
+          <div className="optional-content">
+            <div className="field-grid">
+              <label className="field">
+                <span>عرفنا منين؟</span>
+                <select value={source} onChange={(e) => setSource(e.target.value as LeadSource)}>
+                  {Object.entries(sourceNames).map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {hasClient && (
+                <label className="field">
+                  <span>رقم الواتساب (لو غير الهاتف)</span>
+                  <input dir="ltr" type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
+                </label>
+              )}
+              <div className="field full-width">
+                <span>
+                  ملاحظات <em>اختياري</em>
+                </span>
+                <VoiceNoteField value={notes} onChange={setNotes} rows={3} placeholder="اكتب أو سجّل صوت بكل اللي حصل في الزيارة…" />
+              </div>
+            </div>
+          </div>
+        </details>
+
+        {error && (
+          <div className="notice warning" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="form-actions">
+          <p>العميل اللي بتسجله هنا بيتضاف لوحده في العملاء، والتفاصيل الاختيارية مش هتعطّل الحفظ.</p>
+          <div>
+            <button className="btn-text" type="button" onClick={() => setMode("list")}>
               إلغاء
             </button>
-            <button
-              type="submit"
-              className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md shadow-indigo-600/20"
-            >
-              حفظ سجل الزيارة
+            <button className="btn-primary" type="submit">
+              <CheckCircle2 size={16} />
+              حفظ الزيارة
             </button>
           </div>
-        </form>
-      )}
-
-      {/* Search & Register Table */}
-      <div className="glass-card rounded-2xl shadow-xs overflow-hidden">
-        <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
-          <div className="relative max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 dir-ltr:right-auto dir-ltr:left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="البحث في الزيارات باسم الزائر أو الهاتف أو النتيجة..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pr-9 dir-ltr:pr-3 dir-ltr:pl-9 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs outline-none"
-            />
-          </div>
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-right dir-ltr:text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-800">
-              <tr>
-                <th className="p-3.5">اسم الزائر</th>
-                <th className="p-3.5">الهاتف</th>
-                <th className="p-3.5">التاريخ والوقت</th>
-                <th className="p-3.5">الفرع</th>
-                <th className="p-3.5">الاستفسار والسبب</th>
-                <th className="p-3.5">النتيجة</th>
-                <th className="p-3.5">المستقبل</th>
-                <th className="p-3.5 text-center">الإجراء</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredVisits.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs"
-                  >
-                    لا توجد زيارات مسجلة تطابق البحث
-                  </td>
-                </tr>
-              ) : (
-                filteredVisits.map((v) => (
-                  <tr
-                    key={v.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                  >
-                    <td className="p-3.5 font-bold text-slate-900 dark:text-slate-100">
-                      {v.visitorName}
-                    </td>
-                    <td className="p-3.5 font-mono-numbers text-slate-700 dark:text-slate-300">
-                      {v.phone || "—"}
-                    </td>
-                    <td className="p-3.5 font-mono-numbers text-indigo-700 dark:text-indigo-400 font-semibold">
-                      {v.date} {v.time}
-                    </td>
-                    <td className="p-3.5 text-slate-700 dark:text-slate-300">
-                      {v.branchName}
-                    </td>
-                    <td className="p-3.5 text-slate-800 dark:text-slate-200 max-w-xs truncate">
-                      {v.reason}
-                    </td>
-                    <td className="p-3.5 text-emerald-700 dark:text-emerald-400 font-medium max-w-xs truncate">
-                      {v.outcome}
-                    </td>
-                    <td className="p-3.5 text-slate-600 dark:text-slate-400">
-                      {v.receivedByAgentName}
-                    </td>
-                    <td className="p-3.5 text-center">
-                      {v.linkedLeadId ? (
-                        <button
-                          onClick={() => onOpenLead(v.linkedLeadId!)}
-                          className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold cursor-pointer"
-                        >
-                          سجل العميل
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                          زائر عام
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </form>
     </div>
   );
-};
+}

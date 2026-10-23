@@ -1,4 +1,4 @@
-import { canAccessPage, scopeLabel, isSales } from "../../lib/access";
+import { canAccessPage, scopeLabel, isSales, worksOwnCustomers } from "../../lib/access";
 import { useEffect } from "react";
 import {
   Users,
@@ -18,10 +18,13 @@ import {
   ArrowUpLeft,
   Network,
   ShieldCheck,
+  MessageSquareWarning,
 } from "lucide-react";
 import { useCRM } from "../../context/CRMContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { ElBeheryLogo } from "../common/ElBeheryLogo";
 import { followUpStatus, isManagement } from "../../lib/presentation";
+import { complaintState, isComplaint, reviewPhase } from "../../lib/reviews";
 
 interface Props {
   activeTab: string;
@@ -35,7 +38,13 @@ export function Sidebar({
   sidebarOpen,
   setSidebarOpen,
 }: Props) {
-  const { effectiveUser, followUps, branches, leads } = useCRM();
+  const { effectiveUser, followUps, branches, leads, reviewRequests, reviewNotes } = useCRM();
+  const { tr, language } = useLanguage();
+  // Managers see open complaints; salespeople see reviews that need their 48-hour nudge.
+  const manager = ["admin", "general_manager", "regional_manager", "branch_manager"].includes(effectiveUser.role);
+  const feedbackCount = reviewRequests.filter((r) =>
+    manager ? isComplaint(r) && complaintState(r, reviewNotes) === "open" : reviewPhase(r) === "reminder_due",
+  ).length;
   const count = followUps.filter((f) =>
     ["due", "overdue"].includes(followUpStatus(f)),
   ).length;
@@ -81,52 +90,51 @@ export function Sidebar({
         <button
           className="sidebar-backdrop"
           onClick={() => setSidebarOpen(false)}
-          aria-label="إغلاق القائمة"
+          aria-label={tr("إغلاق القائمة", "Close menu")}
         />
       )}
       <aside
         className={`behery-sidebar ${sidebarOpen ? "is-open" : ""}`}
-        aria-label="القائمة الرئيسية"
+        aria-label={tr("القائمة الرئيسية", "Main menu")}
       >
         <div className="sidebar-brand">
           <ElBeheryLogo size="lg" />
           <button
             className="icon-button mobile-only"
             onClick={() => setSidebarOpen(false)}
-            aria-label="إغلاق القائمة"
+            aria-label={tr("إغلاق القائمة", "Close menu")}
           >
             <X size={20} />
           </button>
         </div>
         <div className="workspace-label">
           <span className="brand-dot" />
-          مساحة العمل
+          {tr("مساحة العمل", "Workspace")}
         </div>
         <nav>
-          <p className="nav-group-label">العمل اليومي</p>
-          {nav("dashboard", "الرئيسية", LayoutDashboard)}
-          {nav("clients", "العملاء", Users)}
+          <p className="nav-group-label">{tr("العمل اليومي", "Daily work")}</p>
+          {nav("dashboard", tr("الرئيسية", "Home"), LayoutDashboard)}
+          {nav("clients", tr("العملاء", "Customers"), Users)}
           {nav(
             "followups",
-            isSales(effectiveUser) ? "متابعاتي" : "متابعة أداء الموظفين",
+            worksOwnCustomers(effectiveUser) ? tr("متابعاتي", "My follow-ups") : tr("متابعة أداء الموظفين", "Team follow-ups"),
             PhoneCall,
             count,
           )}
-          {nav("visits", "الزيارات والمعاينات", Compass)}
-          <p className="nav-group-label">المبيعات</p>
-          {nav("bookings", "الحجوزات والتعاقدات", ShoppingBag)}
-          {nav("invoices", "الفواتير", FileText)}
-          {nav("overview", "كبار العملاء والوسطاء", Award)}
-          {nav("brokers", "الوسطاء والشركاء", UserRound)}
+          {nav("visits", tr("الزيارات", "Visits"), Compass)}
+          {nav("feedback", tr("التقييمات والشكاوى", "Reviews & complaints"), MessageSquareWarning, feedbackCount)}
+          <p className="nav-group-label">{tr("المبيعات", "Sales")}</p>
+          {nav("bookings", tr("المشتريات", "Purchases"), ShoppingBag)}
+          {nav("overview", tr("كبار العملاء والوسطاء", "Top customers & brokers"), Award)}
+          {nav("brokers", tr("الوسطاء والشركاء", "Brokers & partners"), UserRound)}
           {nav(
             "reports",
-            isManagement(effectiveUser) ? "التقارير" : "أدائي",
+            isManagement(effectiveUser) ? tr("التقارير", "Reports") : tr("أدائي", "My performance"),
             BarChart3,
           )}
           {[
             "users",
             "branches",
-            "teams",
             "audit",
             "dept_dashboard",
             "permissions",
@@ -138,7 +146,6 @@ export function Sidebar({
                 [
                   "users",
                   "branches",
-                  "teams",
                   "audit",
                   "dept_dashboard",
                   "permissions",
@@ -147,31 +154,30 @@ export function Sidebar({
               }
             >
               <summary>
-                إدارة المؤسسة
+                {tr("إدارة المؤسسة", "Organization")}
                 <ChevronDown size={15} />
               </summary>
-              {nav("dept_dashboard", "الأقسام والفروع", Building2)}
-              {nav("users", "الموظفون", Users)}
-              {nav("branches", "الهيكل الإداري", Network)}
-              {nav("teams", "فرق العمل", Users)}
-              {nav("audit", "سجل العمليات", ShieldCheck)}
-              {nav("permissions", "مصفوفة الصلاحيات", ShieldCheck)}
-              {nav("developer", "قسم المطورين", Code2)}
+              {nav("users", tr("الموظفون", "Staff"), Users)}
+              {nav("branches", tr("الهيكل الإداري", "Org structure"), Network)}
+              {nav("dept_dashboard", tr("الأقسام والفروع", "Departments & branches"), Building2)}
+              {nav("audit", tr("سجل العمليات", "Audit log"), ShieldCheck)}
+              {nav("permissions", tr("مصفوفة الصلاحيات", "Permissions matrix"), ShieldCheck)}
+              {nav("developer", tr("قسم المطورين", "Developers"), Code2)}
             </details>
           )}
         </nav>
         <div className="sidebar-bottom">
-          {nav("settings", "الإعدادات", Settings)}
+          {nav("settings", tr("الإعدادات", "Settings"), Settings)}
           <div className="branch-caption">
             <Building2 size={17} />
             <div>
-              <small>نطاق العمل</small>
-              <span>{scopeLabel(effectiveUser)}</span>
+              <small>{tr("نطاق العمل", "Scope")}</small>
+              <span>{scopeLabel(effectiveUser, language === "en")}</span>
             </div>
             <ArrowUpLeft size={15} />
           </div>
           <p>
-            البحيري <span>·</span> تفاصيل وجودة تليق بذوقك
+            {tr("البحيري", "El Behery")} <span>·</span> {tr("تفاصيل وجودة تليق بذوقك", "Quality and detail that suit your taste")}
           </p>
         </div>
       </aside>

@@ -1,4 +1,8 @@
-import { canManageCatalog } from '../lib/access';
+import { useAllData } from "../lib/useAllData";
+import { useAllLeads } from "../lib/useAllLeads";
+import { PageGuide } from "../components/common/PageGuide";
+import { FilterBar } from "../components/common/FilterBar";
+import { canManageCatalog, canCreateCustomer } from '../lib/access';
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -22,7 +26,9 @@ import {
 } from 'lucide-react';
 
 export const BrokersPage: React.FC = () => {
-  const { brokers, purchaseInvoices, leads, bookings, addBroker, updateBroker, effectiveUser } = useCRM();
+  const { brokers, purchaseInvoices, leads, bookings, reviewRequests, addBroker, updateBroker, effectiveUser } = useCRM();
+  useAllLeads();
+  useAllData(["bookings", "invoices", "reviews"]);
   const { t } = useLanguage();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -137,29 +143,20 @@ export const BrokersPage: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
-      {/* Header Banner */}
-      <div className="bg-[#1d1d1c] dark:bg-[#0c0f17] text-[#f0efea] p-5 sm:p-6 rounded-2xl shadow-md border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="page-heading">
         <div>
-          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 text-slate-300 border border-white/10">
-            شراكات ومصادر الترشيح والعمولات
-          </span>
-          <h1 className="text-xl sm:text-2xl font-bold mt-1 text-white tracking-tight flex items-center gap-2">
-            <Users className="w-6 h-6 text-[#dc424b]" />
-            <span>إدارة الوسطاء والمكاتب الهندسية والتحليلات</span>
-          </h1>
-          <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-            متابعة المكاتب الهندسية، شركات المقاولات، والوسطاء العقاريين، احتساب نسبة العمولة % وحجم التحويلات والمبيعات الإجمالية الناتجة عن ترشيحاتهم.
-          </p>
+          <span className="eyebrow">مصادر الترشيح</span>
+          <h1>الوسطاء والشركاء</h1>
+          <p>المكاتب الهندسية والمقاولين والوسطاء اللي بيجيبوا عملاء، وحجم مشتريات العملاء اللي جابوهم.</p>
         </div>
-
-        {canManageCatalog(effectiveUser) && (<button
-          onClick={handleOpenAddModal}
-          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white dark:bg-[#292928] dark:hover:bg-[#343431] rounded-xl text-xs font-bold transition-all border border-slate-600/30 dark:border-white/15 cursor-pointer flex items-center gap-1.5 min-h-[44px] shadow-sm"
-        >
-          <Plus className="w-4 h-4 text-[#dc424b]" />
-          <span>+ إضافة وسيط / جهة ترشيح جديدة</span>
-        </button>)}
+        {(canManageCatalog(effectiveUser) || canCreateCustomer(effectiveUser)) && (
+          <button className="btn-primary" onClick={handleOpenAddModal}>
+            <Plus size={16} />
+            إضافة وسيط
+          </button>
+        )}
       </div>
+      <PageGuide id="brokers" />
 
       {/* Analytics Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -195,30 +192,32 @@ export const BrokersPage: React.FC = () => {
       </div>
 
       {/* Search & Filters */}
-      <div className="glass-card p-4 rounded-2xl shadow-xs flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute right-3 dir-ltr:right-auto dir-ltr:left-3 top-3 text-slate-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="ابحث بالاسم، الهاتف، أو الوصف..."
-            className="w-full pr-9 dir-ltr:pr-3 dir-ltr:pl-9 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs"
-          />
-        </div>
-
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl text-xs font-semibold"
-        >
-          <option value="all">كافة أنواع الوسطاء</option>
-          <option value="engineering_company">شركة استشارات هندسية</option>
-          <option value="contractor">شركة مقاولات وتنفيذ</option>
-          <option value="individual">وسيط فردي / استشاري</option>
-          <option value="company">شركة وساطة عقارية</option>
-        </select>
-      </div>
+      <section className="panel">
+        <FilterBar
+          search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'ابحث بالاسم أو الهاتف أو الوصف…' }}
+          selects={[
+            {
+              id: 'type',
+              label: 'نوع الوسيط',
+              value: typeFilter,
+              onChange: setTypeFilter,
+              allLabel: 'كل أنواع الوسطاء',
+              primary: true,
+              options: [
+                { value: 'engineering_company', label: 'شركة استشارات هندسية' },
+                { value: 'contractor', label: 'شركة مقاولات وتنفيذ' },
+                { value: 'individual', label: 'وسيط فردي / استشاري' },
+                { value: 'company', label: 'شركة وساطة عقارية' },
+              ],
+            },
+          ]}
+          count={{ shown: filteredBrokers.length, noun: 'وسيط' }}
+          onReset={() => {
+            setSearchTerm('');
+            setTypeFilter('all');
+          }}
+        />
+      </section>
 
       {/* Brokers Grid Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -253,6 +252,19 @@ export const BrokersPage: React.FC = () => {
                 <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl">
                   <div className="text-slate-400 text-[10px]">الترشيحات</div>
                   <div className="font-bold text-slate-800 dark:text-slate-200 font-mono-numbers">{statsFor(b.id).customers} عميل</div>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl col-span-2">
+                  <div className="text-slate-400 text-[10px]">تقييم الوسيط لتعاملنا</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-200 font-mono-numbers">
+                    {(() => {
+                      const mine = reviewRequests.filter((r) => r.partyKind === 'broker' && r.brokerId === b.id);
+                      const rated = mine.filter((r) => r.status === 'answered' && r.response).map((r) => r.response!.rating);
+                      const sent = mine.filter((r) => r.status !== 'cancelled').length;
+                      return rated.length
+                        ? `${(rated.reduce((a, c) => a + c, 0) / rated.length).toFixed(1)} من 5 (${rated.length} تقييم)`
+                        : sent ? `اتبعتله طلب، لسه ما ردش` : 'ما اتبعتلوش طلب تقييم';
+                    })()}
+                  </div>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl">
                   <div className="text-slate-400 text-[10px]">حجم المبيعات</div>
